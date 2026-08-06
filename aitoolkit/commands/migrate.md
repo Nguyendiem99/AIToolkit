@@ -41,6 +41,21 @@ Với `gate.type: hard`: trình artifact, cảnh báo "Hành động KHÔNG TH�
 ## isolate: true → subagent
 Với bước `isolate: true`: thay vì chạy inline, dùng superpowers:dispatching-parallel-agents để spawn MỘT subagent chạy skill của bước, truyền `step_id/run_id/run_dir` và chỉ thị "ghi artifact rồi trả về đường dẫn". Conductor chỉ nhận lại đường dẫn artifact + trạng thái, không mang theo lý luận trung gian. Sau đó xử lý gate như thường.
 
+## Resume (`--resume run-<id>`)
+1. Đọc `<project>/.aitoolkit/run-<id>/state.json`. Thiếu → báo lỗi, dừng.
+2. Bỏ qua mọi bước `status: approved` hoặc `skipped` (KHÔNG chạy lại — artifact đã duyệt giữ nguyên).
+3. Tiếp tục từ bước đầu tiên có `status ∈ {pending, running, failed, awaiting_gate, rejected}`:
+   - `failed`/`running` → chạy lại bước đó từ đầu.
+   - `awaiting_gate` → trình lại artifact hiện có, hỏi lại gate.
+   - `rejected` → chạy lại kèm feedback đã lưu.
+4. HARD gate vẫn phải hỏi lại, không tự vượt.
+
+## Từ chối gate
+Khi người dùng từ chối tại gate: lưu feedback vào state.json (`steps.<id>.feedback`), đặt `status: rejected`, `gate_status: rejected`. Chạy LẠI đúng bước đó, truyền feedback cho skill để sửa artifact. KHÔNG đụng các bước đã approved trước đó. Lặp cho tới khi được duyệt.
+
+## Lỗi step
+Nếu skill báo lỗi/không trả artifact: đặt `status: failed`, ghi lý do vào state.json, DỪNG và báo người dùng cách resume: `/migrate --resume <run-id>`. KHÔNG chạy các bước sau.
+
 ## Nguyên tắc
 - KHÔNG bao giờ bỏ qua gate mà không hỏi.
 - Mọi thay đổi trạng thái đều ghi ngay vào `state.json` (để resume được).
