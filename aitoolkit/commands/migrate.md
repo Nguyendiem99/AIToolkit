@@ -28,6 +28,19 @@ Với mỗi bước theo thứ tự trong manifest:
    - Từ chối → xem mục "Từ chối gate".
 5. Sau bước cuối: báo hoàn tất.
 
+## Bước optional & --disable
+- Gom mọi `--disable <step-id>` vào `disabled_steps` trong state.json.
+- Trong vòng lặp, nếu bước có `optional: true` VÀ nằm trong `disabled_steps`: đặt `status: skipped`, KHÔNG gọi skill, KHÔNG hỏi gate, ghi log "skipped (disabled)", đi tiếp.
+- Từ chối `--disable` cho bước không `optional: true` → báo lỗi và dừng (không cho tắt bước bắt buộc).
+
+## HARD gate
+Với `gate.type: hard`: trình artifact, cảnh báo "Hành động KHÔNG THỂ đảo ngược", hỏi `gate.prompt`.
+- Chỉ đi tiếp khi người dùng xác nhận tường minh (gõ đúng yêu cầu, không phải "ok" mơ hồ).
+- KHÔNG BAO GIỜ tự động vượt HARD gate kể cả khi chạy liên tục/resume.
+
+## isolate: true → subagent
+Với bước `isolate: true`: thay vì chạy inline, dùng superpowers:dispatching-parallel-agents để spawn MỘT subagent chạy skill của bước, truyền `step_id/run_id/run_dir` và chỉ thị "ghi artifact rồi trả về đường dẫn". Conductor chỉ nhận lại đường dẫn artifact + trạng thái, không mang theo lý luận trung gian. Sau đó xử lý gate như thường.
+
 ## Nguyên tắc
 - KHÔNG bao giờ bỏ qua gate mà không hỏi.
 - Mọi thay đổi trạng thái đều ghi ngay vào `state.json` (để resume được).
