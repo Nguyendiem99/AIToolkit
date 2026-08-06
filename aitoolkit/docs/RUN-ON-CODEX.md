@@ -2,6 +2,8 @@
 
 AIToolkit đóng gói **dạng Claude Code plugin**, nhưng vì **thuần prompt + file `.md`** nên chạy được trên Codex — chỉ nạp bằng cơ chế của Codex, không phải bằng `claude plugin install`.
 
+> **Muốn Codex tự cài giúp?** Dán toàn bộ `codex/CODEX-SETUP-PROMPT.md` cho Codex — nó tự clone, cấu hình, verify bằng dry-run. Tài liệu dưới đây là bản giải thích cho con người.
+
 ## Codex khác Claude Code ở đâu
 
 | Claude Code | Codex | Kết luận cho kit |
