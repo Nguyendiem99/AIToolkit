@@ -57,6 +57,7 @@ Khi người dùng từ chối tại gate: lưu feedback vào state.json (`steps
 Nếu skill báo lỗi/không trả artifact: đặt `status: failed`, ghi lý do vào state.json, DỪNG và báo người dùng cách resume: `/migrate --resume <run-id>`. KHÔNG chạy các bước sau.
 
 ## Nguyên tắc
+- Ở MỌI gate, dùng công cụ AskUserQuestion để hỏi (đưa lựa chọn rõ ràng: Duyệt / Từ chối+feedback; với HARD gate thêm cảnh báo không thể đảo ngược). Nếu không có AskUserQuestion thì hỏi bằng văn bản.
 - KHÔNG bao giờ bỏ qua gate mà không hỏi.
 - Mọi thay đổi trạng thái đều ghi ngay vào `state.json` (để resume được).
 - Conductor chỉ biết manifest + artifact; không nhúng logic của bất kỳ bước nào.

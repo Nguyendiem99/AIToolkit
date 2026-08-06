@@ -63,3 +63,20 @@ Chạy: `/migrate migration` — nửa đầu (01–04) là skill thật, nửa 
 | 05→10 | Stub `echo-step` (Plan 2b thay bằng shared/* thật) |
 
 - 2026-08-06 — Mô phỏng: **PASS**. 01→04 sinh artifact đúng tên, `step_id` khớp `migration.manifest.yaml`, đều `approved` sau gate; 05 stub chạy & chờ gate. Nội dung thật của 01–04 cần input dự án legacy thật để đầy đủ.
+
+## Migration full pipeline (Plan 2b — 10 bước thật)
+Chạy: `/aitoolkit:migrate migration` — cả 10 bước là skill thật (01–04 migration/*, 05–10 shared/*).
+
+| Bước | Skill | Gate | Output |
+|---|---|---|---|
+| 05 AI Review | shared/ai-review | soft Reviewer | 05-review-report.md |
+| 06 Verification & Testing | shared/verification-testing | soft Dev/QA | 06-verification-report.md |
+| 07 Gerrit | shared/gerrit-automation | **HARD** Reviewer | 07-gerrit-report.md |
+| 08 CCC | shared/ccc-automation | soft PM/QA · optional | 08-ccc-package.md |
+| 09 Release | shared/release | **HARD** PM · optional | 09-release-report.md |
+| 10 Knowledge Base | shared/knowledge-base | none | 10-kb-entry.md |
+
+Đường tắt "chỉ Gerrit rồi KB": `/aitoolkit:migrate migration --disable 08-ccc-automation --disable 09-release`
+→ pipeline thành `01…07 Gerrit → 10 KB`.
+
+- 2026-08-06 — Wiring verify: **PASS**. Manifest 10 bước trỏ skill thật (không stub); 2 HARD gate (07,09), 2 optional (08,09), 10 không gate — đúng spec §5. Chạy nội dung đầy đủ cần dự án legacy thật + LGE rules đã điền.

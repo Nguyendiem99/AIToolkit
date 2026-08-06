@@ -16,30 +16,30 @@ steps:
     skill: migration/code-migration
     isolate: true
     gate: { type: soft, approver: "Developer", prompt: "Code chạy được, duyệt?" }
-  # --- nửa sau: TẠM stub, Plan 2b thay bằng shared/* thật ---
+  # --- nửa sau: khung dùng chung (shared/*) ---
   - id: 05-ai-review
-    skill: _stub/echo-step
+    skill: shared/ai-review
     isolate: true
     gate: { type: soft, approver: "Reviewer", prompt: "Duyệt review?" }
   - id: 06-verification-testing
-    skill: _stub/echo-step
+    skill: shared/verification-testing
     isolate: true
     gate: { type: soft, approver: "Dev/QA", prompt: "Duyệt kết quả test?" }
   - id: 07-gerrit-automation
-    skill: _stub/echo-step
+    skill: shared/gerrit-automation
     isolate: false
     gate: { type: hard, approver: "Reviewer", prompt: "Xác nhận trước khi upload Gerrit?" }
   - id: 08-ccc-automation
-    skill: _stub/echo-step
+    skill: shared/ccc-automation
     isolate: true
     optional: true
     gate: { type: soft, approver: "PM/QA", prompt: "Duyệt CCC?" }
   - id: 09-release
-    skill: _stub/echo-step
+    skill: shared/release
     isolate: false
     optional: true
     gate: { type: hard, approver: "PM", prompt: "Duyệt release?" }
   - id: 10-knowledge-base
-    skill: _stub/echo-step
+    skill: shared/knowledge-base
     isolate: true
     gate: none
