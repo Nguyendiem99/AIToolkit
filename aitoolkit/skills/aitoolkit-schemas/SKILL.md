@@ -24,7 +24,7 @@ Thân file theo template của bước.
 **Quy ước đặt tên file artifact:**
 - Bước **đặc thù workflow** (nửa đầu): đặt theo bước, vd `01-discovery.md`, `03-fix.md`.
 - Bước **khung dùng chung** (`shared/*`): đặt theo **vai trò**, ổn định qua mọi workflow — `review-report.md`, `verification-report.md`, `gerrit-report.md`, `ccc-package.md`, `release-report.md`, `kb-entry.md`.
-- Một bước cần input của bước trước thì **tra `state.json`** (mảng `steps` theo thứ tự) để lấy `artifact_path`, KHÔNG hardcode tên file của workflow khác.
+- **Thứ tự bước CHỈ nằm ở `manifest.steps` (mảng có thứ tự);** `state.json.steps` là object keyed-by-id, KHÔNG mang thứ tự. Để lấy input của **bước ngay trước**: tìm id đứng liền trước `current_step` trong `manifest.steps`, rồi tra `state.json.steps[<prev_id>].artifact_path`. KHÔNG hardcode tên file của workflow khác.
 
 ## 2. Manifest YAML (`workflows/<name>.manifest.yaml`)
 
@@ -58,3 +58,25 @@ Ràng buộc: `id` duy nhất; `skill` phải tồn tại; `gate.type` chỉ `so
 `status` hợp lệ: `pending | running | awaiting_gate | approved | rejected | failed | skipped`.
 `gate_status`: `n/a | pending | approved | rejected`.
 Trường tuỳ chọn `steps.<id>.feedback` lưu góp ý khi người dùng từ chối gate.
+
+## 4. Project profile (language-agnostic layer)
+
+Các bước `shared/*` KHÔNG được hardcode ngôn ngữ/lệnh (không `flutter test`, `npm test`…). Chúng lấy lệnh test/lint/build của repo qua **profile**, theo thứ tự ưu tiên (degrade gracefully):
+
+1. **Khai báo tường minh** — file tuỳ chọn `<project>/.aitoolkit/project.yaml` (team điền 1 lần). Trường nào có thì dùng nguyên văn:
+   ```yaml
+   language: dart            # tuỳ chọn, chỉ để ghi chú
+   base_branch: origin/main  # tuỳ chọn — mốc diff cho ai-review; thiếu ⇒ fallback HEAD~1
+   test_cmd: flutter test
+   lint_cmd: flutter analyze
+   build_cmd: flutter build apk --debug
+   coverage_cmd: flutter test --coverage   # tuỳ chọn
+   review_focus:                            # tuỳ chọn, bơm thêm vào ai-review
+     - "Riverpod: không giữ ref sau dispose"
+   ```
+
+Ngoài ra, **loại thay đổi** (chi phối chiến lược test) lấy theo thứ tự: (a) `manifest` khai `change_type: feature|bugfix|migration`; (b) suy từ tên `workflow` (chứa "migration"→migration, "bug"/"fix"→bugfix, còn lại→feature).
+2. **Tự dò** (khi thiếu trường ở bước 1) — nhận diện qua marker file ở gốc repo. Bảng dò chuẩn nằm ở `shared/verification-testing/command-detection.md`; ví dụ: `pubspec.yaml`→dart/flutter, `package.json`→npm/pnpm/yarn, `Cargo.toml`→cargo, `go.mod`→go, `pom.xml`/`build.gradle`→mvn/gradle, `pyproject.toml`→pytest, `*.csproj`→dotnet.
+3. **Hỏi qua gate** (khi vừa không khai báo vừa không dò được) — bước ghi rõ trong report "lệnh chưa xác định", nêu phán đoán, để gate người dùng xác nhận; TUYỆT ĐỐI không bịa lệnh rồi tuyên bố đã chạy.
+
+Mọi shared skill đọc profile theo đúng thứ tự này. Lệnh dùng thực tế PHẢI được ghi verbatim vào artifact để truy vết.
