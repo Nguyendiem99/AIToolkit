@@ -1,0 +1,23 @@
+workflow: _dryrun
+steps:
+  - id: s1-soft
+    skill: _stub/echo-step
+    isolate: false
+    gate: { type: soft, approver: "Tester", prompt: "Duyệt s1?" }
+  - id: s2-isolate
+    skill: _stub/echo-step
+    isolate: true
+    gate: { type: soft, approver: "Tester", prompt: "Duyệt s2 (isolate)?" }
+  - id: s3-optional
+    skill: _stub/echo-step
+    isolate: false
+    optional: true
+    gate: { type: soft, approver: "Tester", prompt: "Duyệt s3 (optional)?" }
+  - id: s4-hard
+    skill: _stub/echo-step
+    isolate: false
+    gate: { type: hard, approver: "Tester", prompt: "HARD: xác nhận s4?" }
+  - id: s5-nogate
+    skill: _stub/echo-step
+    isolate: false
+    gate: none
