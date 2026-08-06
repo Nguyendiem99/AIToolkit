@@ -1,0 +1,42 @@
+workflow: bugfix
+steps:
+  # --- nửa đầu: đặc thù bugfix ---
+  - id: 01-reproduce
+    skill: bugfix/reproduce
+    isolate: false
+    gate: { type: soft, approver: "Dev/QA", prompt: "Xác nhận đã tái hiện bug?" }
+  - id: 02-root-cause
+    skill: bugfix/root-cause
+    isolate: true
+    gate: { type: soft, approver: "Tech Lead", prompt: "Duyệt nguyên nhân gốc?" }
+  - id: 03-fix
+    skill: bugfix/fix
+    isolate: true
+    gate: { type: soft, approver: "Developer", prompt: "Fix xong (test xanh), duyệt?" }
+  # --- nửa sau: khung dùng chung (shared/*) ---
+  - id: 04-ai-review
+    skill: shared/ai-review
+    isolate: true
+    gate: { type: soft, approver: "Reviewer", prompt: "Duyệt review?" }
+  - id: 05-verification-testing
+    skill: shared/verification-testing
+    isolate: true
+    gate: { type: soft, approver: "Dev/QA", prompt: "Duyệt kết quả test (không hồi quy)?" }
+  - id: 06-gerrit-automation
+    skill: shared/gerrit-automation
+    isolate: false
+    gate: { type: hard, approver: "Reviewer", prompt: "Xác nhận trước khi upload Gerrit?" }
+  - id: 07-ccc-automation
+    skill: shared/ccc-automation
+    isolate: true
+    optional: true
+    gate: { type: soft, approver: "PM/QA", prompt: "Duyệt CCC?" }
+  - id: 08-release
+    skill: shared/release
+    isolate: false
+    optional: true
+    gate: { type: hard, approver: "PM", prompt: "Duyệt release?" }
+  - id: 09-knowledge-base
+    skill: shared/knowledge-base
+    isolate: true
+    gate: none
