@@ -31,4 +31,10 @@ Xem `docs/DRY-RUN.md` — kịch bản dry-run A/B/C dùng manifest `_dryrun` + 
 ## Kiến trúc
 Xem `docs/superpowers/specs/2026-08-06-aitoolkit-agentic-sdlc-design.md`.
 
-> **Trạng thái:** Pipeline migration đủ **10 bước thật** (01–04 `migration/*`, 05–10 `shared/*`). `lge-rules` là khung — team điền để bước 03/04/05/07/08 áp rule thật. Nửa sau `shared/*` tái dùng được cho workflow bugfix/feature sau này.
+## Workflow có sẵn
+- **migration** (`/aitoolkit:migrate migration`) — 10 bước: 01–04 `migration/*` + 05–10 `shared/*`.
+- **bugfix** (`/aitoolkit:bugfix`) — 9 bước: 01 Reproduce → 02 Root Cause → 03 Fix (`bugfix/*`) → 04–09 tái dùng `shared/*` (Review → Test → Gerrit → CCC* → Release* → KB).
+
+Cả hai chung một engine (conductor) + chung khung `shared/*`. Thêm workflow mới = thêm manifest + vài skill nửa đầu, không sửa conductor.
+
+> **Trạng thái:** migration (10 bước) + bugfix (9 bước) đều chạy thật. `shared/*` workflow-agnostic (artifact đặt tên theo vai trò). `lge-rules` là khung — team điền để các bước áp rule thật.

@@ -69,12 +69,14 @@ Chạy: `/aitoolkit:migrate migration` — cả 10 bước là skill thật (01�
 
 | Bước | Skill | Gate | Output |
 |---|---|---|---|
-| 05 AI Review | shared/ai-review | soft Reviewer | 05-review-report.md |
-| 06 Verification & Testing | shared/verification-testing | soft Dev/QA | 06-verification-report.md |
-| 07 Gerrit | shared/gerrit-automation | **HARD** Reviewer | 07-gerrit-report.md |
-| 08 CCC | shared/ccc-automation | soft PM/QA · optional | 08-ccc-package.md |
-| 09 Release | shared/release | **HARD** PM · optional | 09-release-report.md |
-| 10 Knowledge Base | shared/knowledge-base | none | 10-kb-entry.md |
+| 05 AI Review | shared/ai-review | soft Reviewer | review-report.md |
+| 06 Verification & Testing | shared/verification-testing | soft Dev/QA | verification-report.md |
+| 07 Gerrit | shared/gerrit-automation | **HARD** Reviewer | gerrit-report.md |
+| 08 CCC | shared/ccc-automation | soft PM/QA · optional | ccc-package.md |
+| 09 Release | shared/release | **HARD** PM · optional | release-report.md |
+| 10 Knowledge Base | shared/knowledge-base | none | kb-entry.md |
+
+(Artifact `shared/*` đặt tên theo vai trò — ổn định cho mọi workflow, xem `aitoolkit-schemas`.)
 
 Đường tắt "chỉ Gerrit rồi KB": `/aitoolkit:migrate migration --disable 08-ccc-automation --disable 09-release`
 → pipeline thành `01…07 Gerrit → 10 KB`.
