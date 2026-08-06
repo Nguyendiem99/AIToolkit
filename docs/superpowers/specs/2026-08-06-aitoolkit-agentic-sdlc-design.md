@@ -1,8 +1,11 @@
 # AIToolKit — Agentic SDLC Kit (Thiết kế)
 
-- **Ngày:** 2026-08-06
-- **Trạng thái:** Design (chờ user review → writing-plans)
-- **Bối cảnh:** Dự án LGE, migration webOS Native (Legacy) → Flutter (Target). Về sau mở rộng cho bugfix và tính năng mới.
+- **Ngày tạo:** 2026-08-06 · **Cập nhật:** 2026-08-06 (v0.5.0)
+- **Trạng thái:** Tài liệu thiết kế "sống" — phản ánh bản đã build. 3 workflow (migration/bugfix/feature) đã chạy thật.
+- **Bối cảnh:** Dự án LGE, migration webOS Native (Legacy) → Flutter (Target); mở rộng cho bugfix và tính năng mới.
+- **Bắt đầu đóng góp:** đọc [`aitoolkit/CONTRIBUTING.md`](../../../aitoolkit/CONTRIBUTING.md) để có bản đồ thư mục, quy ước bất biến, và công thức thêm/nâng skill.
+
+> **Lịch sử tiến hoá:** (1) làm trọn **migration** 10 bước; (2) tách nửa sau thành khung `shared/*`; (3) thêm **bugfix** + **feature** không sửa conductor (chứng minh 2 seam); (4) **v0.5.0**: `shared/ai-review` + `shared/verification-testing` nâng tới chuẩn superpowers + **language-agnostic** qua `project-profile`. Các plan triển khai gốc ở `docs/superpowers/plans/`.
 
 ## 1. Mục tiêu
 
@@ -17,6 +20,10 @@ Xây một **bộ kit agentic SDLC** dạng **Claude Code plugin** để chạy 
 3. **Migration làm trước & trọn vẹn.** Nửa sau (bước 05→10) là khung dùng chung.
 4. **Human gate khai báo theo bước** (mặc định bật; KB không gate; Gerrit-upload & Release là HARD gate; CCC & Release có thể tắt — `optional`).
 5. **Phân biệt rõ:** *skill = kiến thức/playbook* (nạp vào context, tái dùng được); *subagent = hộp cách ly để chạy* (context sạch, nặng token). Một bước là một **skill**; cờ `isolate` trong manifest quyết định có bọc subagent hay không.
+
+### 2b. Language-agnostic qua project-profile (v0.5.0)
+
+Shared skill KHÔNG hardcode ngôn ngữ/lệnh. Lệnh test/lint/build và mốc diff lấy theo thứ tự (định nghĩa ở `aitoolkit-schemas` §4): (a) `<project>/.aitoolkit/project.yaml` khai báo → (b) tự dò marker file (`command-detection.md`) → (c) hỏi gate / verdict `BLOCKED` nếu không rõ (không bịa lệnh). Nhờ đó khung dùng chung được cho mọi ngôn ngữ, không riêng Flutter.
 
 ## 3. Quan hệ với superpowers — Lai (phụ thuộc có chọn lọc)
 
@@ -42,9 +49,10 @@ Xây một **bộ kit agentic SDLC** dạng **Claude Code plugin** để chạy 
 ```
 aitoolkit/                          ← plugin gốc (phân phối cho team)
 ├── commands/
-│   └── migrate.md                  ← slash /migrate = CONDUCTOR (nhạc trưởng), chạy inline
+│   ├── migrate.md                  ← /aitoolkit:migrate = CONDUCTOR (nhạc trưởng), chạy inline
+│   ├── bugfix.md  feature.md       ← wrapper mỏng, delegate sang conductor
 ├── workflows/
-│   └── migration.manifest.yaml     ← khai báo 10 bước: id, skill, gate, isolate, optional
+│   ├── migration.manifest.yaml     ← 10 bước; bugfix/feature.manifest.yaml = 9 bước; _dryrun = stub
 ├── skills/
 │   ├── migration/
 │   │   ├── discovery/              ┐
@@ -59,7 +67,7 @@ aitoolkit/                          ← plugin gốc (phân phối cho team)
 │   │   ├── release/                │  (09, optional)
 │   │   └── knowledge-base/         ┘  (10, tự chứa)
 │   ├── lge-rules/                  ← rule LGE: convention, perf, security, null-safety
-│   └── artifact-schemas/           ← định dạng chuẩn từng .md (contract giữa các bước)
+│   └── aitoolkit-schemas/          ← hợp đồng: artifact/manifest/state + project-profile (§4)
 └── templates/                      ← khung rỗng discovery.md, tech-design.md...
 
 # Khi chạy trên dự án thật, artifact sinh ra trong repo dự án:
@@ -144,18 +152,16 @@ steps:
 - **HARD gate** (Gerrit upload, Release) không bao giờ tự động vượt qua.
 - **Idempotent:** chạy lại một bước ghi đè đúng artifact của bước đó, không nhân bản.
 
-## 8. Mở rộng bugfix / feature (tương lai, ngoài phạm vi lần này)
+## 8. Bugfix / feature (ĐÃ LÀM — chứng minh 2 seam)
 
-Nhờ 2 seam, thêm workflow mới = **thêm 1 manifest + vài skill nửa đầu**, KHÔNG đụng khung:
+Nhờ 2 seam, mỗi workflow thêm chỉ cần **1 manifest + vài skill nửa đầu**, KHÔNG đụng conductor:
 
 ```
-workflows/bugfix.manifest.yaml     ← tái dùng shared/05→10, khai báo nửa đầu mới
-skills/bugfix/reproduce/           ┐ skill mới (wrapper quanh systematic-debugging)
-skills/bugfix/root-cause/          ┘
-commands/bugfix.md                 ← conductor mới, hoặc /migrate --workflow bugfix
+bugfix  (9 bước): skills/bugfix/{reproduce,root-cause,fix}   + shared/04→09 · commands/bugfix.md
+feature (9 bước): skills/feature/{requirements,design,implement} + shared/04→09 · commands/feature.md
 ```
 
-Nửa sau (`ai-review`, `verification-testing`, `gerrit`, `ccc`, `release`, `kb`) dùng lại y nguyên.
+Nửa sau (`ai-review`, `verification-testing`, `gerrit`, `ccc`, `release`, `kb`) dùng lại y nguyên. Công thức thêm workflow mới: xem `CONTRIBUTING.md` §5.
 
 ## 9. Kiểm thử (cho bản thân kit)
 
@@ -164,8 +170,10 @@ Nửa sau (`ai-review`, `verification-testing`, `gerrit`, `ccc`, `release`, `kb`
 - **Dry-run conductor:** chạy pipeline với step-skill giả (stub) sinh artifact mẫu, kiểm tra thứ tự bước, gate dừng đúng chỗ, resume hoạt động, tắt optional hoạt động.
 - **End-to-end nhỏ:** một module webOS bé chạy hết 01→10 (hoặc 01→07→10 khi tắt CCC) trên repo mẫu.
 
-## 10. Phạm vi lần này (rõ ràng)
+## 10. Phạm vi & việc còn mở
 
-**Trong phạm vi:** khung conductor + manifest + `state.json`/resume; 10 step-skill migration (nửa đầu tự viết, nửa sau wrapper + tự chứa); lge-rules; artifact-schemas; templates; test cho kit.
+**Đã có:** engine (conductor + manifest + `state.json`/resume); 3 workflow migration/bugfix/feature; khung `shared/*` workflow-agnostic; `aitoolkit-schemas` (gồm project-profile); `lge-rules` (khung); templates; dry-run engine. `shared/ai-review` + `shared/verification-testing` đã đạt chuẩn chất lượng.
 
-**Ngoài phạm vi:** workflow bugfix & feature (chỉ chừa seam sẵn); tích hợp sâu Jira/Figma; dashboard; bất kỳ service chạy nền nào.
+**Còn mở (xem `CONTRIBUTING.md` §10):** nâng các shared skill còn mỏng (gerrit/ccc/release/kb) + skill nửa đầu tới chuẩn §7; điền `lge-rules`; dry-run thật trên repo mẫu.
+
+**Ngoài phạm vi:** tích hợp sâu Jira/Figma; dashboard; bất kỳ service chạy nền nào (kit thuần-prompt).
