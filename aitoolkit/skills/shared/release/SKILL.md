@@ -1,17 +1,17 @@
 ---
 name: release
-description: Bước 09 migration (khung dùng chung, OPTIONAL) — kiểm điều kiện release, tổng hợp Go/No-Go, chốt release note. Ghi 09-release-report.md. HARD gate PM.
+description: Bước Release (khung dùng chung, mọi workflow, OPTIONAL) — kiểm điều kiện release, tổng hợp Go/No-Go, chốt release note. Ghi release-report.md. HARD gate PM.
 ---
 
-# Shared 09 — Release
+# Shared — Release
 
-Conductor gọi với `step_id=09-release`, `run_id`, `run_dir`. Chạy INLINE. OPTIONAL. HARD gate (PM).
+Conductor gọi với `step_id`, `run_id`, `run_dir`. Chạy INLINE. OPTIONAL. HARD gate (PM).
 
 ## Việc cần làm
-1. Đọc `aitoolkit-schemas`, template `release-report.md`, các report `05–08` (08 có thể vắng nếu bị tắt).
-2. Kiểm **điều kiện release**: review duyệt (05), test đạt (06), Gerrit merged (07), CCC đạt (08 nếu bật).
+1. Đọc `aitoolkit-schemas`, template `release-report.md`, các report `review-report.md` / `verification-report.md` / `gerrit-report.md` / `ccc-package.md` (ccc có thể vắng nếu bị tắt).
+2. Kiểm **điều kiện release**: review duyệt, test đạt, Gerrit merged, CCC đạt (nếu bật).
 3. Tổng hợp **Go/No-Go** kèm lý do; chốt **release note**.
-4. Ghi `<run_dir>/09-release-report.md`, `status: draft`.
+4. Ghi `<run_dir>/release-report.md`, `step_id` conductor truyền, `status: draft`.
 5. **CHỜ HARD gate PM.** Không công bố release trước khi được duyệt.
 
 ## Ranh giới

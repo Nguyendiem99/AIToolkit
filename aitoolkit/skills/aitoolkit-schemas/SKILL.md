@@ -19,7 +19,12 @@ status: draft              # draft khi vừa sinh; approved sau khi qua gate
 produced_at: 2026-08-06
 ---
 ```
-Thân file theo template của bước (Plan 2 định nghĩa từng template).
+Thân file theo template của bước.
+
+**Quy ước đặt tên file artifact:**
+- Bước **đặc thù workflow** (nửa đầu): đặt theo bước, vd `01-discovery.md`, `03-fix.md`.
+- Bước **khung dùng chung** (`shared/*`): đặt theo **vai trò**, ổn định qua mọi workflow — `review-report.md`, `verification-report.md`, `gerrit-report.md`, `ccc-package.md`, `release-report.md`, `kb-entry.md`.
+- Một bước cần input của bước trước thì **tra `state.json`** (mảng `steps` theo thứ tự) để lấy `artifact_path`, KHÔNG hardcode tên file của workflow khác.
 
 ## 2. Manifest YAML (`workflows/<name>.manifest.yaml`)
 
