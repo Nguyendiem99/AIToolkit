@@ -1,6 +1,6 @@
 ---
-description: Chạy pipeline bugfix của AIToolKit (reproduce → root-cause → fix → review → test → gerrit → CCC → release → KB).
-argument-hint: [--resume run-<id>] [--disable <step-id>]
+description: "Chạy pipeline bugfix của AIToolKit (reproduce → root-cause → fix → review → test → gerrit → CCC → release → KB)."
+argument-hint: "[--resume run-<id>] [--disable <step-id>]"
 ---
 
 # /bugfix — AIToolKit Conductor (workflow bugfix)
