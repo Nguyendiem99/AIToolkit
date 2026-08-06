@@ -34,6 +34,7 @@ Xem `docs/superpowers/specs/2026-08-06-aitoolkit-agentic-sdlc-design.md`.
 ## Workflow có sẵn
 - **migration** (`/aitoolkit:migrate migration`) — 10 bước: 01–04 `migration/*` + 05–10 `shared/*`.
 - **bugfix** (`/aitoolkit:bugfix`) — 9 bước: 01 Reproduce → 02 Root Cause → 03 Fix (`bugfix/*`) → 04–09 tái dùng `shared/*` (Review → Test → Gerrit → CCC* → Release* → KB).
+- **feature** (`/aitoolkit:feature`) — 9 bước: 01 Requirements → 02 Design → 03 Implement (`feature/*`) → 04–09 tái dùng `shared/*`.
 
 Cả hai chung một engine (conductor) + chung khung `shared/*`. Thêm workflow mới = thêm manifest + vài skill nửa đầu, không sửa conductor.
 
