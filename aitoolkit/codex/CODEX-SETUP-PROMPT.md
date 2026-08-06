@@ -27,11 +27,14 @@ Bạn (Codex) sẽ cài đặt và chạy thử **AIToolkit** — một bộ kit
 ## Pha 2 — Nối bootstrap vào project (để lần sau tự nhận)
 1. Mở/tạo `TARGET_PROJECT/AGENTS.md`.
 2. Chèn nội dung file `AITOOLKIT_HOME/aitoolkit/codex/AGENTS.snippet.md`, thay `AITOOLKIT_HOME` bằng đường dẫn thật. (Nếu AGENTS.md đã có, chỉ thêm khối AIToolkit, đừng xoá phần khác.)
-3. (Tùy chọn, nếu tôi muốn gọi bằng `$aitoolkit`): 
+3. **Đăng ký skill vào Codex** (để hiện trong `/skills` và gọi bằng `$aitoolkit`). Đăng ký CẢ CÂY `skills/`, không chỉ conductor:
    ```bash
-   mkdir -p ~/.codex/skills && cp -r "$AITOOLKIT_HOME/aitoolkit/codex/skills/aitoolkit" ~/.codex/skills/
+   mkdir -p ~/.codex/skills
+   find "$AITOOLKIT_HOME/aitoolkit/skills" -name SKILL.md -not -path '*/_stub/*' \
+     -exec dirname {} \; | while read d; do ln -sf "$d" ~/.codex/skills/"$(basename "$d")"; done
+   ln -sf "$AITOOLKIT_HOME/aitoolkit/codex/skills/aitoolkit" ~/.codex/skills/aitoolkit
    ```
-   rồi sửa dòng `AITOOLKIT_HOME` trong `~/.codex/skills/aitoolkit/SKILL.md`.
+   Sửa dòng `AITOOLKIT_HOME` trong `~/.codex/skills/aitoolkit/SKILL.md`. Chạy `/skills` và xác nhận thấy `aitoolkit`, `ai-review`, `verification-testing`, `discovery`, … Nếu thiếu, kiểm tra lại cách Codex quét `~/.codex/skills/` rồi điều chỉnh. (Ghi chú: để CHẠY pipeline chỉ cần `$aitoolkit`; đăng ký cả cây chỉ để nhìn/gọi được từng skill.)
 
 ## Pha 3 — Verify bằng dry-run (BẮT BUỘC trước khi chạy thật)
 Chạy workflow `_dryrun` bằng cách đóng vai **conductor**:

@@ -42,20 +42,21 @@ Codex tự đọc `AGENTS.md` trong project bạn đang mở. Thêm một khối
 
 ---
 
-## Cách B — Cài như skill Codex (gọi bằng `$aitoolkit`)
+## Cách B — Đăng ký skill vào Codex (hiện trong `/skills`, gọi bằng `$tên`)
 
-Nếu muốn ergonomics giống slash command:
+Để chạy pipeline bạn **chỉ cần** conductor `$aitoolkit` — nó tự **đọc file** các step-skill rồi làm theo, không cần chúng đăng ký. Nếu muốn thấy/gọi từng skill trong `/skills` (parity với Claude Code), đăng ký **cả cây** `skills/` vào thư mục skills cá nhân của Codex (`~/.codex/skills/`, được quét đệ quy `**/SKILL.md`):
 
 ```bash
-# Copy skill wrapper của conductor vào thư mục skills của Codex
 mkdir -p ~/.codex/skills
-cp -r "$AITOOLKIT_HOME/aitoolkit/codex/skills/aitoolkit" ~/.codex/skills/
-
-# Sửa AITOOLKIT_HOME trong skill vừa copy (trỏ tới clone thật)
-#   ~/.codex/skills/aitoolkit/SKILL.md  →  đặt đúng dòng AITOOLKIT_HOME
+# link mọi skill của kit (mỗi thư mục có SKILL.md) theo tên, bỏ stub
+find "$AITOOLKIT_HOME/aitoolkit/skills" -name SKILL.md -not -path '*/_stub/*' \
+  -exec dirname {} \; | while read d; do ln -sf "$d" ~/.codex/skills/"$(basename "$d")"; done
+# conductor wrapper
+ln -sf "$AITOOLKIT_HOME/aitoolkit/codex/skills/aitoolkit" ~/.codex/skills/aitoolkit
+# sửa AITOOLKIT_HOME trong ~/.codex/skills/aitoolkit/SKILL.md
 ```
 
-Rồi trong Codex (bất kỳ project nào), gõ:
+Dùng `ln -sf` (symlink) để kit cập nhật thì skill tự theo; muốn bản copy tĩnh thì thay bằng `cp -r`. Chạy `/skills` để xác nhận thấy `aitoolkit`, `ai-review`, `verification-testing`, `discovery`, … Rồi:
 
 ```
 $aitoolkit _dryrun
@@ -63,7 +64,9 @@ $aitoolkit bugfix
 $aitoolkit migration --disable 08-ccc-automation --disable 09-release
 ```
 
-`/skills` để xem skill đã nạp. (Tùy chọn) copy thêm các step-skill nếu muốn Codex gọi trực tiếp — nhưng conductor tự đọc chúng từ `AITOOLKIT_HOME` nên thường không cần.
+> **Lưu ý namespace:** các step-skill có tên khá chung (`fix`, `design`, `implement`, `reproduce`…). Đăng ký toàn cục nghĩa là chúng nằm chung namespace với skill khác của bạn. Nếu ngại, chỉ cần cài mỗi conductor `aitoolkit` — pipeline vẫn chạy đủ.
+>
+> **Route "chuẩn" (nâng cao):** Codex cũng có hệ plugin/marketplace giống Claude Code (`codex plugin marketplace add` + `codex plugin add`, manifest `plugin.json` + `.agents/plugins/marketplace.json`). Có thể đóng gói AIToolkit thành Codex plugin để cài/gỡ gọn hơn — xem `codex plugin --help`.
 
 ---
 
