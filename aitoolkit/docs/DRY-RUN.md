@@ -50,3 +50,16 @@ Chạy: `/migrate _dryrun --disable s3-optional` (duyệt lần lượt tới cu
   - B: s3-optional `skipped` (không artifact); s2-isolate/s4-hard/s5-nogate `approved`.
   - C: resume bỏ qua s1 đã duyệt (mtime không đổi) & tiến s2; từ chối lưu feedback + chạy lại s1→v2; lỗi step ghi `failed` + dừng.
 - ⏳ Chưa xác nhận đăng ký lệnh `/migrate` trên Claude Code thật (cần cài plugin — xem "Chuẩn bị").
+
+## Migration front-half (Plan 2a)
+Chạy: `/migrate migration` — nửa đầu (01–04) là skill thật, nửa sau (05–10) tạm stub.
+
+| Hành động | Kỳ vọng quan sát |
+|-----------|------------------|
+| 01 Discovery | `01-discovery.md` theo template discovery; gate "Xác nhận scope migration?" |
+| 02 Feature Mapping | `02-mapping.md` (mapping matrix + scope + gap); gate Client |
+| 03 Technical Design | `03-tech-design.md` (Clean Arch + Riverpod); gate Tech Lead |
+| 04 Code Migration | worktree + branch; `04-migration-report.md`; gate Developer |
+| 05→10 | Stub `echo-step` (Plan 2b thay bằng shared/* thật) |
+
+- 2026-08-06 — Mô phỏng: **PASS**. 01→04 sinh artifact đúng tên, `step_id` khớp `migration.manifest.yaml`, đều `approved` sau gate; 05 stub chạy & chờ gate. Nội dung thật của 01–04 cần input dự án legacy thật để đầy đủ.
