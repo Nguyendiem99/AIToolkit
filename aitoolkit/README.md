@@ -34,10 +34,13 @@ Mỗi bước có human gate khai báo trong `workflows/migration.manifest.yaml`
 ## Test engine
 Xem `docs/DRY-RUN.md` — kịch bản dry-run A/B/C dùng manifest `_dryrun` + stub.
 
+## Chạy trên Codex (không phải Claude Code)
+Kit thuần-prompt nên chạy được trên **OpenAI Codex CLI**, nhưng Codex không có `claude plugin install`/slash-command custom. Dùng **AGENTS.md bootstrap** hoặc cài như **skill Codex** (`$aitoolkit <workflow>`). Xem `docs/RUN-ON-CODEX.md` + `codex/`.
+
 ## Cùng phát triển
 - **`CONTRIBUTING.md`** — sổ tay đóng góp: bản đồ thư mục, quy ước bất biến, công thức thêm workflow / nâng skill, cạm bẫy. **Đọc đầu tiên.**
 - **Kiến trúc/thiết kế:** `docs/superpowers/specs/2026-08-06-aitoolkit-agentic-sdlc-design.md`.
-- **Hợp đồng dữ liệu:** skill `aitoolkit-schemas`.
+- **Hợp đồng dữ liệu:** skill `aitoolkit-schemas`. · **Chạy trên Codex:** `docs/RUN-ON-CODEX.md`.
 
 ## Workflow có sẵn
 - **migration** (`/aitoolkit:migrate migration`) — 10 bước: 01–04 `migration/*` + 05–10 `shared/*`.

@@ -1,7 +1,7 @@
 {
   "name": "aitoolkit",
   "description": "Agentic SDLC kit cho dự án LGE — điều phối pipeline migration/bugfix/feature bằng manifest khai báo, human gate, và knowledge base. Thuần prompt, chạy trên nền Claude Code.",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "author": { "name": "LGE Team" },
   "license": "MIT",
   "keywords": ["sdlc", "migration", "flutter", "webos", "agentic", "workflow", "lge"],
