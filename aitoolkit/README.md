@@ -31,4 +31,4 @@ Xem `docs/DRY-RUN.md` — kịch bản dry-run A/B/C dùng manifest `_dryrun` + 
 ## Kiến trúc
 Xem `docs/superpowers/specs/2026-08-06-aitoolkit-agentic-sdlc-design.md`.
 
-> **Trạng thái:** Plan 1 (lõi engine) đã xong. Step-skill migration thật + `lge-rules` thuộc Plan 2 — cắm vào engine này, không sửa conductor.
+> **Trạng thái:** Pipeline migration đủ **10 bước thật** (01–04 `migration/*`, 05–10 `shared/*`). `lge-rules` là khung — team điền để bước 03/04/05/07/08 áp rule thật. Nửa sau `shared/*` tái dùng được cho workflow bugfix/feature sau này.
