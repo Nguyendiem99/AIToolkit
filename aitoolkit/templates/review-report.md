@@ -1,5 +1,5 @@
 ---
-step_id: <shared: conductor truyền>
+step_id: <shared: orchestrator truyền>
 run_id: <run-id>
 status: draft
 produced_at: <yyyy-mm-dd>
