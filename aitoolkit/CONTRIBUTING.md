@@ -9,9 +9,11 @@ Sổ tay cho người mới tham gia. Đọc hết một lượt (~10 phút) là
 ## 1. Mô hình tư duy (30 giây)
 
 ```
-/aitoolkit:migrate <workflow>          ┌─ nạp orchestrator skill (Bảng bước)
-        │  = ORCHESTRATOR SKILL ───────┤   gọi từng step-skill theo thứ tự
-        │    chạy INLINE, giữ gate     └─ theo dõi tiến độ bằng TodoWrite
+/aitoolkit:migrate | :bugfix | :feature   ┌─ mỗi lệnh nạp ĐÚNG MỘT orchestrator skill
+        │ (đối số = tên/slug tính năng,   │   (Bảng bước riêng của workflow đó)
+        │  KHÔNG phải tên workflow)  ─────┤   gọi từng step-skill theo thứ tự
+        │  = ORCHESTRATOR SKILL           └─ theo dõi tiến độ bằng TodoWrite
+        │    chạy INLINE, giữ gate
         ▼
    step-skill 01 ──artifact.md──▶ step-skill 02 ──artifact.md──▶ … ──▶ KB
 ```
@@ -52,7 +54,7 @@ aitoolkit/
 <project>/docs/aitoolkit/<date>-<workflow>-<slug>/{01-....md, review-report.md, …}
 ```
 
-Slash command bị namespace theo tên plugin: `/aitoolkit:migrate`, `/aitoolkit:bugfix`, `/aitoolkit:feature`. Tham số workflow gõ sau (vd `/aitoolkit:migrate migration`).
+Slash command bị namespace theo tên plugin: `/aitoolkit:migrate`, `/aitoolkit:bugfix`, `/aitoolkit:feature` — ba lệnh riêng biệt, mỗi lệnh map 1:1 vào orchestrator skill cùng tên (`skills/aitoolkit/{migrate,bugfix,feature}`). Tham số gõ sau là **tên/slug tính năng hoặc bug** đang xử lý (vd `/aitoolkit:migrate <tên-tính-năng>`), KHÔNG phải tên workflow — workflow đã cố định theo lệnh.
 
 ---
 

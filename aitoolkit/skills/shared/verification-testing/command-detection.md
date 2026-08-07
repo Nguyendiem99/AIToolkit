@@ -1,6 +1,6 @@
 # Command Detection (language-agnostic)
 
-Bảng tra lệnh test/lint/build của repo khi `docs/aitoolkit/project.yaml` KHÔNG khai báo (project-profile §4, bước 2 "tự dò"). Nhận diện qua marker file ở gốc repo. Nếu nhiều marker cùng tồn tại (monorepo/đa ngôn ngữ), ưu tiên marker gần thư mục có file vừa đổi nhất; nếu vẫn mơ hồ → BLOCKED, hỏi gate.
+Bảng tra lệnh test/lint/build của repo khi `docs/aitoolkit/project.yaml` KHÔNG khai báo (project-profile §2, bước 2 "tự dò"). Nhận diện qua marker file ở gốc repo. Nếu nhiều marker cùng tồn tại (monorepo/đa ngôn ngữ), ưu tiên marker gần thư mục có file vừa đổi nhất; nếu vẫn mơ hồ → BLOCKED, hỏi gate.
 
 | Marker file | Hệ sinh thái | test_cmd (mặc định) | lint_cmd | build_cmd |
 |---|---|---|---|---|

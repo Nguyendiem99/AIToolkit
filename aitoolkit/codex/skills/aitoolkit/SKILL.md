@@ -22,7 +22,7 @@ Bạn là **orchestrator** của một pipeline SDLC khai báo bằng skill. Đ�
 ## Khác biệt runtime (tuân thủ)
 
 - **Gate:** không có `AskUserQuestion` → hỏi bằng **text**, nêu lựa chọn rõ (Duyệt / Từ chối+feedback). **HARD gate không bao giờ tự vượt** — chờ xác nhận tường minh.
-- **Lệnh test/lint/build:** theo project-profile (`aitoolkit-schemas` §4): `TARGET_PROJECT/docs/aitoolkit/project.yaml` → tự dò marker file → hỏi nếu không rõ. KHÔNG bịa lệnh.
+- **Lệnh test/lint/build:** theo project-profile (`aitoolkit-schemas` §2): `TARGET_PROJECT/docs/aitoolkit/project.yaml` → tự dò marker file → hỏi nếu không rõ. KHÔNG bịa lệnh.
 - Shared skill tham chiếu `superpowers:*` — cần superpowers bản Codex đã cài.
 
 ## Ranh giới

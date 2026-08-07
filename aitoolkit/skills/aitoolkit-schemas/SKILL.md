@@ -42,7 +42,7 @@ Các bước `shared/*` KHÔNG được hardcode ngôn ngữ/lệnh (không `flu
      - "Riverpod: không giữ ref sau dispose"
    ```
 
-Ngoài ra, **loại thay đổi** (chi phối chiến lược test) lấy theo thứ tự: (a) `project.yaml` khai `change_type: feature|bugfix|migration` (nếu có); (b) suy từ tên `workflow` (chứa "migration"→migration, "bug"/"fix"→bugfix, còn lại→feature).
+Ngoài ra, **loại thay đổi** (chi phối chiến lược test) lấy theo thứ tự: (a) `project.yaml` khai `change_type: feature|bugfix|migration` (nếu có); (b) suy từ **nhãn workflow** — nhãn nằm trong tên `RUN_DIR` do orchestrator đặt (`migration`/`bugfix`/`feature`; ví dụ RUN_DIR chứa "migration"→migration, "bug"/"fix"→bugfix, còn lại→feature). Nhãn này khác với **tên lệnh** (`/aitoolkit:migrate`) — orchestrator migrate CỐ Ý đặt nhãn `migration` (không phải `migrate`) trong RUN_DIR để suy luận này hoạt động đúng.
 2. **Tự dò** (khi thiếu trường ở bước 1) — nhận diện qua marker file ở gốc repo. Bảng dò chuẩn nằm ở `shared/verification-testing/command-detection.md`; ví dụ: `pubspec.yaml`→dart/flutter, `package.json`→npm/pnpm/yarn, `Cargo.toml`→cargo, `go.mod`→go, `pom.xml`/`build.gradle`→mvn/gradle, `pyproject.toml`→pytest, `*.csproj`→dotnet.
 3. **Hỏi qua gate** (khi vừa không khai báo vừa không dò được) — bước ghi rõ trong report "lệnh chưa xác định", nêu phán đoán, để gate người dùng xác nhận; TUYỆT ĐỐI không bịa lệnh rồi tuyên bố đã chạy.
 

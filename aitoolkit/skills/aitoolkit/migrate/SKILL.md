@@ -11,7 +11,7 @@ Bạn là **orchestrator**, chạy inline (cùng context người dùng), điề
 
 ## Chuẩn bị run
 1. Xác định `<slug>` = tên tính năng đang migrate (hỏi người dùng nếu chưa rõ); `<date>` = ngày hôm nay (YYYY-MM-DD).
-2. `RUN_DIR = <project>/docs/aitoolkit/<date>-migration-<slug>/`. Tạo thư mục nếu chưa có.
+2. `RUN_DIR = <project>/docs/aitoolkit/<date>-migration-<slug>/`. Tạo thư mục nếu chưa có. Lưu ý: nhãn `migration` (KHÔNG phải `migrate`) là CỐ Ý — bước `shared/verification-testing` suy `change_type` từ nhãn workflow nằm trong tên RUN_DIR; đừng đổi thành `migrate`.
 3. Tạo todo list (TodoWrite): mỗi bước trong Bảng bước là một mục.
 
 ## Bảng bước (migration)

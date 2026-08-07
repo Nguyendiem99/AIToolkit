@@ -23,7 +23,7 @@ Kỷ luật này kế thừa superpowers:verification-before-completion — **RE
 ## Việc cần làm (thứ tự)
 
 1. **Đọc hợp đồng & input.** Đọc `aitoolkit-schemas`. Artifact **bước ngay trước** (vd `review-report.md`, hoặc artifact code/fix) = đường dẫn orchestrator truyền vào, dùng để biết nhánh + file đã đổi + yêu cầu gốc. Đọc template `verification-report.md`.
-2. **Xác định lệnh kiểm chứng (language-agnostic).** Theo `project-profile` trong `aitoolkit-schemas` §4: (a) đọc `docs/aitoolkit/project.yaml`; (b) thiếu trường nào thì tự dò theo [command-detection.md](command-detection.md); (c) vẫn không rõ → ghi "chưa xác định" và để gate hỏi, KHÔNG bịa lệnh. Ghi lệnh thực tế **verbatim** vào report.
+2. **Xác định lệnh kiểm chứng (language-agnostic).** Theo `project-profile` trong `aitoolkit-schemas` §2: (a) đọc `docs/aitoolkit/project.yaml`; (b) thiếu trường nào thì tự dò theo [command-detection.md](command-detection.md); (c) vẫn không rõ → ghi "chưa xác định" và để gate hỏi, KHÔNG bịa lệnh. Ghi lệnh thực tế **verbatim** vào report.
 3. **Chọn chiến lược test theo loại thay đổi** (bảng dưới) và **viết test còn thiếu** (dùng superpowers:test-driven-development).
 4. **Chạy** test + lint + build đã xác định. Đọc **toàn bộ** output, exit code, đếm số fail.
 5. **Lập bảng behavior-check**: mỗi yêu cầu/kịch bản → lệnh chứng minh → kết quả thật.
@@ -31,7 +31,7 @@ Kỷ luật này kế thừa superpowers:verification-before-completion — **RE
 
 ## Chiến lược test theo loại thay đổi
 
-Xác định **loại thay đổi** theo `project-profile` (`aitoolkit-schemas` §4): `change_type` khai trong `project-profile`/`docs/aitoolkit/project.yaml` nếu có, else suy từ tên `workflow` (migration/bugfix/feature). Không hardcode.
+Xác định **loại thay đổi** theo `project-profile` (`aitoolkit-schemas` §2): `change_type` khai trong `project-profile`/`docs/aitoolkit/project.yaml` nếu có, else suy từ **nhãn workflow** (migration/bugfix/feature) — nhãn nằm trong tên RUN_DIR do orchestrator đặt. Không hardcode.
 
 | Loại | Test bắt buộc | Bằng chứng "đủ" |
 |---|---|---|

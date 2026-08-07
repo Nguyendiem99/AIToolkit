@@ -11,15 +11,15 @@ claude plugin install aitoolkit@aitoolkit-local
 Sửa kit rồi cài lại: xem `CONTRIBUTING.md` §9 (phải bump version + uninstall/install).
 
 ## Dùng nhanh
-- `/aitoolkit:migrate <workflow>` — chạy pipeline theo orchestrator skill của workflow đó.
-- `/aitoolkit:bugfix`, `/aitoolkit:feature` — chạy workflow tương ứng (wrapper).
+- `/aitoolkit:migrate` — chạy pipeline **migration**; đối số (nếu có) là **tên/slug tính năng** đang migrate, KHÔNG phải tên workflow. Orchestrator skill (`skills/aitoolkit/migrate`) lo toàn bộ Bảng bước.
+- `/aitoolkit:bugfix`, `/aitoolkit:feature` — tương tự, mỗi lệnh chạy đúng một orchestrator skill riêng (bugfix/feature), đối số cũng là tên/slug.
 - Nói rõ trong yêu cầu để tắt một bước optional (vd CCC) — orchestrator bỏ qua bước đó khi lập Bảng bước.
 
 Artifact mỗi lần chạy nằm ở `docs/aitoolkit/<date>-<workflow>-<slug>/`. Tùy chọn khai `docs/aitoolkit/project.yaml` để chỉ định lệnh test/lint/build (xem `aitoolkit-schemas` §2).
 
 ### Ví dụ: chỉ chạy tới Gerrit rồi KB (bỏ CCC & Release)
 ```
-/aitoolkit:migrate migration, bỏ qua bước 08 CCC và 09 Release
+/aitoolkit:migrate <tên-tính-năng>, bỏ qua bước 08 CCC và 09 Release
 ```
 
 ## Pipeline migration (10 bước)
@@ -35,11 +35,11 @@ Kit thuần-prompt nên chạy được trên **OpenAI Codex CLI**, nhưng Codex
 
 ## Cùng phát triển
 - **`CONTRIBUTING.md`** — sổ tay đóng góp: bản đồ thư mục, quy ước bất biến, công thức thêm workflow / nâng skill, cạm bẫy. **Đọc đầu tiên.**
-- **Kiến trúc/thiết kế:** `docs/superpowers/specs/2026-08-06-aitoolkit-agentic-sdlc-design.md`.
+- **Kiến trúc/thiết kế:** `../docs/superpowers/specs/2026-08-06-aitoolkit-superpowers-native-design.md`.
 - **Hợp đồng dữ liệu:** skill `aitoolkit-schemas`. · **Chạy trên Codex:** `docs/RUN-ON-CODEX.md`.
 
 ## Workflow có sẵn
-- **migration** (`/aitoolkit:migrate migration`) — 10 bước: 01–04 `migration/*` + 05–10 `shared/*`.
+- **migration** (`/aitoolkit:migrate`) — 10 bước: 01–04 `migration/*` + 05–10 `shared/*`.
 - **bugfix** (`/aitoolkit:bugfix`) — 9 bước: 01 Reproduce → 02 Root Cause → 03 Fix (`bugfix/*`) → 04–09 tái dùng `shared/*` (Review → Test → Gerrit → CCC* → Release* → KB).
 - **feature** (`/aitoolkit:feature`) — 9 bước: 01 Requirements → 02 Design → 03 Implement (`feature/*`) → 04–09 tái dùng `shared/*`.
 

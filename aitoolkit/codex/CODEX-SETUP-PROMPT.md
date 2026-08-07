@@ -42,7 +42,7 @@ Chọn một workflow nhẹ (vd `bugfix`) và đóng vai **orchestrator**:
 ## Pha 4 — Báo cáo & sẵn sàng chạy thật
 Tóm tắt: AITOOLKIT_HOME, trạng thái superpowers, kết quả verify (bước nào đã chạy tới đâu, artifact ở đâu). Rồi hướng dẫn tôi chạy thật:
 - Verify OK → chạy `bugfix` / `feature` / `migrate` bằng đúng orchestrator trên.
-- Nếu project không phải Flutter: tạo `TARGET_PROJECT/docs/aitoolkit/project.yaml` khai `test_cmd`/`lint_cmd`/`build_cmd`/`base_branch` (xem `aitoolkit-schemas` §4); không khai thì các bước tự dò marker file, không dò được thì hỏi tôi — KHÔNG bịa lệnh.
+- Nếu project không phải Flutter: tạo `TARGET_PROJECT/docs/aitoolkit/project.yaml` khai `test_cmd`/`lint_cmd`/`build_cmd`/`base_branch` (xem `aitoolkit-schemas` §2); không khai thì các bước tự dò marker file, không dò được thì hỏi tôi — KHÔNG bịa lệnh.
 
 ## Quy tắc bất biến (tuân thủ suốt)
 - **HARD gate không bao giờ tự vượt** (Gerrit upload, Release) — luôn chờ tôi xác nhận tường minh.
