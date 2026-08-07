@@ -5,13 +5,13 @@ description: Bước 02 bugfix — truy nguyên nhân gốc bằng systematic-de
 
 # Bugfix 02 — Root Cause
 
-Conductor gọi với `step_id=02-root-cause`, `run_id`, `run_dir`. Bước điều tra → chạy trong subagent.
+Orchestrator gọi skill này, truyền: `run_dir` + đường dẫn `<run_dir>/01-reproduce.md`. Chạy inline.
 
 ## Việc cần làm
 1. Đọc `aitoolkit-schemas`, template `root-cause.md`, `<run_dir>/01-reproduce.md` (bắt buộc; thiếu → báo lỗi).
 2. Dùng superpowers:systematic-debugging: đặt giả thuyết, kiểm chứng từng cái bằng bằng chứng thật (log, test, đọc code) — KHÔNG đoán bừa rồi sửa.
 3. Xác định **nguyên nhân gốc** chính xác (kèm `file:line`), **phạm vi ảnh hưởng**, và **hướng sửa đề xuất**.
-4. Ghi `<run_dir>/02-root-cause.md`, `status: draft`. Trả về đường dẫn.
+4. Ghi `<run_dir>/02-root-cause.md`, `status: draft`.
 
 ## Ranh giới
 - CHỈ truy nguyên nhân + đề xuất hướng; CHƯA sửa code (bước 03).
