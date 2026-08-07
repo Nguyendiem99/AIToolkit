@@ -12,7 +12,7 @@
 
 - Ngôn ngữ tài liệu: tiếng Việt, giữ giọng văn hiện có của repo.
 - KHÔNG đổi nội dung `aitoolkit/templates/*` và logic nghiệp vụ từng bước — đây là refactor tầng điều phối.
-- Token cấm sau khi xong (không còn xuất hiện trong `aitoolkit/`, trừ file lịch sử trong `docs/superpowers/`): `state.json`, `manifest`, `_dryrun`, `_stub`, `run_id`, `run-<id>`, `.aitoolkit/`, `--resume`, `--disable`, `isolate`, `conductor`.
+- Token cấm sau khi xong (không còn xuất hiện trong `aitoolkit/`, trừ file lịch sử trong `docs/superpowers/`): `state.json`, `_dryrun`, `_stub`, `run_id`, `run-<id>`, `.aitoolkit/`, `--resume`, `--disable`, `isolate`, `conductor`, và **manifest theo nghĩa workflow** (`*.manifest.yaml`, `manifest.steps`, "đọc manifest", "workflow manifest"). **NGOẠI LỆ hợp lệ — giữ nguyên:** cụm "**plugin manifest**" chỉ `.claude-plugin/plugin.json` (đó thật sự là manifest của plugin). Do đó mọi lệnh grep sweep dùng pattern hẹp `\.manifest\.yaml|manifest\.steps`, KHÔNG bare-match chữ "manifest".
 - Artifact run-dir chuẩn: `<project>/docs/aitoolkit/<YYYY-MM-DD>-<workflow>-<slug>/`. Tên file artifact từng bước GIỮ NGUYÊN (`01-discovery.md`, `review-report.md`, …).
 - HARD gate (Gerrit, Release) không bao giờ tự vượt — phải xác nhận tường minh.
 - Mỗi task kết thúc bằng một commit riêng.
@@ -243,6 +243,8 @@ description: Hợp đồng dữ liệu của AIToolKit — cấu trúc artifact 
 
 - [ ] **Step 2: Xoá trọn mục "## 2. Manifest YAML (...)" và "## 3. state.json (...)"** (cả code block bên trong). Giữ mục 1 và 4, đánh số lại thành "## 2. Project profile".
 
+- [ ] **Step 2b: Sửa đường dẫn project profile** — trong mục Project profile, đổi `<project>/.aitoolkit/project.yaml` → `<project>/docs/aitoolkit/project.yaml` (mọi chỗ nhắc `.aitoolkit/`). Không đổi nội dung các trường (`test_cmd`, `lint_cmd`…).
+
 - [ ] **Step 3: Sửa mục 1 (Artifact `.md`)** — bỏ dòng `run_id` trong ví dụ front-matter, và thay đoạn quy ước "thứ tự bước / state.json.steps[<prev_id>]" bằng:
 
 ```markdown
@@ -265,8 +267,8 @@ produced_at: 2026-08-06
 
 - [ ] **Step 4: Verify**
 
-Run: `cd aitoolkit && ! grep -Eq "state\.json|Manifest YAML|run_id|current_step" skills/aitoolkit-schemas/SKILL.md && grep -q "Project profile" skills/aitoolkit-schemas/SKILL.md && echo OK`
-Expected: `OK` (không còn manifest/state.json/run_id, vẫn còn project profile).
+Run: `cd aitoolkit && ! grep -Eq "state\.json|Manifest YAML|run_id|current_step|\.aitoolkit/" skills/aitoolkit-schemas/SKILL.md && grep -q "Project profile" skills/aitoolkit-schemas/SKILL.md && echo OK`
+Expected: `OK` (không còn manifest/state.json/run_id/.aitoolkit, vẫn còn project profile).
 
 - [ ] **Step 5: Commit**
 
@@ -355,8 +357,10 @@ git commit -m "refactor(aitoolkit): feature+bugfix step-skills bỏ khung conduc
 - Modify: `aitoolkit/skills/shared/ccc-automation/SKILL.md` (dòng 8 `--disable`, 15)
 - Modify: `aitoolkit/skills/shared/release/SKILL.md` (dòng 8, 14)
 - Modify: `aitoolkit/skills/shared/knowledge-base/SKILL.md` (dòng 8, 11 `tra state.json`, 14)
+- Modify: `aitoolkit/skills/shared/ai-review/severity-rubric.md` (dòng 37 `conductor không nên qua gate` → `orchestrator không nên qua gate`)
+- Modify: `aitoolkit/skills/shared/verification-testing/command-detection.md` (mọi `.aitoolkit/` → `docs/aitoolkit/`; nếu có `state.json`/`manifest` thì áp R6/R7)
 
-- [ ] **Step 1: Áp R1–R9** cho 6 file:
+- [ ] **Step 1: Áp R1–R9** cho 8 file (6 SKILL.md + 2 file phụ severity-rubric/command-detection):
   - ai-review + verification-testing: description bỏ "Đọc artifact bước trước qua state.json" → "do orchestrator truyền" (R7); phần "Khoanh vùng/Đọc input" thay lookup `state.json.steps[<prev_id>]`/`manifest.steps`/`current_step` bằng "artifact bước trước = đường dẫn orchestrator truyền" (R6).
   - verification-testing dòng 34 `manifest.change_type` → "orchestrator/`project-profile` khai `change_type`" (bỏ chữ `manifest`).
   - gerrit + release: "CHỜ conductor qua HARD gate" → R8; dòng mở R1.
@@ -448,7 +452,7 @@ git commit -m "docs(codex): trỏ orchestrator skill mới, bỏ manifest/state.
 
 - [ ] **Step 1: `README.md`** — bỏ `--resume run-<id>` (dòng 16); dòng 14 mô tả chạy "theo orchestrator skill" thay `workflows/<workflow>.manifest.yaml`; dòng 19 đổi vị trí artifact → `docs/aitoolkit/<date>-<workflow>-<slug>/`, project.yaml đổi đường dẫn; dòng 32 "gate khai trong orchestrator skill" thay manifest; **xoá dòng 35** (link DRY-RUN); dòng 50 "Thêm workflow mới = thêm orchestrator skill + vài step-skill nửa đầu" thay "manifest".
 
-- [ ] **Step 2: `CONTRIBUTING.md`** — cập nhật kiến trúc: bỏ "manifest YAML" khỏi mô tả seam, đổi sơ đồ (dòng 12–14) sang "orchestrator skill" + bỏ dòng "quản lý state.json"; xoá 4 dòng cây `*.manifest.yaml` (39–42); bỏ `isolate`/`subagent bọc bởi conductor` (dòng 26) → "bước nặng có thể dùng dispatching-parallel-agents khi cần"; đổi dòng 56/65–66/68 (state.json/run-<id>/--resume) sang mô hình artifact `docs/aitoolkit/…` + TodoWrite; sửa bảng invariant I1/I2/I7 (dòng 76–82) bỏ tham chiếu manifest/state.json — I2 đổi thành "bước lấy input bước trước từ đường dẫn orchestrator truyền"; mục "thêm workflow" (91, 96) đổi "viết manifest" → "viết orchestrator skill (Bảng bước + tái dùng shared/*)"; dòng 165 bỏ nhắc `docs/DRY-RUN.md` → "test = review checklist + chạy thử pipeline nhỏ".
+- [ ] **Step 2: `CONTRIBUTING.md`** — cập nhật kiến trúc: bỏ "manifest YAML" khỏi mô tả seam, đổi sơ đồ (dòng 12–14) sang "orchestrator skill" + bỏ dòng "quản lý state.json"; xoá 4 dòng cây `*.manifest.yaml` (39–42); bỏ `isolate`/`subagent bọc bởi conductor` (dòng 26) → "bước nặng có thể dùng dispatching-parallel-agents khi cần"; đổi dòng 56/65–66/68 (state.json/run-<id>/--resume) sang mô hình artifact `docs/aitoolkit/…` + TodoWrite; sửa bảng invariant I1/I2/I7 (dòng 76–82) bỏ tham chiếu manifest/state.json — I2 đổi thành "bước lấy input bước trước từ đường dẫn orchestrator truyền"; mục "thêm workflow" (91, 96) đổi "viết manifest" → "viết orchestrator skill (Bảng bước + tái dùng shared/*)"; dòng 165 bỏ nhắc `docs/DRY-RUN.md` → "test = review checklist + chạy thử pipeline nhỏ". Dòng 44 "artifact/manifest/state" → "artifact/front-matter + project-profile". **GIỮ NGUYÊN dòng 34 "manifest plugin (plugin.json)"** — đây là plugin manifest hợp lệ; dòng 5 sửa "skill + slash command + manifest" → "skill + slash command" (bỏ nghĩa workflow-manifest).
 
 - [ ] **Step 3: `docs/RUN-ON-CODEX.md`** — bỏ mọi `_dryrun`/`state.json`/`run-<id>`/`--resume`/`_stub` (dòng 5, 19, 37, 39, 52, 62, 75–83); mục "verify" đổi từ dry-run sang "chạy thử một workflow nhỏ tới gate đầu"; đổi `./.aitoolkit/` → `./docs/aitoolkit/`.
 
