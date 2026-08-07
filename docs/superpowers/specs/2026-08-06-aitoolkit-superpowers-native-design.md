@@ -42,7 +42,7 @@ Vì use-case là **một ngày, một tính năng nhỏ**, các thứ mà engine
 Mỗi pipeline có **một orchestrator viết bằng văn xuôi** — thay cho cặp `manifest.yaml` + conductor generic. Nội dung orchestrator liệt kê thẳng chuỗi bước, mỗi bước ghi rõ: `step-skill`, `approver`, `gate prompt`, và cờ optional (nếu có). Vòng đời một bước, do orchestrator điều khiển:
 
 1. Đánh dấu todo bước này `in_progress` (TodoWrite).
-2. Gọi step-skill (chạy inline). Step làm việc thật → ghi artifact vào `<project>/.aitoolkit/run-<id>/` với front-matter `status: draft`.
+2. Gọi step-skill (chạy inline). Step làm việc thật → ghi artifact vào thư mục run (xem §3.2) với front-matter `status: draft`.
 3. Trình tóm tắt + đường dẫn artifact cho người dùng.
 4. **Gate:**
    - `soft` → dùng `AskUserQuestion`: **Duyệt** / **Từ chối + feedback**. Duyệt → sửa front-matter artifact `status: approved`, todo `completed`, sang bước kế. Từ chối → chạy lại đúng bước đó kèm feedback, không đụng bước đã duyệt.
@@ -58,7 +58,16 @@ Mỗi pipeline có **một orchestrator viết bằng văn xuôi** — thay cho 
 
 - **Tiến độ:** TodoWrite, mỗi bước một todo. Đây là "state" hiển thị, thay `state.json`.
 - **Lưu trạng thái:** chỉ dựa vào **artifact ghi ra file** + front-matter `status: draft→approved`. Đủ để một run một-buổi tự thuật lại nó đã tới đâu nếu cần đọc lại. Không có `state.json`.
-- **run-id + run-dir:** vẫn sinh `run-<YYYYMMDD>-<NN>` và thư mục `<project>/.aitoolkit/run-<id>/` để gom artifact (đây chỉ là thư mục, không phải engine).
+- **Nơi ghi artifact (kiểu Superpowers):** làm giống Superpowers (`docs/superpowers/specs/<date>-<topic>-…`). Artifact của một run ghi vào **thư mục gom theo ngày + workflow + slug tính năng** trong dự án đích:
+
+  ```
+  <project>/docs/aitoolkit/<YYYY-MM-DD>-<workflow>-<slug>/
+      01-discovery.md
+      02-mapping.md
+      ...
+  ```
+
+  Không còn `run-<id>` counter, không `.aitoolkit/`, không `state.json` — chỉ thư mục dated chứa các file `.md` (đúng tinh thần Superpowers). `<slug>` lấy từ tên tính năng đang migrate (orchestrator hỏi/suy ra ở bước đầu). Nếu người dùng không muốn thư mục riêng, có thể ghi thẳng vào `docs/aitoolkit/` với tên file có tiền tố ngày — nhưng mặc định gom theo thư mục cho gọn một bộ ~9–10 artifact.
 
 ### 3.3 Step-skill (giữ nội dung, bỏ khung conductor)
 
@@ -69,8 +78,11 @@ Mỗi `skills/**/SKILL.md` giữ nguyên phần "Việc cần làm" + template +
 
 ### 3.4 Điểm vào (entry points)
 
-- **Claude Code:** `commands/{migrate,feature,bugfix}.md` được viết lại thành orchestrator prose (thay nội dung conductor cũ).
-- **Codex:** `codex/skills/aitoolkit/SKILL.md` + `codex/AGENTS.snippet.md` cập nhật để trỏ cùng cơ chế mới (bỏ nhắc manifest/state.json/dryrun).
+Orchestrator **là skill riêng** (tách khỏi command), để cả Claude Code và Codex dùng chung một nguồn:
+
+- **Orchestrator skill:** tạo mới `skills/aitoolkit/migrate/SKILL.md`, `skills/aitoolkit/feature/SKILL.md`, `skills/aitoolkit/bugfix/SKILL.md`. Toàn bộ logic điều phối (§3.1) nằm ở đây.
+- **Claude Code command:** `commands/{migrate,feature,bugfix}.md` rút thành **launcher mỏng** — chỉ gọi orchestrator skill tương ứng, truyền tham số (tên tính năng/slug, đường dẫn source legacy…).
+- **Codex:** `codex/skills/aitoolkit/SKILL.md` + `codex/AGENTS.snippet.md` trỏ tới cùng orchestrator skill (bỏ nhắc manifest/state.json/dryrun).
 
 ## 4. Danh sách thay đổi file
 
@@ -83,13 +95,18 @@ Mỗi `skills/**/SKILL.md` giữ nguyên phần "Việc cần làm" + template +
 - `aitoolkit/skills/_stub/fail-step/SKILL.md`
 - `aitoolkit/docs/DRY-RUN.md`
 
-### Viết lại (điều phối → orchestrator prose)
-- `aitoolkit/commands/migrate.md` — orchestrator 10 bước (migration).
-- `aitoolkit/commands/feature.md` — orchestrator 9 bước (feature).
-- `aitoolkit/commands/bugfix.md` — orchestrator 9 bước (bugfix).
+### Tạo mới (orchestrator skill — tách khỏi command)
+- `aitoolkit/skills/aitoolkit/migrate/SKILL.md` — orchestrator 10 bước (migration).
+- `aitoolkit/skills/aitoolkit/feature/SKILL.md` — orchestrator 9 bước (feature).
+- `aitoolkit/skills/aitoolkit/bugfix/SKILL.md` — orchestrator 9 bước (bugfix).
+
+### Viết lại (command → launcher mỏng)
+- `aitoolkit/commands/migrate.md` — chỉ gọi skill `aitoolkit/migrate`, truyền tham số.
+- `aitoolkit/commands/feature.md` — chỉ gọi skill `aitoolkit/feature`.
+- `aitoolkit/commands/bugfix.md` — chỉ gọi skill `aitoolkit/bugfix`.
 
 ### Sửa (cắt phần engine, giữ phần còn dùng)
-- `aitoolkit/skills/aitoolkit-schemas/SKILL.md` — **bỏ** mục "2. Manifest YAML" và "3. state.json"; **giữ** mục "1. Artifact front-matter" (sửa lại: input bước trước = path orchestrator truyền, không qua state.json) và "4. Project profile". Cập nhật `description` frontmatter.
+- `aitoolkit/skills/aitoolkit-schemas/SKILL.md` — **bỏ** mục "2. Manifest YAML" và "3. state.json"; **giữ** mục "1. Artifact front-matter" và "4. Project profile". Front-matter bỏ trường `run_id` (không còn run-id); input bước trước = path orchestrator truyền, không qua state.json/manifest. Cập nhật `description` frontmatter (bỏ nhắc "manifest YAML, và state.json").
 - Mọi `aitoolkit/skills/**/SKILL.md` step-skill — bỏ khung "conductor/state_id/state.json", theo §3.3. (16 skill: migration×4, feature×3, bugfix×3, shared×6 — trừ `aitoolkit-schemas`; `lge-rules` chỉ chỉnh nếu có nhắc engine.)
 - `aitoolkit/codex/skills/aitoolkit/SKILL.md`, `aitoolkit/codex/AGENTS.snippet.md`, `aitoolkit/codex/CODEX-SETUP-PROMPT.md` — bỏ nhắc manifest/state.json/dryrun.
 - `aitoolkit/README.md`, `aitoolkit/CONTRIBUTING.md`, `aitoolkit/docs/RUN-ON-CODEX.md` — cập nhật mô tả cơ chế (bỏ dryrun/manifest/state.json).
@@ -111,5 +128,5 @@ Vì bỏ `_dryrun` engine-test, nghiệm thu chuyển sang **chạy thật một
 - Dừng đúng ở mỗi gate, hỏi đúng câu, không tự vượt HARD gate.
 - Từ chối một gate → chạy lại đúng bước đó kèm feedback, bước đã duyệt không đổi.
 - Bước optional bỏ được khi người dùng yêu cầu.
-- Artifact ghi đúng vào `run-<id>/`, front-matter `draft→approved`.
+- Artifact ghi đúng vào `docs/aitoolkit/<date>-<workflow>-<slug>/`, front-matter `draft→approved`.
 - Không còn tham chiếu `state.json`/`manifest.yaml`/`dryrun`/`_stub` nào trong code hay tài liệu.
