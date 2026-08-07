@@ -3,7 +3,7 @@
 
 ## AIToolkit — chạy pipeline SDLC (agentic)
 
-Project này có thể chạy workflow của AIToolkit: `migration`, `bugfix`, `feature`.
+Project này có thể chạy workflow của AIToolkit: `migrate`, `bugfix`, `feature`.
 
 - **AITOOLKIT_HOME:** `/ĐỔI/THÀNH/ĐƯỜNG-DẪN/AIToolkit`  ← sửa dòng này
 

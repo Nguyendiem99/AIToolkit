@@ -1,6 +1,6 @@
 ---
 name: aitoolkit
-description: Use when running an AIToolkit SDLC pipeline (migration, bugfix, or feature) on Codex. Invoke as `$aitoolkit <migration|bugfix|feature> [tên-tính-năng]`.
+description: Use when running an AIToolkit SDLC pipeline (migrate, bugfix, or feature) on Codex. Invoke as `$aitoolkit <migrate|bugfix|feature> [tên-tính-năng]`.
 ---
 
 # AIToolkit orchestrator (bản Codex)
@@ -13,7 +13,7 @@ Bạn là **orchestrator** của một pipeline SDLC khai báo bằng skill. Đ�
 
 ## Việc cần làm
 
-1. Tham số sau `$aitoolkit` là **tên workflow** (`migration` | `bugfix` | `feature`) kèm tên-tính-năng tùy chọn. Nếu trống → hỏi người dùng chạy workflow nào.
+1. Tham số sau `$aitoolkit` là **tên workflow** (`migrate` | `bugfix` | `feature`) kèm tên-tính-năng tùy chọn. Nếu trống → hỏi người dùng chạy workflow nào.
 2. Đọc `AITOOLKIT_HOME/aitoolkit/skills/aitoolkit-schemas/SKILL.md` (hợp đồng dữ liệu) TRƯỚC.
 3. Đọc `AITOOLKIT_HOME/aitoolkit/skills/aitoolkit/<workflow>/SKILL.md` và **làm theo đúng Bảng bước + Giao thức** trong đó (khởi tạo run, vòng lặp bước, gate, lỗi step).
 4. Step-skill liên quan: `AITOOLKIT_HOME/aitoolkit/skills/<skill>/SKILL.md`.
