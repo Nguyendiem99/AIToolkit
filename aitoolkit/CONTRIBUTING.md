@@ -33,10 +33,12 @@ Hệ quả: **thêm workflow mới = thêm orchestrator skill + vài skill "nử
 aitoolkit/
 ├── .claude-plugin/plugin.json     # manifest plugin (name, version — BUMP mỗi lần release)
 ├── commands/
-│   ├── migrate.md                 # ★ ORCHESTRATOR chính cho migration. Logic điều phối ở đây
-│   ├── bugfix.md  feature.md       # wrapper mỏng: delegate sang orchestrator skill, ép sẵn workflow
+│   ├── migrate.md  bugfix.md  feature.md   # LAUNCHER mỏng (2 dòng): mỗi cái chỉ gọi
+│   │                                       # đúng skill orchestrator tương ứng, KHÔNG chứa logic
 ├── skills/
 │   ├── aitoolkit-schemas/         # ★ HỢP ĐỒNG DỮ LIỆU (artifact front-matter + project-profile). Đọc TRƯỚC
+│   ├── aitoolkit/{migrate,bugfix,feature}/   # ★ ORCHESTRATOR thật — Bảng bước + giao thức chạy/gate
+│   │                                          #   nằm trong SKILL.md, không phải ở commands/
 │   ├── migration/{discovery,feature-mapping,technical-design,code-migration}/   # nửa đầu migration
 │   ├── bugfix/{reproduce,root-cause,fix}/                                       # nửa đầu bugfix
 │   ├── feature/{requirements,design,implement}/                                 # nửa đầu feature
@@ -87,7 +89,7 @@ Ví dụ thêm `hotfix`. KHÔNG đụng `commands/migrate.md`.
 4. **Wrapper command** (tùy chọn) `commands/hotfix.md`: delegate sang orchestrator skill, ép `workflow = hotfix` — copy `bugfix.md` làm mẫu. Nhớ **quote** frontmatter (I6).
 5. `claude plugin validate ./aitoolkit` → **PASS mới merge**.
 
-Xem orchestrator có sẵn (`commands/bugfix.md`) làm mẫu chuẩn.
+Xem orchestrator có sẵn (`skills/aitoolkit/bugfix/SKILL.md`) làm mẫu chuẩn — `commands/bugfix.md` chỉ là launcher 2 dòng, không có Bảng bước.
 
 ---
 
