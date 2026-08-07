@@ -1,6 +1,5 @@
 ---
 step_id: 03-fix
-run_id: <run-id>
 status: draft
 produced_at: <yyyy-mm-dd>
 ---

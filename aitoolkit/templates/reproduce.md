@@ -1,6 +1,5 @@
 ---
 step_id: 01-reproduce
-run_id: <run-id>
 status: draft
 produced_at: <yyyy-mm-dd>
 ---

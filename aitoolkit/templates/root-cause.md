@@ -1,6 +1,5 @@
 ---
 step_id: 02-root-cause
-run_id: <run-id>
 status: draft
 produced_at: <yyyy-mm-dd>
 ---

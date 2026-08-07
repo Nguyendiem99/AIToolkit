@@ -1,6 +1,5 @@
 ---
 step_id: 09-release
-run_id: <run-id>
 status: draft
 produced_at: <yyyy-mm-dd>
 ---
