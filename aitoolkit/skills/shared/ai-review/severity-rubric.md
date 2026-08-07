@@ -34,7 +34,7 @@ Phân loại theo **blast radius** — hậu quả nếu lỗi lọt ra sản xu
 
 ## Áp lên gate
 
-- Còn ≥1 **Critical** → verdict `Reject`; conductor không nên qua gate cho tới khi hết.
+- Còn ≥1 **Critical** → verdict `Reject`; orchestrator không nên qua gate cho tới khi hết.
 - Còn **Major** (0 Critical) → `Approve-with-fixes`; ghi rõ để bước sau/dev xử lý.
 - 0 Critical, 0 Major → `Approve`.
 

@@ -1,6 +1,6 @@
 # Command Detection (language-agnostic)
 
-Bảng tra lệnh test/lint/build của repo khi `.aitoolkit/project.yaml` KHÔNG khai báo (project-profile §4, bước 2 "tự dò"). Nhận diện qua marker file ở gốc repo. Nếu nhiều marker cùng tồn tại (monorepo/đa ngôn ngữ), ưu tiên marker gần thư mục có file vừa đổi nhất; nếu vẫn mơ hồ → BLOCKED, hỏi gate.
+Bảng tra lệnh test/lint/build của repo khi `docs/aitoolkit/project.yaml` KHÔNG khai báo (project-profile §4, bước 2 "tự dò"). Nhận diện qua marker file ở gốc repo. Nếu nhiều marker cùng tồn tại (monorepo/đa ngôn ngữ), ưu tiên marker gần thư mục có file vừa đổi nhất; nếu vẫn mơ hồ → BLOCKED, hỏi gate.
 
 | Marker file | Hệ sinh thái | test_cmd (mặc định) | lint_cmd | build_cmd |
 |---|---|---|---|---|
@@ -24,4 +24,4 @@ Suy ra từ lockfile: `pnpm-lock.yaml`→`pnpm`, `yarn.lock`→`yarn`, `bun.lock
 
 - **Không có marker khớp**, script không tồn tại, **hoặc lệnh cần tham số không suy ra được** (vd `flutter build <target>` không rõ target) → **BLOCKED**, ghi phán đoán vào report, để gate người dùng cung cấp lệnh. KHÔNG bịa.
 - Lệnh nào đã dùng thực tế phải ghi verbatim vào `verification-report.md` (mục "Lệnh đã chạy") kèm nguồn = "tự dò".
-- Bảng này chỉ là mặc định; `.aitoolkit/project.yaml` luôn thắng khi có.
+- Bảng này chỉ là mặc định; `docs/aitoolkit/project.yaml` luôn thắng khi có.

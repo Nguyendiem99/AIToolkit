@@ -1,11 +1,11 @@
 ---
 name: ai-review
-description: Bước AI Review của AIToolKit (khung dùng chung, mọi workflow, mọi ngôn ngữ) — review diff theo intent + failure mode phổ quát, phân loại Critical/Major/Minor theo blast-radius, đếm Critical để gate. Đọc artifact bước trước qua state.json, ghi review-report.md.
+description: Bước AI Review của AIToolKit (khung dùng chung, mọi workflow, mọi ngôn ngữ) — review diff theo intent + failure mode phổ quát, phân loại Critical/Major/Minor theo blast-radius, đếm Critical để gate. Đọc artifact bước trước do orchestrator truyền, ghi review-report.md.
 ---
 
 # Shared — AI Review
 
-Conductor gọi với `step_id`, `run_id`, `run_dir` (do manifest quyết định). Bước nặng → chạy trong subagent.
+Orchestrator gọi skill này, truyền: run_dir + đường dẫn artifact bước trước. Chạy inline.
 
 **Core principle:** Review **diff** đối chiếu *ý định* và *các kiểu lỗi đã biết*; phân loại theo **mức tác hại (blast radius)**, không theo khẩu vị.
 
@@ -13,11 +13,11 @@ Conductor gọi với `step_id`, `run_id`, `run_dir` (do manifest quyết địn
 
 ## Việc cần làm (thứ tự)
 
-1. **Đọc hợp đồng & rule.** Đọc `aitoolkit-schemas`, template `review-report.md`, [severity-rubric.md](severity-rubric.md), và `lge-rules` (mọi mục; mục còn mốc «LGE team điền» ⇒ bỏ qua, degrade gracefully). Nếu có `.aitoolkit/project.yaml.review_focus` → bơm vào danh sách quan tâm.
-2. **Khoanh vùng review.** Lấy artifact **bước ngay trước** (artifact code/fix): id liền trước `current_step` trong `manifest.steps` → `state.json.steps[<prev_id>].artifact_path`, để biết nhánh. Mốc diff `<base>` = `project-profile.base_branch` (§4) nếu có, else `HEAD~1`: `BASE=$(git rev-parse "<base>" 2>/dev/null || git rev-parse HEAD~1)`, `HEAD=$(git rev-parse HEAD)`. Review **diff** `BASE..HEAD` + đủ ngữ cảnh xung quanh — không review cả repo.
+1. **Đọc hợp đồng & rule.** Đọc `aitoolkit-schemas`, template `review-report.md`, [severity-rubric.md](severity-rubric.md), và `lge-rules` (mọi mục; mục còn mốc «LGE team điền» ⇒ bỏ qua, degrade gracefully). Nếu có `docs/aitoolkit/project.yaml.review_focus` → bơm vào danh sách quan tâm.
+2. **Khoanh vùng review.** Artifact **bước ngay trước** (artifact code/fix) = đường dẫn orchestrator truyền vào, để biết nhánh. Mốc diff `<base>` = `project-profile.base_branch` (§4) nếu có, else `HEAD~1`: `BASE=$(git rev-parse "<base>" 2>/dev/null || git rev-parse HEAD~1)`, `HEAD=$(git rev-parse HEAD)`. Review **diff** `BASE..HEAD` + đủ ngữ cảnh xung quanh — không review cả repo.
 3. **Dispatch reviewer.** Dùng superpowers:requesting-code-review để giao diff + intent cho reviewer subagent (không đưa lịch sử phiên). Yêu cầu nó soi theo **dimensions** dưới đây + rule LGE đã điền.
 4. **Phân loại** mọi phát hiện theo rubric Critical/Major/Minor (xem [severity-rubric.md](severity-rubric.md)). Phân vân giữa 2 mức → **chọn mức cao hơn**.
-5. **Phán quyết** và ghi `<run_dir>/review-report.md` theo template (`step_id` conductor truyền, `status: draft`). Trả về đường dẫn.
+5. **Phán quyết** và ghi `<run_dir>/review-report.md` theo template (`status: draft`).
 
 ## Dimensions (language-agnostic — soi *vấn đề*, không soi cú pháp một ngôn ngữ)
 

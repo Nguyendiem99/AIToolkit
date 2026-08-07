@@ -5,13 +5,13 @@ description: Bước Knowledge Base (khung dùng chung, mọi workflow) — lưu
 
 # Shared — Knowledge Base
 
-Conductor gọi với `step_id`, `run_id`, `run_dir`. Bước nặng → subagent. KHÔNG gate.
+Orchestrator gọi skill này, truyền: run_dir + đường dẫn artifact bước trước. Chạy inline. KHÔNG gate.
 
 ## Việc cần làm
-1. Đọc `aitoolkit-schemas`, template `kb-entry.md`, và LIỆT KÊ mọi artifact trong `run_dir` (tra `state.json`).
+1. Đọc `aitoolkit-schemas`, template `kb-entry.md`, và liệt kê mọi file `.md` trong `run_dir`.
 2. Tổng hợp **KB entry**: tóm tắt run (workflow gì, kết quả Go/No-Go), bảng liên kết artifact theo bước, bài học/vấn đề & cách xử lý.
 3. (Tuỳ chọn) nếu có codebase-memory-mcp: gợi ý ingest artifact để truy vấn sau.
-4. Ghi `<run_dir>/kb-entry.md`, `step_id` conductor truyền. Đây là bước cuối — báo pipeline hoàn tất.
+4. Ghi `<run_dir>/kb-entry.md`. Đây là bước cuối — báo pipeline hoàn tất.
 
 ## Ranh giới
 - Chỉ tổng hợp & lưu; không thay đổi code hay artifact bước khác.

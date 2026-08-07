@@ -1,11 +1,11 @@
 ---
 name: verification-testing
-description: Bước Verification & Testing của AIToolKit (khung dùng chung, mọi workflow, mọi ngôn ngữ) — kiểm chứng hành vi bằng bằng chứng tươi, sinh & chạy test, phán quyết PASS/FAIL/BLOCKED. Đọc artifact bước trước qua state.json, ghi verification-report.md.
+description: Bước Verification & Testing của AIToolKit (khung dùng chung, mọi workflow, mọi ngôn ngữ) — kiểm chứng hành vi bằng bằng chứng tươi, sinh & chạy test, phán quyết PASS/FAIL/BLOCKED. Đọc artifact bước trước do orchestrator truyền, ghi verification-report.md.
 ---
 
 # Shared — Verification & Testing
 
-Conductor gọi với `step_id`, `run_id`, `run_dir` (do manifest quyết định). Bước nặng → chạy trong subagent.
+Orchestrator gọi skill này, truyền: run_dir + đường dẫn artifact bước trước. Chạy inline.
 
 **Core principle:** Chỉ bằng chứng mới đổi được trạng thái. "Nhìn có vẻ đúng" không phải bằng chứng.
 
@@ -22,16 +22,16 @@ Kỷ luật này kế thừa superpowers:verification-before-completion — **RE
 
 ## Việc cần làm (thứ tự)
 
-1. **Đọc hợp đồng & input.** Đọc `aitoolkit-schemas`. Lấy artifact **bước ngay trước**: id liền trước `current_step` trong `manifest.steps`, rồi `state.json.steps[<prev_id>].artifact_path` (vd `review-report.md`, hoặc artifact code/fix) để biết nhánh + file đã đổi + yêu cầu gốc. Đọc template `verification-report.md`.
-2. **Xác định lệnh kiểm chứng (language-agnostic).** Theo `project-profile` trong `aitoolkit-schemas` §4: (a) đọc `.aitoolkit/project.yaml`; (b) thiếu trường nào thì tự dò theo [command-detection.md](command-detection.md); (c) vẫn không rõ → ghi "chưa xác định" và để gate hỏi, KHÔNG bịa lệnh. Ghi lệnh thực tế **verbatim** vào report.
+1. **Đọc hợp đồng & input.** Đọc `aitoolkit-schemas`. Artifact **bước ngay trước** (vd `review-report.md`, hoặc artifact code/fix) = đường dẫn orchestrator truyền vào, dùng để biết nhánh + file đã đổi + yêu cầu gốc. Đọc template `verification-report.md`.
+2. **Xác định lệnh kiểm chứng (language-agnostic).** Theo `project-profile` trong `aitoolkit-schemas` §4: (a) đọc `docs/aitoolkit/project.yaml`; (b) thiếu trường nào thì tự dò theo [command-detection.md](command-detection.md); (c) vẫn không rõ → ghi "chưa xác định" và để gate hỏi, KHÔNG bịa lệnh. Ghi lệnh thực tế **verbatim** vào report.
 3. **Chọn chiến lược test theo loại thay đổi** (bảng dưới) và **viết test còn thiếu** (dùng superpowers:test-driven-development).
 4. **Chạy** test + lint + build đã xác định. Đọc **toàn bộ** output, exit code, đếm số fail.
 5. **Lập bảng behavior-check**: mỗi yêu cầu/kịch bản → lệnh chứng minh → kết quả thật.
-6. **Phán quyết** PASS/FAIL/BLOCKED kèm bằng chứng, ghi `<run_dir>/verification-report.md` theo template (`step_id` conductor truyền, `status: draft`). Trả về đường dẫn.
+6. **Phán quyết** PASS/FAIL/BLOCKED kèm bằng chứng, ghi `<run_dir>/verification-report.md` theo template (`status: draft`).
 
 ## Chiến lược test theo loại thay đổi
 
-Xác định **loại thay đổi** theo `project-profile` (`aitoolkit-schemas` §4): `manifest.change_type` nếu có, else suy từ tên `workflow` (migration/bugfix/feature). Không hardcode.
+Xác định **loại thay đổi** theo `project-profile` (`aitoolkit-schemas` §4): `change_type` khai trong `project-profile`/`docs/aitoolkit/project.yaml` nếu có, else suy từ tên `workflow` (migration/bugfix/feature). Không hardcode.
 
 | Loại | Test bắt buộc | Bằng chứng "đủ" |
 |---|---|---|
