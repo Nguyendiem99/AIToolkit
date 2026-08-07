@@ -483,6 +483,8 @@ cd aitoolkit && grep -REn "state\.json|_dryrun|_stub|\.manifest\.yaml|manifest\.
 ```
 Expected: `CLEAN` (không còn dòng nào). Nếu còn → vá tại chỗ theo Framing rules, rồi chạy lại.
 
+- [ ] **Step 1b: Vá tham chiếu `change_type` theo manifest** — khái niệm "manifest khai change_type" đã chết. Trong `skills/aitoolkit-schemas/SKILL.md` (mục Project profile, đoạn "loại thay đổi ... lấy theo thứ tự") và `skills/shared/verification-testing/SKILL.md`: bỏ nhánh "(a) manifest khai `change_type`", để `change_type` chỉ đến từ `project.yaml` hoặc suy từ tên workflow. Không còn cụm "manifest" nghĩa workflow ở hai chỗ này.
+
 - [ ] **Step 2: Kiểm tra tham chiếu chéo còn sống** — không skill/command nào trỏ tới file đã xoá:
 
 Run: `cd aitoolkit && ! grep -REq "workflows/|skills/_stub|docs/DRY-RUN" --include=*.md . && echo OK`
