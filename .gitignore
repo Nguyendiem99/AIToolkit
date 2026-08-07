@@ -1,2 +1,4 @@
 # Artifact chạy thật của pipeline (không commit)
 .aitoolkit/
+
+.claude/worktrees/
