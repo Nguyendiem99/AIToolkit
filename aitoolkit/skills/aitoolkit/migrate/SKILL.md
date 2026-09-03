@@ -7,93 +7,18 @@ description: Use when a language-agnostic migration must progress through eviden
 
 Bạn là orchestrator chạy inline cùng context người dùng. Điều phối đúng step-skill và human gate; không nhúng logic triển khai của từng bước.
 
-**Core principle:** Scope plane chọn đúng một approved work item; execution plane chỉ chuyển tiếp một artifact đã được kiểm tra, đúng mode/policy và đúng selected work item. `migration_unit_id` chỉ là delivery adapter tùy chọn; không đoán input hoặc tự vượt gate.
+**Core principle:** Mỗi lần chỉ chuyển tiếp một artifact đã được kiểm tra, đúng mode/policy và đúng migration unit; không đoán input hoặc tự vượt gate.
 
 Đọc skill `aitoolkit-schemas` trước để áp dụng profile, front matter và artifact contract.
 
-## Scope plane: chuẩn bị, queue và resume
-
-Đọc `contracts/migration-scope-orchestration.md` làm canonical authority; không sao chép hoặc tự mở rộng enum, transition hay completion formula. Scope plane không sửa target source. Trước pipeline 15 bước, chạy đúng thứ tự sau:
-
-1. **Resolve requested scope**
-2. **Create/resolve master spec**
-3. **Create/resolve master plan**
-4. **Validate approved revision chain**
-5. **Select/resume one work item**
-6. **Resolve optional adapter**
-7. **Run execution pipeline**
-8. **Apply atomic transition**
-9. **Continue queue without repeated soft-scope prompt**
-
-### Resolve requested scope
-
-Nhận explicit orchestration context gồm user request và stable conversation/evidence reference. Ghi canonical `requested_scope` trước khi tạo executable work item. Tên folder, menu, package hoặc file chỉ là evidence: do not scan directories to infer requested scope or revision state.
-
-Dùng requested-scope kinds từ canonical contract. `unresolved` asks exactly one scope question and blocks before step 01; không tạo work item, master execution attempt hoặc todo 15 bước. Request `explicit-item` chỉ mở minimum scope và dependency context cần cho item đó, không tự mở rộng thành module/project. Project không dùng migration-unit taxonomy vẫn tạo generic work items.
-
-`unresolved` emits exactly one question block with a stable ID and concrete prompt. Question phải nêu concrete ambiguous scope ID và các boundary choice được contract cho phép; không chỉ ghi counter/flag, không emit câu thứ hai trong cùng resolution attempt.
-
-### Master artifacts và revision gate
-
-Tạo hoặc resolve `<RUN_DIR>/master-spec.md` và `<RUN_DIR>/master-plan.md`. Trước mọi production mutation, require exactly one latest approved linear revision của master spec và exactly one latest approved linear revision của master plan liên kết đúng spec revision; cả hai phải fresh, không missing, forked, cyclic, stale hoặc blocked. Resolve bằng explicit artifact references từ orchestration context; không quét artifact directory để đoán latest revision.
-
-Executable input requires explicit `master_spec_ref` and `master_plan_ref` that resolve exact immutable current artifact type, ID and revision; blank, `pending`, `none` and `not-applicable` references or evidence are invalid. `status: approved` không đủ nếu approval/freshness reference là placeholder; resolved master plan phải bind exact master-spec reference, ID và revision.
-
-Approved revision là immutable: do not edit an approved master artifact in place. Scope, requirement, success criterion, required disposition, work-item set, dependency, order, acceptance, adapter, selector hoặc structural decision thay đổi phải tạo revision kế tiếp đúng `+1`, giữ stable master ID, trỏ `supersedes` tới immediate predecessor, ghi change summary/affected items, giữ valid completed evidence của item không bị ảnh hưởng và đưa approval của item bị ảnh hưởng về `pending`. Chỉ revision mới đã duyệt được phép tiếp tục mutation.
-
-Every work-item structural change must be declared in `affected_work_items`, including added or removed items, and every affected item in the new revision has `approval_reference: pending`. Structural comparison bao gồm title, required disposition, dependencies, Plan Order, acceptance, trace, adapter và toàn bộ selector fields; revision chain giữ nguyên master-spec/master-plan artifact ID.
-
-Revision comparison includes requested boundary, requirements, success criteria, required disposition and structural decisions, and rejects duplicate current or proposed work-item IDs before map construction. Bất kỳ master-level change nào cũng phải khai affected work items và invalidate approval tương ứng.
-
-Every affected_work_items ID resolves in the current/proposed canonical union; unmappable master-level change conservatively affects every canonical item.
-
-### Queue, eligibility và deterministic selection
-
-Validate graph trước selection; missing dependency hoặc cycle làm plan invalid và `scope-blocked`. Version đầu giữ `max_concurrency: 1`; nhiều hơn một item `in-progress` là invalid. Công thức eligibility bắt buộc là: required-or-approved-optional AND pending-or-ready AND dependencies-terminal-success AND current approval AND no blocker AND adapter-valid AND assurance-pass. Không có eligible item nhưng còn required blocker thì kết luận `scope-blocked`.
-
-Executable operations validate requested scope, then current approved master spec, then current approved linked master plan before queue or transition logic. Gate dùng canonical artifact rows, approval/freshness evidence và executable linear-chain validation; không nhận boolean “approved/current” thay artifact evidence.
-
-Với cùng approved plan revision và evidence state, chọn đúng một item theo dependency depth ascending, then `Plan Order` ascending, then ordinal `Work Item ID` ascending. Không chọn theo folder order, discovery order hoặc lần xuất hiện trong hội thoại.
-
-Queue operations consume exactly the work-item rows bound to the current approved master-plan artifact, never a caller subset or forged queue. Exact bound copy/hash phải gồm toàn bộ required/optional rows và metadata; caller không được thêm, bỏ hoặc thay row cho select, transition hay completion.
-
-Trước selection mới, reconcile an `in-progress` attempt before selecting a new work item. Nếu immutable attempt artifact có terminal evidence hợp lệ, áp dụng missing terminal transition atomically rồi mới select; nếu attempt chưa terminal, resume chính attempt đó. Không brainstorm lại approved scope trừ khi user explicit yêu cầu scope change.
-
-The sole active attempt must belong to the sole in-progress item and equal that item's latest_attempt before resume reconciliation.
-
-### Adapter, attempt và atomic transition
-
-Mọi invocation truyền `master_spec_ref`, `master_plan_ref`, `master_plan_revision` và `work_item_id`. Resolve adapter sau khi chọn work item. Với generic work item, adapter `none` keeps `migration_unit_id: not-applicable`; không phát minh external ID. Với adapter `migration-unit`, selector phải resolve đúng một canonical approved row và tiếp tục giữ one-unit-one-change. Adapter draft, duplicate, stale, mismatch hoặc external-only block trước execution.
-
-Ngay trước execution, atomically đổi selected item `ready -> in-progress`, tạo immutable attempt ID và bind current plan revision; không overwrite attempt artifact. Sau execution, áp dụng đúng một transition từ canonical contract, cập nhật latest terminal evidence và giữ toàn bộ attempt history. Chỉ scope plane được sửa master-plan state; execution step-skill chỉ trả immutable attempt evidence/work-item verdict.
-
-Selection starts atomically as `pending -> ready -> in-progress` or `ready -> in-progress`. Validate immutable `attempt_history` globally by unique attempt ID, exact `work_item_id`, exact current `plan_revision`, status and artifact reference. Trước start, chặn ID đã xuất hiện ở bất kỳ item history nào và chặn mọi item khác đang `in-progress`; resume/terminal transition phải bind đúng latest attempt record.
-
-Attempt and terminal artifacts resolve from the explicit artifact registry by exact reference and bind immutable status, attempt ID, work-item ID and plan revision. Single-in-progress validation counts both work-item states and every immutable attempt record; native blocker transition targets exactly `latest_attempt`.
-
-Successful completion cần immutable terminal artifact khớp attempt/work item/plan revision. Blocker, cancellation and non-applicability transitions require exact immutable terminal or approval evidence. Không chuyển state chỉ từ boolean, label hoặc caller assertion.
-
-### Queue continuation và completion
-
-Step 15 completes only the current execution attempt and work item; nó không kết luận module, project hoặc requested scope hoàn tất. Sau atomic work-item transition, tính lại queue trên current approved master-plan revision. Khi còn required item non-terminal, verdict là `scope-in-progress` và tiếp tục deterministic selection mà không hỏi lại soft-scope question.
-
-Only the approved master plan may conclude `scope-complete`, và chỉ sau khi canonical completion formula đạt đủ: mọi required item terminal-success, graph hợp lệ, không blocker, completed-item architecture/selector-schema đều `PASS`, và terminal scope report liệt kê toàn bộ evidence. Attempt completion, work-item completion và requested-scope completion luôn là ba quyết định riêng.
-
-Scope completion calculates the dependency graph and validates every required terminal-report row; it never trusts caller-provided graph-valid or report-complete booleans. Terminal report phải immutable, có exact work-item status, terminal evidence và assurance fields khớp master-plan rows.
-
-Terminal scope report resolves from the artifact registry, binds the current master-plan reference/revision and enumerates the exact approved plan rows. Caller-provided report object hoặc subset không có exact registry binding không được dùng để kết luận scope.
-
-Terminal scope report Work Item IDs have bidirectional exact set and cardinality equality with current approved plan rows; duplicate, missing or extra IDs block.
-
 ## Chuẩn bị run
 
-1. Hoàn tất scope resolution và đặt `<slug>` từ resolved requested scope; không hỏi thêm câu scope nếu record đã resolved. Dùng ngày hiện tại theo `YYYY-MM-DD`.
+1. Xác định `<slug>` từ tên tính năng migration; hỏi người dùng nếu chưa rõ. Dùng ngày hiện tại theo `YYYY-MM-DD`.
 2. Đặt `RUN_DIR = <project>/docs/aitoolkit/<date>-migration-<slug>/` và tạo thư mục khi cần.
-3. Tạo/resolve master spec và master plan, validate approved revision chain rồi select/resume đúng một work item theo scope plane.
-4. Đặt per-run `workflow_type: migration`. Giá trị orchestrator-provided này là authoritative; không đọc workflow hiện tại từ persistent profile.
-5. Đọc `<project>/docs/aitoolkit/project.yaml`, project pack tại path trong profile, source/target và tài liệu được profile trỏ tới. Không tự suy ra giá trị còn thiếu.
-6. Resolve automation mode, artifact language và optional delivery adapter trước step 01.
-7. Chỉ sau khi selected work item đã atomically `in-progress`, tạo TodoWrite gồm đúng 15 mục execution plane theo Bảng bước. Chỉ một mục `in_progress` tại một thời điểm.
+3. Đặt per-run `workflow_type: migration`. Giá trị orchestrator-provided này là authoritative; không đọc workflow hiện tại từ persistent profile.
+4. Đọc `<project>/docs/aitoolkit/project.yaml`, project pack tại path trong profile, source/target và tài liệu được profile trỏ tới. Không tự suy ra giá trị còn thiếu.
+5. Resolve automation mode và artifact language trước step 01.
+6. Tạo TodoWrite gồm đúng 15 mục theo Bảng bước. Chỉ một mục `in_progress` tại một thời điểm.
 
 ## Ngôn ngữ artifact
 
@@ -212,9 +137,7 @@ For resumed step 10, this exact approved/partial/auto-waive tuple overrides gene
 
 ## Mode and migration unit gate
 
-Sau khi step 01 được duyệt, kiểm tra lại gate này trước các step phụ thuộc mode (07, 09, 10 và 14). Trước mọi nhánh, validate `work_item_id`, `master_spec_ref`, `master_plan_ref`, current approved `master_plan_revision`, acceptance/trace và assurance của selected work item.
-
-Với adapter `none` hoặc generic adapter không phải `migration-unit`, không chạy migration-unit selector gate và không sinh `UNIT-*`; truyền `migration_unit_id: not-applicable`, giữ selected work-item acceptance làm execution boundary và thực thi one-work-item-one-change. Mode/foundation/baseline rules vẫn áp dụng theo selected work item. Với adapter `migration-unit`, giữ toàn bộ gate dưới đây và one-unit-one-change:
+Sau khi step 01 được duyệt, kiểm tra lại gate này trước các step phụ thuộc mode (07, 09, 10 và 14):
 
 - `mode: unknown`, policy `unknown`, hoặc cặp mode/policy sai invariant → dừng, trình phần thiếu và hỏi người dùng; không đoán hoặc tự sửa profile.
 - Cặp hợp lệ `greenfield` / `design-new` branches on the selected unit, not mode alone. For selected `Bootstrap Scope = required`, require `Foundation Baseline ID = pending-bootstrap` and allow this route only when no approved foundation baseline exists; this first-foundation route does not require an approved foundation baseline before step 09. Run step 09, approve its bootstrap artifact with exactly one approved `FOUNDATION-*` record whose `Source Migration Unit ID` matches the selected unit, then pass that record to step 10.
@@ -245,9 +168,7 @@ Với adapter `none` hoặc generic adapter không phải `migration-unit`, khô
 
 ## Migration handoff envelope
 
-Mọi artifact step 01–15 phải có `Master Scope Context` và forward ordinal-exact `master_spec_ref`, `master_plan_ref`, `master_plan_revision`, `work_item_id`, attempt ID/current attempt reference và delivery-adapter kind từ immediate predecessor. Thiếu hoặc mismatch field làm artifact `result: blocked`; step-skill không quét cumulative artifact directory để bù dữ liệu.
-
-Với generic adapter, `Master Scope Context` là execution identity đầy đủ và mọi migration-unit/foundation selector field là `not-applicable` theo canonical contract. Với adapter `migration-unit`, full selected-unit envelope begins after step 08 approval and selector choice: step 09 creates it for greenfield, while step 10 creates it directly from the approved plan for incremental. Step 08 remains an ordered collection of candidate units and is not forced to claim one selected unit.
+The full envelope begins after step 08 approval and selector choice: step 09 creates it for greenfield, while step 10 creates it directly from the approved plan for incremental. Step 08 remains an ordered collection of candidate units and is not forced to claim one selected unit.
 
 Mỗi selected-unit artifact sau điểm đó phải có một section `Selected Migration Unit` chuyển tiếp nguyên vẹn:
 
@@ -256,16 +177,15 @@ Mỗi selected-unit artifact sau điểm đó phải có một section `Selected
 - pre-change regression baseline reference: `not-applicable` cho greenfield, `pending-before-edit` khi incremental chưa vào step 10, rồi đổi thành reference tới evidence đã capture trước edit;
 - với migration run, artifact từ shared skill dùng front matter `result: complete | blocked`; `partial` chỉ thuộc approved step-01 input qualification hoặc exact resumed step-10 waiver tuple theo `aitoolkit-schemas`.
 
-Steps 11-13 phải copy `Master Scope Context` và adapter-specific envelope từ predecessor sang output. Với migration-unit adapter, không làm mất selected-unit identity, foundation baseline hoặc regression baseline reference. Incremental step 14 also preserves the parity verdict and adds the regression verdict; greenfield không thực thi step 14. Gate của từng step kiểm tra section này; thiếu field bắt buộc thì artifact giữ draft, ghi `result: blocked` và dừng.
+Steps 11-13 phải copy envelope từ predecessor sang output và không làm mất selected-unit identity, foundation baseline, hoặc regression baseline reference. Incremental step 14 also preserves the parity verdict and adds the regression verdict; greenfield không thực thi step 14. Gate của từng step kiểm tra section này; thiếu field bắt buộc thì artifact giữ draft, ghi `result: blocked` và dừng.
 
 ## Handoff giữa các bước
 
-Với mọi step được gọi, truyền `RUN_DIR`, profile, project pack, source/target, per-run `automation_mode`, resolved `artifact_language`, `master_spec_ref`, `master_plan_ref`, `master_plan_revision`, `work_item_id`, attempt reference, resolved delivery adapter và path của artifact vừa được thực thi gần nhất.
+Với mọi step được gọi, truyền `RUN_DIR`, profile, project pack, source/target, per-run `automation_mode`, resolved `artifact_language` và path của artifact vừa được thực thi gần nhất.
 
 `Immediate predecessor artifact = exactly one orchestrator-provided path`.
 
 - Step 01 không có predecessor. Mỗi step bình thường nhận đúng `latest executed artifact`; step bị skip không tạo predecessor mới.
-- Generic work item dùng `Master Scope Context` làm selector xuyên suốt; adapter `none` truyền mọi migration-unit selector field là `not-applicable` và không bị block chỉ vì project không có unit taxonomy.
 - Step 09 nhận migration plan đã duyệt và orchestrator-provided `migration_unit_id` chỉ khi selected greenfield unit có `Bootstrap Scope = required`, `Foundation Baseline ID = pending-bootstrap`, và `Foundation Approval Reference = pending-step09-approval`.
 - Step 10 greenfield foundation nhận bootstrap record đã duyệt cùng chính `migration_unit_id`; approved `FOUNDATION-*` record's `Source Migration Unit ID` matches that selected unit, while plan reference và approval reference phải trỏ cùng selected unit.
 - Step 10 later-greenfield `not-required` nhận trực tiếp migration plan đã duyệt cùng `migration_unit_id` và `foundation_baseline_id`; không gọi bootstrap.
@@ -301,11 +221,11 @@ Step 10 exception: when its first artifact is blocked before edits by an eligibl
    - `soft` + `auto` hoặc `auto-waive` → với `result: complete`, hoặc step-01 input qualification có route-authorized `result: partial`, không hỏi người dùng; đổi artifact thành `status: approved`, ghi `approval_source` đúng bằng mode đã resolve, rồi đánh dấu todo `completed`. Exact resumed step-10 partial dùng exception ở trên, không đi qua generic gate này.
      - Riêng step 09 gate approval thay `pending-step09-approval` trong cả `Selected Migration Unit` và `Bản ghi baseline nền tảng` bằng tham chiếu bootstrap artifact đã duyệt chính xác trong cùng một thao tác, đổi `Approval Status = pending-approval` thành `Approval Status = approved`, rồi đổi frontmatter thành `status: approved`. Step 10 không bao giờ dùng bản nháp pending.
    - `HARD` → cảnh báo hành động không thể đảo ngược và yêu cầu xác nhận tường minh đúng prompt. Không chấp nhận “ok” mơ hồ và không tự vượt gate.
-7. Sau step 15, ghi immutable terminal attempt artifact rồi yêu cầu scope plane áp dụng atomic work-item transition. Chỉ báo execution attempt/work item hiện tại hoàn tất và liệt kê artifact trong `RUN_DIR`; không báo requested scope hoàn tất tại execution plane. Nếu master-plan completion calculation chưa đạt, giữ `scope-in-progress` hoặc `scope-blocked` rồi select/resume queue theo current approved revision. Chỉ terminal scope report của approved master plan mới được báo requested scope hoàn tất.
+7. Sau step 15, báo hoàn tất và liệt kê artifact trong `RUN_DIR`.
 
 ## Nguyên tắc
 
 - Chỉ điều phối, condition, handoff và gate. Logic chuyên môn nằm trong step-skill.
-- Artifact execution draft có thể được step-skill sửa theo feedback; approved master artifact không bao giờ sửa tại chỗ. Scope change luôn tạo revision mới và qua gate lại.
+- Artifact approved chỉ được sửa khi người dùng yêu cầu chạy lại; output sửa phải qua gate lại.
 - Không dùng kho điều phối tập trung hoặc cơ chế tự động tiếp tục ẩn; tiến độ được chứng minh bằng artifact front matter trong `RUN_DIR`.
 - Soft gate tuân theo per-run `automation_mode`; HARD gate không bao giờ được tự vượt.

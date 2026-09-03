@@ -20,6 +20,14 @@ Orchestrator truyền `RUN_DIR`, đường dẫn project profile, project pack, 
 Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
 Truy vết discovery/input qua stable ID và source reference đã chuyển tiếp trong artifact trước; không dựng tên hoặc nạp danh sách artifact tích lũy.
 
+## Work item and decomposition trace
+
+Orchestrator truyền `work_item_id`, `master_plan_ref`, `master_plan_revision`, acceptance của work item, các Trace IDs ban đầu, `parent_work_item_id` và `decomposition_decision_reference` cùng immediate predecessor. Mọi giá trị phải resolve về đúng một work item trong master-plan revision đã duyệt; không suy ra work item từ folder, package hoặc `UNIT-*`.
+
+Nếu đây là child sau decomposition, child phải đã tồn tại trong master-plan revision mới và có cùng parent/decision đã duyệt trước khi bước 04 chạy. Bước 04 là điểm đầu tiên được phép tạo canonical front-half trace cho child; không gán delivery adapter tại đây.
+
+Artifact phải có đúng một row cho work item trong section `Work Item Trace` với các cột `Work Item ID`, `Parent Work Item ID`, `Master Plan Reference`, `Master Plan Revision`, `Acceptance`, `Trace IDs`, `Mode Constraint`, `Design Revision`, `Decomposition Decision Reference`. Giữ nguyên work item, master-plan revision, acceptance và decomposition identity; Trace IDs từ input là tập con bắt buộc và chỉ được enrich append-only. Trước step 07, `Design Revision` có thể là `pending-step07`.
+
 ## Activation Slice responsibilities
 
 Đọc `aitoolkit/contracts/activation-slice.md` làm nguồn định nghĩa duy nhất và dùng envelope trong template, không nhúng lại schema. Preserve the same `ACT-###` Activation Slice ID and every seam row with its trace IDs từ immediate predecessor. Với mỗi seam thiếu hoặc cần thay đổi, tạo inventory coverage có stable `ITEM-###` và trace về slice/seam; không dedupe hai seam khác nhau chỉ vì chúng nằm trong cùng component.
@@ -50,6 +58,7 @@ Mất ID, seam row hoặc trace trong handoff, hoặc thiếu coverage có thể
 - Giữ section `Activation Slice` với cùng ID, toàn bộ seam rows và trace IDs từ immediate predecessor; chỉ bổ sung inventory coverage thuộc step này.
 - For a routed `result: blocked` artifact whose Activation Slice and immediate-predecessor handoff are otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference` values; omit that section for non-blocked output.
 - Mỗi row có một stable ID duy nhất, `Requirement IDs`, `Discovery IDs`, source/target references và migration status có bằng chứng.
+- Giữ section `Work Item Trace` theo contract trên; generic work item không được đổi thành `UNIT-*` và không được tự sinh delivery adapter.
 
 ## Quick reference
 
