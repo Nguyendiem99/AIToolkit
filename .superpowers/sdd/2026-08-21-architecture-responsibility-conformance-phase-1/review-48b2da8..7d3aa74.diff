@@ -1,0 +1,651 @@
+# Review package: 48b2da852e60f60b0b6d3fe99b97ec51ac7bbb57..7d3aa74377845b3a4d0b48c691df7c00d88c89b3
+
+## Commits
+7d3aa74 feat: define responsibility conformance contract
+
+## Files changed
+ .../contracts/file-responsibility-conformance.md   | 102 +++++++++++
+ .../contracts/target-structure-conformance.md      |   9 +
+ .../aitoolkit/skills/aitoolkit-schemas/SKILL.md    |   7 +
+ .../scenarios/responsibility-conformance.Tests.ps1 |  27 +++
+ .../tests/validate-migration-framework.Tests.ps1   |  61 +++++++
+ .../tests/validate-migration-framework.ps1         |  35 ++++
+ .../responsibility-conformance.validation.ps1      | 199 +++++++++++++++++++++
+ 7 files changed, 440 insertions(+)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/contracts/file-responsibility-conformance.md b/AIToolkit/AIToolkit-main/aitoolkit/contracts/file-responsibility-conformance.md
+new file mode 100644
+index 0000000..75e3c2d
+--- /dev/null
++++ b/AIToolkit/AIToolkit-main/aitoolkit/contracts/file-responsibility-conformance.md
+@@ -0,0 +1,102 @@
++---
++version: 1
++applicability: required
++---
++
++# File Responsibility Conformance Contract
++
++This is the sole canonical authority for responsibility conformance. Other
++contracts and schemas route here and must not duplicate its enums or tables.
++
++## Contract Version
++
++```text
++version = 1
++applicability = required
++```
++
++## Exemplar Classification
++
++```text
++Inspection Status = verified | no-equivalent | unknown
++Classification = preferred | compatibility-only | legacy-debt | no-equivalent
++```
++
++## Architecture Authority
++
++```text
++Architecture Authority = target-exemplar | approved-greenfield-design | approved-structural-deviation
++```
++
++`approved-greenfield-design` is positive design authority, not a fake
++deviation. Greenfield work does not manufacture an exemplar deviation merely
++because no prior target exists.
++
++## File Responsibility Matrix
++
++| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |
++|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
++| RESP-### | canonical path | owner symbol | atomic-owner | one responsibility | CAP-### | TRACE-### | ATOM-### | public symbol | external effect | target reference | preferred | target-exemplar | evidence reference | target-exemplar | feature-local | evidence reference | VER-### | PASS | not-applicable |
++
++Each row names its capability independently from its trace. The matrix has
++exactly twenty columns; a capability identifier must never be inferred from a
++class name or line range.
++
++## Co-location Semantics
++
++```text
++Co-location Policy = feature-local | shared-foundation | atomic-owner | approved-deviation | not-applicable
++```
++
++`not-applicable` is a disposition, not evidence that a capability is absent.
++An atomic owner keeps an inseparable capability boundary together; shared
++foundation is not a license to spread unrelated feature responsibility.
++
++## Verification Ownership Matrix
++
++| Verification Owner ID | Production Responsibility ID | Capability ID | Evidence Path | Evidence Symbol or Scenario | Evidence Kind | Verification Disposition | Production Binding Evidence | Decision Reference | Verdict | Deviation Reference |
++|---|---|---|---|---|---|---|---|---|---|---|
++| VER-### | RESP-### | CAP-### | evidence path | scenario | unit | required | binding evidence | decision reference | PASS | not-applicable |
++
++```text
++Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification
++Verification Disposition = required | not-applicable-approved
++```
++
++Evidence Kind and Verification Disposition are separate fields. A
++`not-applicable-approved` disposition needs its approval reference and does
++not change the structural verdict.
++
++## Actual Responsibility Evidence
++
++Actual responsibility is recorded against owned capability IDs, atomic
++boundary IDs, and evidence references. It is not established by a heuristic
++class-name match, a line count, or a file-location guess.
++
++## Review Verdicts
++
++```text
++Verdict = PASS | BLOCKED
++```
++
++Structural responsibility remains `PASS` or `BLOCKED` independently of runtime
++waivers. A runtime waiver changes neither responsibility ownership nor the
++structural verdict.
++
++## Downstream Handoff
++
++Discovery, design, plan, implementation, review, and handoff artifacts carry
++the same owned capability IDs, trace IDs, atomic boundary IDs, authority, and
++verification references forward without collapsing capability into trace.
++
++## Compatibility and Rollout
++
++Compatibility-only and legacy-debt classification retain their explicit
++authority and evidence. Rollout decisions cannot downgrade required structural
++responsibility checks.
++
++## Stable Diagnostics
++
++Validators return stable diagnostics for domain-invalid inputs and only throw
++for I/O or programming errors. Stable diagnostics identify the stage and the
++missing contract-version requirement.
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/contracts/target-structure-conformance.md b/AIToolkit/AIToolkit-main/aitoolkit/contracts/target-structure-conformance.md
+index dc1fcb1..0fd1d89 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/contracts/target-structure-conformance.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/contracts/target-structure-conformance.md
+@@ -1,17 +1,22 @@
+ # Target Structure Conformance Contract
+ 
+ This resource is the canonical source for target exemplar, structural
+ conformance, assurance-state, pre-edit gate, and architecture-first review
+ semantics. Skills and schemas reference it instead of redefining its tables or
+ enums.
+ 
++File responsibility, capability ownership, co-location, verification ownership,
++and their canonical enums are solely governed by
++`contracts/file-responsibility-conformance.md`. This contract does not redefine
++them.
++
+ ## Comparable Target Exemplars
+ 
+ | Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+ |---|---|---|---|---|---|---|
+ | applicable structural concern | real target path | fully inspected symbols | observed working pattern | why the exemplar is comparable | exact evidence reference | exemplar status |
+ 
+ Exemplar status: `verified | no-equivalent | unknown`.
+ 
+ Incremental discovery records exactly these eight concerns:
+ 
+@@ -58,20 +63,24 @@ Before any target mutation, code migration verifies:
+ 3. its conformance matrix is approved;
+ 4. cited exemplar paths and symbols were fully inspected;
+ 5. proposed files and classes match the planned file tree;
+ 6. state, routing, localization, subscription, and lifecycle use target boundaries;
+ 7. every new abstraction has an approved deviation;
+ 8. the production activation path is complete when applicable;
+ 9. architecture conformance and selector/schema states are both `PASS`.
+ 
+ The structural pre-edit gate blocks before target edit and is not waiver-eligible.
+ 
++```text
++Structural PASS = Tree PASS AND Responsibility PASS AND Verification Ownership PASS
++```
++
+ The implementation report records `Master Scope Context`, `Conformance Matrix
+ Reference`, `Actual File Tree vs Planned File Tree`, `Exemplar Deviations`, and
+ `Production Activation Path Evidence`.
+ 
+ ## Assurance State
+ 
+ | Runtime Evidence State | Architecture Conformance State | Selector Schema State |
+ |---|---|---|
+ | `PASS`, `FAIL`, `NOT_RUN`, or `WAIVED` | `PASS` or `BLOCKED` | `PASS` or `BLOCKED` |
+ 
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit-schemas/SKILL.md b/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit-schemas/SKILL.md
+index 789e723..57e7a77 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit-schemas/SKILL.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit-schemas/SKILL.md
+@@ -143,20 +143,27 @@ For a greenfield foundation unit, step 09 creates an approved foundation baselin
+ Steps 11-13 preserve this envelope for every migration run. Incremental step 14 additionally preserves the parity verdict and adds regression applicability/verdict; greenfield proceeds from step 13 directly to terminal Knowledge Capture. Standalone delivery skills are outside this pipeline handoff schema and must resolve their own explicit completed-run inputs.
+ 
+ ## 5. Migration scope orchestration artifacts
+ 
+ The canonical tables, enums, selection order, transitions, and completion rules
+ live in `contracts/migration-scope-orchestration.md`. The canonical target
+ exemplar, conformance, assurance-state, structural-gate, and review rules live in
+ `contracts/target-structure-conformance.md`. The shapes below reference those
+ contracts and do not redefine their value sets.
+ 
++File responsibility artifact fields (owned capability IDs, trace IDs, atomic
++boundary IDs, classification, architecture authority, co-location, actual
++responsibility evidence, verification ownership, evidence kind, verification
++disposition, and verdict) are routed exclusively to
++`contracts/file-responsibility-conformance.md`. This schema does not copy its
++enums or table columns.
++
+ The canonical master spec front matter is:
+ 
+ ```yaml
+ ---
+ artifact_type: migration-master-spec
+ master_spec_id: SPEC-<SCOPE>-<NNN>
+ revision: <positive integer>
+ status: <artifact lifecycle value>
+ result: <artifact result value>
+ approval_source: <approval source>
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+new file mode 100644
+index 0000000..0400d45
+--- /dev/null
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+@@ -0,0 +1,27 @@
++$ErrorActionPreference = 'Stop'
++$root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '../..'))
++$contractPath = Join-Path $root 'contracts/file-responsibility-conformance.md'
++$validatorPath = Join-Path $root 'tests/validation/responsibility-conformance.validation.ps1'
++
++if (-not (Test-Path -LiteralPath $contractPath)) {
++  throw 'Responsibility contract file is missing'
++}
++. $validatorPath
++$contract = Get-Content -Raw -Encoding utf8 -LiteralPath $contractPath
++$errors = @(Test-ResponsibilityContractSchema -ContractText $contract)
++if ($errors.Count -ne 0) { throw ($errors -join "`n") }
++
++foreach ($entry in @(
++  'Test-ResponsibilityDiscovery',
++  'Test-ResponsibilityDesign',
++  'Test-ResponsibilityPlan',
++  'Test-ResponsibilityImplementation',
++  'Test-ResponsibilityReview',
++  'Test-ResponsibilityHandoff'
++)) {
++  if (-not (Get-Command $entry -ErrorAction SilentlyContinue)) {
++    throw "Missing responsibility validator entry point: $entry"
++  }
++}
++
++Write-Output 'PASS: responsibility conformance contract'
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1
+index ffb3abc..2587374 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1
+@@ -503,51 +503,112 @@ try {
+   $contracts = Invoke-Validator 'Contracts'
+   Assert-True ($contracts.ExitCode -eq 1) "Missing Activation Slice contract should fail. Output: $($contracts.Output)"
+   Assert-Contains $contracts.Output 'FAIL: Missing Activation Slice contract resource' 'Activation Slice resource'
+ }
+ finally {
+   [IO.File]::WriteAllBytes($activationContractFixture, $activationContractOriginalBytes)
+ }
+ 
+ $scopeContractFixture = Join-Path $PSScriptRoot '../contracts/migration-scope-orchestration.md'
+ $conformanceContractFixture = Join-Path $PSScriptRoot '../contracts/target-structure-conformance.md'
++$responsibilityContractFixture = Join-Path $PSScriptRoot '../contracts/file-responsibility-conformance.md'
++$responsibilityValidatorFixture = Join-Path $PSScriptRoot '../tests/validation/responsibility-conformance.validation.ps1'
+ $scopeContractOriginalBytes = [IO.File]::ReadAllBytes($scopeContractFixture)
+ $scopeContractOriginal = [Text.Encoding]::UTF8.GetString($scopeContractOriginalBytes)
+ $conformanceContractOriginalBytes = [IO.File]::ReadAllBytes($conformanceContractFixture)
+ $conformanceContractOriginal = [Text.Encoding]::UTF8.GetString($conformanceContractOriginalBytes)
++$responsibilityContractOriginalBytes = [IO.File]::ReadAllBytes($responsibilityContractFixture)
++$responsibilityContractOriginal = [Text.Encoding]::UTF8.GetString($responsibilityContractOriginalBytes)
++$responsibilityValidatorOriginalBytes = [IO.File]::ReadAllBytes($responsibilityValidatorFixture)
++$responsibilityValidatorOriginal = [Text.Encoding]::UTF8.GetString($responsibilityValidatorOriginalBytes)
+ 
+ $contractResourceCases = @(
+   [pscustomobject]@{
+     Path = $scopeContractFixture
+     Bytes = $scopeContractOriginalBytes
+     Expected = 'FAIL: Missing migration scope orchestration contract resource'
+     Label = 'migration scope orchestration contract resource'
+   }
+   [pscustomobject]@{
+     Path = $conformanceContractFixture
+     Bytes = $conformanceContractOriginalBytes
+     Expected = 'FAIL: Missing target structure conformance contract resource'
+     Label = 'target structure conformance contract resource'
+   }
++  [pscustomobject]@{
++    Path = $responsibilityContractFixture
++    Bytes = $responsibilityContractOriginalBytes
++    Expected = 'FAIL: Missing file responsibility conformance contract resource'
++    Label = 'file responsibility conformance contract resource'
++  }
++  [pscustomobject]@{
++    Path = $responsibilityValidatorFixture
++    Bytes = $responsibilityValidatorOriginalBytes
++    Expected = 'FAIL: Missing responsibility conformance validation helper'
++    Label = 'responsibility conformance validation helper'
++  }
+ )
+ foreach ($contractResourceCase in $contractResourceCases) {
+   try {
+     Remove-Item -LiteralPath $contractResourceCase.Path -Force
+     $contracts = Invoke-Validator 'Contracts'
+     Assert-True ($contracts.ExitCode -eq 1) "Missing $($contractResourceCase.Label) should fail. Output: $($contracts.Output)"
+     Assert-Contains $contracts.Output $contractResourceCase.Expected $contractResourceCase.Label
+   }
+   finally {
+     [IO.File]::WriteAllBytes($contractResourceCase.Path, $contractResourceCase.Bytes)
+   }
+ }
+ 
++$responsibilityContractMutations = @(
++  [pscustomobject]@{
++    Name = 'file responsibility matrix columns'
++    From = '| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |'
++    To = '| Owner Path | Responsibility ID | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |'
++    Expected = 'FAIL: ARC-CONTRACT-TABLE-COLUMNS: File Responsibility Matrix'
++  }
++  [pscustomobject]@{
++    Name = 'verification evidence disposition separation'
++    From = 'Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification'
++    To = 'Evidence Kind = required | not-applicable-approved'
++    Expected = 'FAIL: ARC-CONTRACT-ENUM: Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification'
++  }
++)
++foreach ($responsibilityContractMutation in $responsibilityContractMutations) {
++  try {
++    $mutatedContract = $responsibilityContractOriginal.Replace($responsibilityContractMutation.From, $responsibilityContractMutation.To)
++    Assert-True ($mutatedContract -cne $responsibilityContractOriginal) "Responsibility mutation must alter: $($responsibilityContractMutation.Name)"
++    [IO.File]::WriteAllText($responsibilityContractFixture, $mutatedContract, [Text.UTF8Encoding]::new($false))
++    $contracts = Invoke-Validator 'Contracts'
++    Assert-True ($contracts.ExitCode -eq 1) "Responsibility contract mutation should fail: $($responsibilityContractMutation.Name). Output: $($contracts.Output)"
++    Assert-Contains $contracts.Output $responsibilityContractMutation.Expected "Responsibility contract mutation: $($responsibilityContractMutation.Name)"
++  }
++  finally {
++    [IO.File]::WriteAllBytes($responsibilityContractFixture, $responsibilityContractOriginalBytes)
++  }
++}
++
++try {
++  $missingEntryValidator = $responsibilityValidatorOriginal.Replace(
++    'function Test-ResponsibilityReview {',
++    'function Test-ResponsibilityReviewRemoved {'
++  )
++  Assert-True ($missingEntryValidator -cne $responsibilityValidatorOriginal) 'Responsibility entry-point mutation must alter validation helper'
++  [IO.File]::WriteAllText($responsibilityValidatorFixture, $missingEntryValidator, [Text.UTF8Encoding]::new($false))
++  $contracts = Invoke-Validator 'Contracts'
++  Assert-True ($contracts.ExitCode -eq 1) "Missing responsibility entry point should fail. Output: $($contracts.Output)"
++  Assert-Contains $contracts.Output 'FAIL: Missing responsibility validator entry point: Test-ResponsibilityReview' 'Responsibility validator entry point'
++}
++finally {
++  [IO.File]::WriteAllBytes($responsibilityValidatorFixture, $responsibilityValidatorOriginalBytes)
++}
++
+ $contractTableCases = @(
+   [pscustomobject]@{
+     Path = $scopeContractFixture
+     Bytes = $scopeContractOriginalBytes
+     Original = $scopeContractOriginal
+     From = '| Kind | ID | Statement | Source | Resolution Evidence |'
+     To = '| ID | Kind | Statement | Source | Resolution Evidence |'
+     Expected = 'FAIL: Migration scope orchestration contract Requested Scope table columns must be exactly: Kind | ID | Statement | Source | Resolution Evidence'
+     Label = 'Requested Scope exact columns'
+   }
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.ps1
+index d51bc49..04f1cca 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.ps1
+@@ -1199,20 +1199,22 @@ function Test-ActivationSliceContract([string]$Text) {
+       @('immutable', 'selector.Source Reference', 'immutability-evidence', 'immutability-evidence=<non-empty>')
+     ) `
+     $context
+ }
+ 
+ function Test-Contracts {
+   $schemaPath = Join-Path $root 'skills/aitoolkit-schemas/SKILL.md'
+   $profilePath = Join-Path $root 'templates/migration/project-profile.yaml'
+   $scopeContractPath = Join-Path $root 'contracts/migration-scope-orchestration.md'
+   $conformanceContractPath = Join-Path $root 'contracts/target-structure-conformance.md'
++  $responsibilityContractPath = Join-Path $root 'contracts/file-responsibility-conformance.md'
++  $responsibilityValidatorPath = Join-Path $root 'tests/validation/responsibility-conformance.validation.ps1'
+   $activationContractPath = if ([string]::IsNullOrWhiteSpace($ActivationSliceContractFixturePath)) {
+     Join-Path $root 'contracts/activation-slice.md'
+   }
+   else {
+     [IO.Path]::GetFullPath($ActivationSliceContractFixturePath)
+   }
+   if (-not (Test-Path $activationContractPath)) { $errors.Add('Missing Activation Slice contract resource'); return }
+   if (-not (Test-Path $profilePath)) { $errors.Add('Missing project profile template'); return }
+   $schemaText = Get-Content -Raw -Encoding utf8 $schemaPath
+   $profileText = Get-Content -Raw -Encoding utf8 $profilePath
+@@ -1227,27 +1229,60 @@ function Test-Contracts {
+       'Test-ScopeArtifacts' `
+       'Requested Scope' `
+       $root `
+       $scopeContractText
+   }
+   if (-not (Test-Path -LiteralPath $conformanceContractPath -PathType Leaf)) {
+     $errors.Add('Missing target structure conformance contract resource')
+   }
+   else {
+     $conformanceContractText = Get-Content -Raw -Encoding utf8 $conformanceContractPath
++    Require-Token $conformanceContractText 'contracts/file-responsibility-conformance.md' 'Target structure responsibility route'
+     Invoke-MigrationValidationModule `
+       'tests/validation/target-conformance.validation.ps1' `
+       'Test-TargetConformance' `
+       'Comparable Target Exemplars' `
+       $root `
+       $conformanceContractText
+   }
++  if (-not (Test-Path -LiteralPath $responsibilityContractPath -PathType Leaf)) {
++    $errors.Add('Missing file responsibility conformance contract resource')
++  }
++  elseif (-not (Test-Path -LiteralPath $responsibilityValidatorPath -PathType Leaf)) {
++    $errors.Add('Missing responsibility conformance validation helper')
++  }
++  else {
++    $responsibilityContractText = Get-Content -Raw -Encoding utf8 $responsibilityContractPath
++    Require-Token $schemaText 'contracts/file-responsibility-conformance.md' 'Responsibility schema route'
++    $parseTokens = $null
++    $parseErrors = $null
++    [void][Management.Automation.Language.Parser]::ParseFile($responsibilityValidatorPath, [ref]$parseTokens, [ref]$parseErrors)
++    if (@($parseErrors).Count -gt 0) {
++      $errors.Add('Responsibility conformance validation helper has PowerShell parse errors')
++    }
++    else {
++      . $responsibilityValidatorPath
++      foreach ($entryPoint in @(
++        'Test-ResponsibilityContractSchema', 'Test-ResponsibilityDiscovery',
++        'Test-ResponsibilityDesign', 'Test-ResponsibilityPlan',
++        'Test-ResponsibilityImplementation', 'Test-ResponsibilityReview',
++        'Test-ResponsibilityHandoff'
++      )) {
++        if (-not (Get-Command $entryPoint -ErrorAction SilentlyContinue)) {
++          $errors.Add("Missing responsibility validator entry point: $entryPoint")
++        }
++      }
++      @(Test-ResponsibilityContractSchema -ContractText $responsibilityContractText) | ForEach-Object {
++        $errors.Add($_)
++      }
++    }
++  }
+   $text = $schemaText + $profileText
+   Test-ActivationSliceContract $activationContractText
+   @(
+     'ACT-###',
+     'applicable | not-applicable-approved | unknown',
+     'upstream-response',
+     'requested-key',
+     'parse-model',
+     'state-holder',
+     'selector',
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+new file mode 100644
+index 0000000..c6c7e48
+--- /dev/null
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+@@ -0,0 +1,199 @@
++Set-StrictMode -Version Latest
++
++function Get-ArcBoundedFrontMatter {
++  [CmdletBinding()]
++  param([Parameter(Mandatory)][string]$Text)
++
++  $match = [regex]::Match($Text, '\A---\r?\n(?<body>.*?)\r?\n---(?=\r?\n|\z)', [Text.RegularExpressions.RegexOptions]::Singleline)
++  if (-not $match.Success) { return $null }
++  return $match.Groups['body'].Value
++}
++
++function Split-ArcCanonicalList {
++  [CmdletBinding()]
++  param([Parameter(Mandatory)][string]$Value)
++
++  return @($Value -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
++}
++
++function Test-ArcExactSet {
++  [CmdletBinding()]
++  param(
++    [Parameter(Mandatory)][string[]]$Actual,
++    [Parameter(Mandatory)][string[]]$Expected
++  )
++
++  if ($Actual.Count -ne $Expected.Count) { return $false }
++  for ($index = 0; $index -lt $Expected.Count; $index++) {
++    if ($Actual[$index] -cne $Expected[$index]) { return $false }
++  }
++  return $true
++}
++
++function Get-ArcStrictMarkdownTable {
++  [CmdletBinding()]
++  param(
++    [Parameter(Mandatory)][string]$Text,
++    [Parameter(Mandatory)][string]$Heading,
++    [Parameter(Mandatory)][string[]]$Columns,
++    [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[string]]$Errors
++  )
++
++  $headingPattern = '(?m)^##\s+' + [regex]::Escape($Heading) + '\s*$'
++  $headingMatch = [regex]::Match($Text, $headingPattern)
++  if (-not $headingMatch.Success) {
++    $Errors.Add("ARC-CONTRACT-MISSING-TABLE: $Heading")
++    return @()
++  }
++  $remaining = $Text.Substring($headingMatch.Index + $headingMatch.Length)
++  $lines = @($remaining -split '\r?\n')
++  $tableLines = [Collections.Generic.List[string]]::new()
++  foreach ($line in $lines) {
++    if ([string]::IsNullOrWhiteSpace($line) -and $tableLines.Count -eq 0) { continue }
++    if ($line -match '^##\s+') { break }
++    if ($line -match '^\|') { $tableLines.Add($line); continue }
++    if ($tableLines.Count -gt 0) { break }
++  }
++  if ($tableLines.Count -lt 3) {
++    $Errors.Add("ARC-CONTRACT-MALFORMED-TABLE: $Heading")
++    return @()
++  }
++
++  $rows = [Collections.Generic.List[string[]]]::new()
++  foreach ($line in $tableLines) {
++    if ($line -notmatch '^\|[^|].*[^|]\|\s*$' -or $line -match '\|\|') {
++      $Errors.Add("ARC-CONTRACT-MALFORMED-TABLE: $Heading")
++      return @()
++    }
++    $body = $line.Trim()
++    $cells = @($body.Substring(1, $body.Length - 2).Split('|') | ForEach-Object { $_.Trim() })
++    if ($cells.Count -ne $Columns.Count) {
++      $Errors.Add("ARC-CONTRACT-TABLE-COLUMNS: $Heading")
++      return @()
++    }
++    $rows.Add([string[]]$cells)
++  }
++  if (-not (Test-ArcExactSet -Actual $rows[0] -Expected $Columns)) {
++    $Errors.Add("ARC-CONTRACT-TABLE-COLUMNS: $Heading")
++  }
++  foreach ($separatorCell in $rows[1]) {
++    if ($separatorCell -cnotmatch '^:?-{3,}:?$') {
++      $Errors.Add("ARC-CONTRACT-MISSING-SEPARATOR: $Heading")
++      break
++    }
++  }
++  return $rows.ToArray()
++}
++
++function Test-ResponsibilityContractSchema {
++  [CmdletBinding()]
++  param([Parameter(Mandatory)][string]$ContractText)
++
++  $errors = [Collections.Generic.List[string]]::new()
++  if ($ContractText -match '\r\n' -and $ContractText -match '(?<!\r)\n') {
++    $errors.Add('ARC-CONTRACT-LINE-ENDINGS: mixed CRLF and LF line endings')
++  }
++  $frontMatter = Get-ArcBoundedFrontMatter -Text $ContractText
++  if ($null -eq $frontMatter) {
++    $errors.Add('ARC-CONTRACT-FRONT-MATTER: required bounded front matter is missing')
++  }
++  else {
++    foreach ($field in @('version: 1', 'applicability: required')) {
++      if (@([regex]::Matches($frontMatter, '(?m)^' + [regex]::Escape($field) + '\s*$')).Count -ne 1) {
++        $errors.Add("ARC-CONTRACT-FRONT-MATTER: required field is invalid: $field")
++      }
++    }
++  }
++
++  $headings = @(
++    'Contract Version', 'Exemplar Classification', 'Architecture Authority',
++    'File Responsibility Matrix', 'Co-location Semantics',
++    'Verification Ownership Matrix', 'Actual Responsibility Evidence',
++    'Review Verdicts', 'Downstream Handoff', 'Compatibility and Rollout',
++    'Stable Diagnostics'
++  )
++  foreach ($heading in $headings) {
++    $count = @([regex]::Matches($ContractText, '(?m)^##\s+' + [regex]::Escape($heading) + '\s*$')).Count
++    if ($count -ne 1) { $errors.Add("ARC-CONTRACT-HEADING: $heading") }
++  }
++
++  foreach ($required in @(
++    'version = 1', 'applicability = required',
++    'Inspection Status = verified | no-equivalent | unknown',
++    'Classification = preferred | compatibility-only | legacy-debt | no-equivalent',
++    'Architecture Authority = target-exemplar | approved-greenfield-design | approved-structural-deviation',
++    'Co-location Policy = feature-local | shared-foundation | atomic-owner | approved-deviation | not-applicable',
++    'Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification',
++    'Verification Disposition = required | not-applicable-approved',
++    'Verdict = PASS | BLOCKED'
++  )) {
++    if ($ContractText.IndexOf($required, [StringComparison]::Ordinal) -lt 0) {
++      $errors.Add("ARC-CONTRACT-ENUM: $required")
++    }
++  }
++
++  Get-ArcStrictMarkdownTable -Text $ContractText -Heading 'File Responsibility Matrix' -Columns @(
++    'Responsibility ID', 'Owner Path', 'Owner Symbol', 'Boundary Kind',
++    'Primary Responsibility', 'Owned Capability IDs', 'Trace IDs', 'Atomic Boundary ID',
++    'Public Symbols', 'External Effects', 'Target Exemplar', 'Exemplar Classification',
++    'Classification Authority', 'Classification Evidence', 'Architecture Authority',
++    'Co-location Policy', 'Co-location Evidence', 'Verification Owner References',
++    'Conformance', 'Deviation Reference'
++  ) -Errors $errors | Out-Null
++  Get-ArcStrictMarkdownTable -Text $ContractText -Heading 'Verification Ownership Matrix' -Columns @(
++    'Verification Owner ID', 'Production Responsibility ID', 'Capability ID',
++    'Evidence Path', 'Evidence Symbol or Scenario', 'Evidence Kind',
++    'Verification Disposition', 'Production Binding Evidence', 'Decision Reference',
++    'Verdict', 'Deviation Reference'
++  ) -Errors $errors | Out-Null
++
++  if ($ContractText -match '(?m)^\|[^\r\n]*\bnot-applicable\b[^\r\n]*\brequired\b[^\r\n]*\|') {
++    $errors.Add('ARC-CONTRACT-MIXED-SENTINEL: a row mixes not-applicable with required')
++  }
++  return $errors.ToArray()
++}
++
++function Test-ArcResponsibilityStageVersion {
++  param([string]$ContractText, [string]$Stage)
++  $errors = [Collections.Generic.List[string]]::new()
++  if ($ContractText -notmatch '(?m)^version:\s*1\s*$' -or $ContractText -notmatch '(?m)^applicability:\s*required\s*$') {
++    $errors.Add("ARC-$Stage-CONTRACT-VERSION: responsibility contract requires version 1 and applicability required")
++  }
++  return $errors.ToArray()
++}
++
++function Test-ResponsibilityDiscovery {
++  [CmdletBinding()]
++  param([string]$DiscoveryText, [ValidateSet('incremental','greenfield')][string]$Mode, [string]$ContractText)
++  return Test-ArcResponsibilityStageVersion $ContractText 'DISCOVERY'
++}
++
++function Test-ResponsibilityDesign {
++  [CmdletBinding()]
++  param([string]$DiscoveryText, [string]$DesignText, [ValidateSet('incremental','greenfield')][string]$Mode, [string]$ContractText)
++  return Test-ArcResponsibilityStageVersion $ContractText 'DESIGN'
++}
++
++function Test-ResponsibilityPlan {
++  [CmdletBinding()]
++  param([string]$DesignText, [string]$PlanText, [string]$WorkItemId, [string]$ContractText)
++  return Test-ArcResponsibilityStageVersion $ContractText 'PLAN'
++}
++
++function Test-ResponsibilityImplementation {
++  [CmdletBinding()]
++  param([string]$DesignText, [string]$ImplementationText, [string]$ContractText)
++  return Test-ArcResponsibilityStageVersion $ContractText 'IMPLEMENTATION'
++}
++
++function Test-ResponsibilityReview {
++  [CmdletBinding()]
++  param([string]$ImplementationText, [string]$ReviewText, [string]$ContractText)
++  return Test-ArcResponsibilityStageVersion $ContractText 'REVIEW'
++}
++
++function Test-ResponsibilityHandoff {
++  [CmdletBinding()]
++  param([string]$SourceText, [string]$TargetText, [string]$ContractText)
++  return Test-ArcResponsibilityStageVersion $ContractText 'HANDOFF'
++}

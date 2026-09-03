@@ -1,0 +1,1233 @@
+# Review package: 59178caf1ebf475a02a176ad7f95c34495817d00..cb15cf1d3cb66cdbf062b27eb90e3131e30d49fb
+
+## Commits
+cb15cf1 test: cover responsibility conformance workflow
+
+## Files changed
+ .../contracts/migration-scope-orchestration.md     |   7 +-
+ .../scenarios/responsibility-conformance.Tests.ps1 |   8 +-
+ .../scenarios/responsibility-handoff.Tests.ps1     |  42 ++++-
+ .../tests/scenarios/scope-artifacts.Tests.ps1      |  17 ++
+ .../tests/scenarios/structural-gate.Tests.ps1      |  14 +-
+ .../tests/scenarios/target-conformance.Tests.ps1   | 102 ++++++++++-
+ .../responsibility-conformance.validation.ps1      |  76 ++++++---
+ .../validation/scope-artifacts.validation.ps1      |  22 ++-
+ .../validation/structural-gate.validation.ps1      |   1 +
+ .../validation/target-conformance.validation.ps1   | 187 ++++++++++++++++++++-
+ 10 files changed, 429 insertions(+), 47 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/contracts/migration-scope-orchestration.md b/AIToolkit/AIToolkit-main/aitoolkit/contracts/migration-scope-orchestration.md
+index 4d3ea50..668ffab 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/contracts/migration-scope-orchestration.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/contracts/migration-scope-orchestration.md
+@@ -56,22 +56,25 @@ from approved current authority; caller repetition is not authority.
+ ```yaml
+ delivery_adapter:
+   kind: migration-unit
+   external_id: UNIT-ADM-002
+   authority: 08-migration-plan.md
+   authority_revision: 3
+   approval_reference: approval:UNIT-ADM-002
+   parent_selector: not-applicable
+ ```
+ 
+-`none` keeps all selector fields `not-applicable`. An orchestrator never invents
+-an external ID. A `migration-unit` selector resolves exactly one approved
++`none` keeps all selector fields `not-applicable`; its Work Item `Delivery Adapter`
++is either `none` or the exact approved internal `generic:<adapter-id>` record.
++That generic record is delivery metadata, not an external selector, and assurance
++provenance remains keyed by the Work Item. An orchestrator never invents an
++external ID. A `migration-unit` selector resolves exactly one approved
+ canonical row whose mode, acceptance, trace, dependency, and design revision
+ match; draft, duplicate, stale, mismatched, or external-only selectors block.
+ 
+ ## Decomposition
+ 
+ ```yaml
+ decomposition:
+   parent_work_item_id: WORK-ADMIN-LOCKS
+   child_work_item_ids:
+     - WORK-ADMIN-SIMPLE-LOCKS
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+index 5dc34fd..f85eebf 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+@@ -551,20 +551,23 @@ function Assert-PlanAccepted([string]$Name, [string]$PlanText, [string]$DesignTe
+   $diagnostics = @(Test-ResponsibilityPlan -DesignText $DesignText -PlanText $PlanText -WorkItemId 'WORK-ADMIN-LOCK' -ContractText $contract)
+   if ($diagnostics.Count -ne 0) {
+     throw "$Name should pass but got: $($diagnostics -join '; ')"
+   }
+   Write-Output "PASS: $Name"
+ }
+ 
+ $validPlan = New-ResponsibilityPlanFixture
+ Assert-PlanAccepted 'plan preserves the exact ordered responsibility owner set' $validPlan
+ Assert-PlanAccepted 'generic adapter keeps owner binding without migration unit taxonomy' (New-ResponsibilityPlanFixture -MigrationUnitId 'not-applicable')
++$approvedPlan = $validPlan.Replace('status: draft', "status: approved`napproval_source: human`nrevision: 2")
++Assert-PlanAccepted 'approved plan binds every adapter to its immutable front-matter revision' $approvedPlan
++Assert-PlanRejected 'approved plan rejects a non-decomposition adapter revision mismatch' ($approvedPlan.Replace('master-plan.md | 2 | not-applicable', 'master-plan.md | 3 | not-applicable')) 'responsibility-owner-extra'
+ $wrongStagePlan = $validPlan.Replace('step_id: 08-plan-waves', 'step_id: 07-technical-design')
+ Assert-PlanRejected 'plan rejects wrong artifact stage' $wrongStagePlan 'responsibility-owner-extra'
+ $unapprovedPlanDesign = (New-ResponsibilityPlanDesignFixture).Replace('status: approved', 'status: draft')
+ $unapprovedPlanDiagnostics = @(Test-ResponsibilityPlan -DesignText $unapprovedPlanDesign -PlanText $validPlan -WorkItemId 'WORK-ADMIN-LOCK' -ContractText $contract)
+ if ($unapprovedPlanDiagnostics -notcontains 'responsibility-owner-extra') {
+   throw "plan rejects unapproved design evidence expected responsibility-owner-extra but got: $($unapprovedPlanDiagnostics -join '; ')"
+ }
+ Write-Output 'PASS: plan rejects unapproved design evidence'
+ Assert-PlanRejected 'plan rejects missing selected responsibility owner' (New-ResponsibilityPlanFixture -ResponsibilityIds 'RESP-WIFI') 'responsibility-owner-missing'
+ Assert-PlanRejected 'plan rejects foreign responsibility owner' (New-ResponsibilityPlanFixture -ResponsibilityIds 'RESP-WIFI, RESP-FOREIGN') 'responsibility-owner-extra'
+@@ -602,37 +605,40 @@ $crossWorkItemReuse = $validPlan + @"
+ Assert-PlanRejected 'plan rejects unapproved cross-work-item responsibility reuse' $crossWorkItemReuse 'responsibility-owner-extra'
+ 
+ $approvedReuseDesign = (New-ResponsibilityPlanDesignFixture).Replace('; WORK-ADMIN-LOCK |', '; WORK-ADMIN-LOCK; WORK-ADMIN-LOCK-CHILD |') + @"
+ 
+ ## Approved Decomposition Decisions
+ 
+ | Decision Reference | Parent Work Item ID | Child Work Item ID | Master Plan Reference | Master Plan Revision | Design Revision | Approval Reference | Immutable Evidence Reference |
+ |---|---|---|---|---|---|---|---|
+ | DEC-ADMIN-LOCK-DECOMPOSITION | WORK-ADMIN-LOCK | WORK-ADMIN-LOCK-CHILD | master-plan.md | 2 | DESIGN-ADMIN@2 | approval:TECH-LEAD-ADMIN-DECOMPOSITION | master-plan.md@revision=2:DEC-ADMIN-LOCK-DECOMPOSITION |
+ "@
+-$approvedReusePlan = (New-ResponsibilityPlanFixture).Replace('status: draft', "status: approved`napproval_source: human").Replace(
++$approvedReusePlan = (New-ResponsibilityPlanFixture).Replace('status: draft', "status: approved`napproval_source: human`nrevision: 2").Replace(
+   '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |',
+   "| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md | 2 | DEC-ADMIN-LOCK-DECOMPOSITION | DESIGN-ADMIN@2 |`n| UNIT-ADMIN-LOCK-CHILD | WORK-ADMIN-LOCK-CHILD | WORK-ADMIN-LOCK | master-plan.md | 2 | DEC-ADMIN-LOCK-DECOMPOSITION | DESIGN-ADMIN@2 |"
+ ).Replace(
+   '| WORK-ADMIN-LOCK | DESIGN-ADMIN@2 | RESP-WIFI, RESP-WIRED | RESP-LOCK-GUARD | RESP-LOCK-COMPOSITION | architecture-rules.md#RULE-007: independently implementable, reviewable, verifiable, and revertible |',
+   "| WORK-ADMIN-LOCK | DESIGN-ADMIN@2 | RESP-WIFI, RESP-WIRED | RESP-LOCK-GUARD | RESP-LOCK-COMPOSITION | architecture-rules.md#RULE-007: independently implementable, reviewable, verifiable, and revertible |`n| WORK-ADMIN-LOCK-CHILD | DESIGN-ADMIN@2 | RESP-WIFI, RESP-WIRED | RESP-LOCK-GUARD | RESP-LOCK-COMPOSITION | approval:TECH-LEAD-ADMIN-DECOMPOSITION: independently implementable, reviewable, verifiable, and revertible |"
+ )
+ Assert-PlanAccepted 'approved parent-child decomposition may reuse an exactly traced responsibility' $approvedReusePlan $approvedReuseDesign
++Assert-PlanRejected 'approved decomposition plan without immutable front-matter revision cannot authorize reuse' ($approvedReusePlan.Replace("revision: 2`n", '')) 'responsibility-owner-extra' $approvedReuseDesign
++Assert-PlanRejected 'approved decomposition plan revision must match every adapter revision' ($approvedReusePlan.Replace('revision: 2', 'revision: 3')) 'responsibility-owner-extra' $approvedReuseDesign
+ Assert-PlanRejected 'decomposition design without approval source cannot authorize reuse' $approvedReusePlan 'responsibility-owner-extra' ($approvedReuseDesign.Replace("approval_source: human`n", ''))
+ Assert-PlanRejected 'non-human decomposition design approval cannot authorize reuse' $approvedReusePlan 'responsibility-owner-extra' ($approvedReuseDesign.Replace('approval_source: human', 'approval_source: auto'))
+ Assert-PlanRejected 'cross-run decomposition design cannot authorize reuse' $approvedReusePlan 'responsibility-owner-extra' ($approvedReuseDesign.Replace('run_id: RUN-ADMIN-001', 'run_id: RUN-FOREIGN-001'))
+ Assert-PlanRejected 'draft parent-child decomposition cannot authorize reuse' ($approvedReusePlan.Replace('status: approved', 'status: draft')) 'responsibility-owner-extra' $approvedReuseDesign
+ Assert-PlanRejected 'decomposition without approval source cannot authorize reuse' ($approvedReusePlan.Replace("approval_source: human`n", '')) 'responsibility-owner-extra' $approvedReuseDesign
+ Assert-PlanRejected 'non-human decomposition approval cannot authorize reuse' ($approvedReusePlan.Replace('approval_source: human', 'approval_source: auto')) 'responsibility-owner-extra' $approvedReuseDesign
+ Assert-PlanRejected 'mutable decomposition evidence cannot authorize reuse' $approvedReusePlan 'responsibility-owner-extra' ($approvedReuseDesign.Replace('master-plan.md@revision=2:DEC-ADMIN-LOCK-DECOMPOSITION', 'master-plan.md@latest:DEC-ADMIN-LOCK-DECOMPOSITION'))
+ Assert-PlanRejected 'foreign decomposition decision cannot authorize reuse' ($approvedReusePlan.Replace('DEC-ADMIN-LOCK-DECOMPOSITION', 'DEC-FOREIGN-DECOMPOSITION')) 'responsibility-owner-extra' $approvedReuseDesign
+ Assert-PlanRejected 'pending decomposition approval evidence cannot authorize reuse' $approvedReusePlan 'responsibility-owner-extra' ($approvedReuseDesign.Replace('approval:TECH-LEAD-ADMIN-DECOMPOSITION', 'approval:TECH-LEAD-PENDING'))
++Assert-PlanRejected 'suffix placeholder decomposition approval evidence cannot authorize reuse' $approvedReusePlan 'responsibility-owner-extra' ($approvedReuseDesign.Replace('approval:TECH-LEAD-ADMIN-DECOMPOSITION', 'approval:TECH-LEAD-ADMIN-PENDING'))
+ 
+ function New-ResponsibilityImplementationFixture {
+   param(
+     [string]$OwnerSymbol = 'AdminWifi',
+     [string]$CapabilityId = 'CAP-ADMIN-WIFI',
+     [string]$Effect = 'none',
+     [string]$ArchitectureState = 'PASS',
+     [string]$TaskBaseSha = '0000000000000000000000000000000000000000',
+     [string]$FinalTreeSha = '0000000000000000000000000000000000000000'
+   )
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-handoff.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-handoff.Tests.ps1
+index bd54b62..b8274d2 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-handoff.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-handoff.Tests.ps1
+@@ -121,31 +121,37 @@ responsibility_contract:
+ | Responsibility Contract Version | Tree Conformance | Responsibility Conformance | Verification Ownership | Architecture Conformance State | Evidence References |
+ |---|---|---|---|---|---|
+ | 1 | $Tree | $Responsibility | $Verification | $Architecture | $Evidence |
+ $selectedUnitText
+ $waiverText
+ "@
+ }
+ 
+ function New-ApprovedAdapterPlan {
+   param(
+-    [ValidateSet('migration-unit','task')][string]$AdapterKind = 'migration-unit',
++    [ValidateSet('migration-unit','task','story','package','phase','milestone')][string]$AdapterKind = 'migration-unit',
+     [string]$WorkItemId = 'WORK-ADMIN-LOCK',
+     [string]$SelectorApproval = 'approval:UNIT-ADMIN-LOCK',
+     [string]$SelectorTraceIds = 'REQ-001',
+     [string]$SelectorMode = 'incremental/preserve-existing',
+     [string]$AuthorityRevision = '1',
+     [string]$WorkItemApproval = 'approval:WORK-ADMIN-LOCK',
+     [switch]$OmitSelectorTable
+   )
+-  $externalId = if ($AdapterKind -ceq 'migration-unit') { 'UNIT-ADMIN-LOCK' } else { 'TASK-ADMIN-LOCK' }
+-  $authority = if ($AdapterKind -ceq 'migration-unit') { '08-migration-plan.md' } else { 'jira:ADMIN-LOCK' }
++  $externalId = @{
++    'migration-unit' = 'UNIT-ADMIN-LOCK'; task = 'TASK-ADMIN-LOCK'; story = 'STORY-ADMIN-LOCK'
++    package = 'pkg:admin-locks'; phase = 'PHASE-ADMIN-LOCK'; milestone = 'MILESTONE-ADMIN-LOCK'
++  }[$AdapterKind]
++  $authority = @{
++    'migration-unit' = '08-migration-plan.md'; task = 'jira:ADMIN-LOCK'; story = 'ado:ADMIN-LOCK'
++    package = 'repo:packages'; phase = 'plan:ADMIN'; milestone = 'roadmap:ADMIN'
++  }[$AdapterKind]
+   $selectorTable = if ($OmitSelectorTable) { '' } else { @"
+ ## Delivery Adapter Selection
+ 
+ | Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference |
+ |---|---|---|---|---|---|---|---|---|---|---|---|---|
+ | $WorkItemId | $AdapterKind | $externalId | $authority | $AuthorityRevision | $SelectorApproval | not-applicable | REQ-001; SC-001; completes within 2 seconds | $SelectorTraceIds | $SelectorMode | DESIGN-ADMIN@2 | not-applicable | not-applicable |
+ "@ }
+   return @"
+ ---
+ artifact_type: migration-master-plan
+@@ -205,20 +211,25 @@ function Assert-HandoffRejected {
+   param([string]$Name, [string]$SourceText, [string]$TargetText, [string]$ExpectedDiagnostic, [string]$ApprovedPlanText = $script:migrationPlan)
+   $diagnostics = @(Test-ResponsibilityHandoff -SourceText $SourceText -TargetText $TargetText -ContractText $contract -ApprovedPlanText $ApprovedPlanText)
+   if ($diagnostics -notcontains $ExpectedDiagnostic) {
+     throw "$Name expected $ExpectedDiagnostic but got: $($diagnostics -join '; ')"
+   }
+   Write-Output "PASS: $Name"
+ }
+ 
+ $script:migrationPlan = New-ApprovedAdapterPlan
+ $genericPlan = New-ApprovedAdapterPlan -AdapterKind task -SelectorApproval 'approval:TASK-ADMIN-LOCK'
++$noneSelectorGenericPlan = $genericPlan.Replace(
++  '| WORK-ADMIN-LOCK | task | TASK-ADMIN-LOCK | jira:ADMIN-LOCK | 1 | approval:TASK-ADMIN-LOCK | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |',
++  '| WORK-ADMIN-LOCK | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |'
++).Replace('task:TASK-ADMIN-LOCK', 'generic:module-foundation')
++if ($noneSelectorGenericPlan -ceq $genericPlan) { throw 'none-selector generic adapter fixture mutation was a silent no-op' }
+ $review = New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md'
+ $producerReview = New-ProducerReviewArtifact
+ $verification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md'
+ $producerVerification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -Evidence 'source-diff:1111111111111111111111111111111111111111..2222222222222222222222222222222222222222#WORK-ADMIN-LOCK' -TaskBaseSha '1111111111111111111111111111111111111111' -FinalTreeSha '2222222222222222222222222222222222222222'
+ $parity = New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md'
+ $regression = New-HandoffArtifact -StepId '14-verify-regression' -SourceArtifact '13-parity-report.md'
+ $knowledgeBase = New-HandoffArtifact -StepId '15-knowledge-base' -SourceArtifact '14-regression-report.md'
+ 
+ Assert-HandoffRejected 'migration-unit assurance provenance cannot use Work Item identity' (New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md' -TaskUnit 'WORK-ADMIN-LOCK') (New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -TaskUnit 'WORK-ADMIN-LOCK') 'responsibility-evidence-missing'
+ $unitReview = New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md' -TaskUnit 'UNIT-ADMIN-LOCK'
+@@ -245,33 +256,58 @@ Assert-HandoffRejected 'legacy filename evidence cannot seed verification' (New-
+ Assert-HandoffRejected 'same work item and SHAs from another run cannot seed verification' $review (New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -RunId 'RUN-HANDOFF-OTHER') 'responsibility-evidence-missing'
+ Assert-HandoffRejected 'migration-unit handoff cannot omit selected unit' $review (New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -OmitSelectedMigrationUnit) 'responsibility-evidence-missing'
+ Assert-HandoffRejected 'generic handoff cannot invent selected unit' (New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md' -AdapterKind 'task') ((New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -AdapterKind 'task') + "`n## Selected Migration Unit`n") 'responsibility-evidence-missing'
+ $genericReview = New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md' -AdapterKind 'task'
+ $genericVerification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -AdapterKind 'task'
+ $genericParity = New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md' -AdapterKind 'task'
+ $genericKnowledgeBase = New-HandoffArtifact -StepId '15-knowledge-base' -SourceArtifact '13-parity-report.md' -AdapterKind 'task'
+ Assert-HandoffAccepted 'generic adapter review reaches verification without a selected migration unit' $genericReview $genericVerification $genericPlan
+ Assert-HandoffAccepted 'generic adapter verification reaches parity without a selected migration unit' $genericVerification $genericParity $genericPlan
+ Assert-HandoffAccepted 'generic adapter parity reaches terminal KB without a selected migration unit' $genericParity $genericKnowledgeBase $genericPlan
++$packagePlan = New-ApprovedAdapterPlan -AdapterKind package -SelectorApproval 'approval:PACKAGE-ADMIN-LOCK'
++$packageReview = New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md' -AdapterKind package
++$packageVerification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -AdapterKind package
++Assert-HandoffAccepted 'package selector preserves its concrete external authority and Work Item assurance identity' $packageReview $packageVerification $packagePlan
++$noneSelectorReview = New-HandoffArtifact -StepId '11-ai-review' -SourceArtifact 'implementation-report.md' -AdapterKind 'none'
++$noneSelectorVerification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -AdapterKind 'none'
++Assert-HandoffAccepted 'none selector retains approved generic delivery adapter with Work Item assurance identity' $noneSelectorReview $noneSelectorVerification $noneSelectorGenericPlan
+ Assert-HandoffRejected 'caller adapter self-attestation cannot override approved plan authority' $genericReview $genericVerification 'responsibility-evidence-missing' $script:migrationPlan
+ Assert-HandoffRejected 'Work Items shorthand alone cannot self-authorize a migration selector' $review $verification 'responsibility-evidence-missing' (New-ApprovedAdapterPlan -OmitSelectorTable)
+ $pendingSelectorPlan = New-ApprovedAdapterPlan -SelectorApproval 'approval:UNIT-ADMIN-LOCK-PENDING'
+ $pendingReview = $review.Replace('approval:UNIT-ADMIN-LOCK | incremental', 'approval:UNIT-ADMIN-LOCK-PENDING | incremental')
+ $pendingVerification = $verification.Replace('approval:UNIT-ADMIN-LOCK | incremental', 'approval:UNIT-ADMIN-LOCK-PENDING | incremental')
+ Assert-HandoffRejected 'pending selector cannot authorize handoff even when both artifacts repeat it' $pendingReview $pendingVerification 'responsibility-evidence-missing' $pendingSelectorPlan
+ Assert-HandoffRejected 'stale selector authority revision cannot authorize handoff' $review $verification 'responsibility-evidence-missing' (New-ApprovedAdapterPlan -AuthorityRevision '2')
+ $foreignTracePlan = New-ApprovedAdapterPlan -SelectorTraceIds 'REQ-FOREIGN'
+ $foreignTraceReview = $review.Replace('| REQ-001 |', '| REQ-FOREIGN |')
+ $foreignTraceVerification = $verification.Replace('| REQ-001 |', '| REQ-FOREIGN |')
+ Assert-HandoffRejected 'selector trace mismatch against current Work Item cannot authorize handoff even when artifacts repeat it' $foreignTraceReview $foreignTraceVerification 'responsibility-evidence-missing' $foreignTracePlan
+ Assert-HandoffRejected 'migration-unit selected row is preserved ordinally across the chain' $review ($verification.Replace('baseline.md#BASE-ADMIN', 'baseline.md#BASE-MUTATED')) 'responsibility-evidence-missing'
+ Assert-HandoffRejected 'handoff fails closed without approved adapter plan authority' $review $verification 'responsibility-evidence-missing' ''
++$reorderedSelectorPlan = $script:migrationPlan.Replace(
++  '| WORK-ADMIN-LOCK | Admin lock | yes | none | 1 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | migration-unit:UNIT-ADMIN-LOCK | complete | ATTEMPT-ADMIN-01 | terminal-admin.md | approval:WORK-ADMIN-LOCK |',
++  "| WORK-ADMIN-LOCK | Admin lock | yes | none | 1 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | migration-unit:UNIT-ADMIN-LOCK | complete | ATTEMPT-ADMIN-01 | terminal-admin.md | approval:WORK-ADMIN-LOCK |`n| WORK-ADMIN-OTHER | Other | no | none | 2 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | none | ready | none | none | pending |"
++).Replace(
++  '| WORK-ADMIN-LOCK | migration-unit | UNIT-ADMIN-LOCK | 08-migration-plan.md | 1 | approval:UNIT-ADMIN-LOCK | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |',
++  "| WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |`n| WORK-ADMIN-LOCK | migration-unit | UNIT-ADMIN-LOCK | 08-migration-plan.md | 1 | approval:UNIT-ADMIN-LOCK | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |"
++)
++if ($reorderedSelectorPlan -ceq $script:migrationPlan) { throw 'reordered complete selector set fixture mutation was a silent no-op' }
++Assert-HandoffAccepted 'approved plan selector set equality is independent of row order' $review $verification $reorderedSelectorPlan
++$duplicateOtherSelectorPlan = $script:migrationPlan.Replace(
++  '| WORK-ADMIN-LOCK | Admin lock | yes | none | 1 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | migration-unit:UNIT-ADMIN-LOCK | complete | ATTEMPT-ADMIN-01 | terminal-admin.md | approval:WORK-ADMIN-LOCK |',
++  "| WORK-ADMIN-LOCK | Admin lock | yes | none | 1 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | migration-unit:UNIT-ADMIN-LOCK | complete | ATTEMPT-ADMIN-01 | terminal-admin.md | approval:WORK-ADMIN-LOCK |`n| WORK-ADMIN-OTHER | Other | no | none | 2 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | none | ready | none | none | pending |`n| WORK-ADMIN-MISSING | Missing | no | none | 3 | REQ-001; SC-001; completes within 2 seconds | REQ-001 | none | ready | none | none | pending |"
++).Replace(
++  '| WORK-ADMIN-LOCK | migration-unit | UNIT-ADMIN-LOCK | 08-migration-plan.md | 1 | approval:UNIT-ADMIN-LOCK | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |',
++  "| WORK-ADMIN-LOCK | migration-unit | UNIT-ADMIN-LOCK | 08-migration-plan.md | 1 | approval:UNIT-ADMIN-LOCK | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |`n| WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |`n| WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; completes within 2 seconds | REQ-001 | incremental/preserve-existing | DESIGN-ADMIN@2 | not-applicable | not-applicable |"
++)
++if ($duplicateOtherSelectorPlan -ceq $script:migrationPlan) { throw 'duplicate-one/missing-another handoff selector fixture mutation was a silent no-op' }
++Assert-HandoffRejected 'approved plan selector set rejects duplicate-one and missing-another outside current Work Item' $review $verification 'responsibility-evidence-missing' $duplicateOtherSelectorPlan
+ Assert-HandoffRejected 'producer-rendered migration review cannot omit task provenance' ($producerReview -replace '(?ms)^## Task Provenance.*?(?=^## )', '') $producerVerification 'responsibility-evidence-missing'
+ Assert-HandoffRejected 'producer-rendered migration review cannot bind a stale final-tree SHA' ($producerReview.Replace('2222222222222222222222222222222222222222 | implementation-report.md', '3333333333333333333333333333333333333333 | implementation-report.md')) $producerVerification 'responsibility-evidence-missing'
+ 
+ Assert-HandoffRejected 'rejects a downstream artifact with no responsibility handoff table' $verification ($parity -replace '(?ms)^## Architecture Responsibility Handoff.*?(?=\z)', '') 'responsibility-owner-missing'
+ Assert-HandoffRejected 'rejects a downstream aggregate PASS that hides responsibility BLOCKED' $verification (New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md' -Responsibility 'BLOCKED' -Architecture 'PASS') 'responsibility-waiver-forbidden'
+ Assert-HandoffRejected 'rejects an altered responsibility evidence reference' $verification (New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md' -Evidence 'review-report.md#other-evidence') 'responsibility-evidence-missing'
+ Assert-HandoffRejected 'rejects unsupported responsibility contract version' $verification (($parity -replace '(?m)^\| 1 \|', '| 2 |') -replace '(?m)^  version: 1$', '  version: 2') 'responsibility-contract-version-invalid'
+ Assert-HandoffRejected 'rejects a cross-run or other-work-item provenance handoff' $verification (New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md' -TaskUnit 'WORK-OTHER') 'responsibility-evidence-missing'
+ Assert-HandoffRejected 'rejects a handoff that skips an immediate predecessor stage' $verification (New-HandoffArtifact -StepId '15-knowledge-base' -SourceArtifact 'verification-report.md') 'responsibility-evidence-missing'
+ 
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1
+index 17209ce..d3e3075 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1
+@@ -102,20 +102,37 @@ try {
+     Assert-True ($validErrors.Count -eq 0) ("Rendered master artifacts must validate: " + ($validErrors -join '; '))
+ 
+     foreach ($name in @('master-spec.md', 'master-plan.md')) {
+       $artifactPath = Join-Path $fixtureRoot "templates/migration/$name"
+       $lfText = (Get-Content -Raw -Encoding utf8 $artifactPath).Replace("`r`n", "`n").Replace("`r", "`n")
+       [IO.File]::WriteAllText($artifactPath, $lfText, [Text.UTF8Encoding]::new($false))
+     }
+     $lfErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+     Assert-True ($lfErrors.Count -eq 0) ("LF-rendered master artifacts must validate: " + ($lfErrors -join '; '))
+ 
++    $selectorPlanPath = Join-Path $fixtureRoot 'templates/migration/master-plan.md'
++    $selectorPlanOriginal = Get-Content -Raw -Encoding utf8 -LiteralPath $selectorPlanPath
++    try {
++      $workRow = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | in-progress | ATTEMPT-WORK-ADMIN-LOCKS-01 | none | pending |'
++      $secondWorkRow = '| WORK-ADMIN-OTHER | Complete Other Mode | no | none | 2 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | ready | none | none | pending |'
++      $selectorRow = '| WORK-ADMIN-LOCKS | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | sample-value | sample-value | not-applicable | not-applicable |'
++      $secondDependencyRow = '| WORK-ADMIN-OTHER | none | no-dependency | decision:graph-admin |'
++      $mutatedPlan = $selectorPlanOriginal.Replace($workRow, "$workRow`n$secondWorkRow")
++      $mutatedPlan = $mutatedPlan.Replace($selectorRow, "$selectorRow`n$selectorRow")
++      $mutatedPlan = $mutatedPlan.Replace('| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |', "| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |`n$secondDependencyRow")
++      Assert-True ($mutatedPlan -cne $selectorPlanOriginal) 'duplicate-one/missing-another selector mutation must alter the rendered master plan'
++      [IO.File]::WriteAllText($selectorPlanPath, $mutatedPlan, [Text.UTF8Encoding]::new($false))
++      $selectorSetErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
++      Assert-True ($selectorSetErrors -contains 'master plan Delivery Adapter Selection must contain exactly one row per Work Item') ("duplicate-one/missing-another selector set must be rejected; got: " + ($selectorSetErrors -join '; '))
++    }
++    finally { [IO.File]::WriteAllText($selectorPlanPath, $selectorPlanOriginal, [Text.UTF8Encoding]::new($false)) }
++
+     $specPath = Join-Path $fixtureRoot 'templates/migration/master-spec.md'
+     $originalSpec = Get-Content -Raw -Encoding utf8 $specPath
+     try {
+       $lifecycleCases = @(
+         [pscustomobject]@{ Name = 'approved complete human'; Status = 'approved'; Result = 'complete'; ApprovalSource = 'human'; Valid = $true; Expected = $null },
+         [pscustomobject]@{ Name = 'approved complete auto'; Status = 'approved'; Result = 'complete'; ApprovalSource = 'auto'; Valid = $true; Expected = $null },
+         [pscustomobject]@{ Name = 'draft blocked human'; Status = 'draft'; Result = 'blocked'; ApprovalSource = 'human'; Valid = $true; Expected = $null },
+         [pscustomobject]@{ Name = 'draft blocked auto'; Status = 'draft'; Result = 'blocked'; ApprovalSource = 'auto'; Valid = $true; Expected = $null },
+         [pscustomobject]@{ Name = 'draft complete human'; Status = 'draft'; Result = 'complete'; ApprovalSource = 'human'; Valid = $true; Expected = $null },
+         [pscustomobject]@{ Name = 'draft complete auto'; Status = 'draft'; Result = 'complete'; ApprovalSource = 'auto'; Valid = $true; Expected = $null },
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/structural-gate.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/structural-gate.Tests.ps1
+index 5db6fb2..a9d24ae 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/structural-gate.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/structural-gate.Tests.ps1
+@@ -204,39 +204,39 @@ responsibility_contract:
+ ## Master Scope Context
+ 
+ | Master Spec Reference | Master Spec ID | Master Spec Revision | Master Plan Reference | Master Plan ID | Master Plan Revision | Work Item ID | Work Item Approval Reference |
+ |---|---|---|---|---|---|---|---|
+ | master-spec.md | SPEC-ADMIN-001 | 2 | master-plan.md | PLAN-ADMIN-001 | 4 | WORK-ADMIN-LOCKS | approval:TECH-LEAD-WORK-ADMIN-LOCKS |
+ 
+ ## Canonical Adapter Evidence
+ 
+ | Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference | Canonical Match |
+ |---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+-| WORK-ADMIN-LOCKS | migration-unit | UNIT-ADM-002 | 08-migration-plan.md | 3 | approval:UNIT-ADM-002 | not-applicable | REQ-101; SC-101; all lock changes finish within 2 seconds | REQ-101, SC-101, DESIGN-401 | incremental/preserve-existing | DESIGN-401@6 | not-applicable | not-applicable | PASS |
++| WORK-ADMIN-LOCKS | migration-unit | UNIT-ADM-002 | 08-migration-plan.md | 4 | approval:UNIT-ADM-002 | not-applicable | REQ-101; SC-101; all lock changes finish within 2 seconds | REQ-101, SC-101, DESIGN-401 | incremental/preserve-existing | DESIGN-401@6 | not-applicable | not-applicable | PASS |
+ 
+ ## Selected Migration Unit
+ 
+ | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
+ |---|---|---|---|---|---|---|---|---|---|
+ | UNIT-ADM-002 | 08-migration-plan.md | approval:UNIT-ADM-002 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | baseline.md#BASE-ADMIN-001 | REQ-101, SC-101, DESIGN-401 |
+ 
+ ## Conformance Matrix Reference
+ 
+ | Work Item ID | Discovery Reference | Design Reference | Design Revision | Design Approval Evidence Reference | Matrix Approval Reference | Matrix Status |
+ |---|---|---|---|---|---|---|
+ | WORK-ADMIN-LOCKS | 02-discovery.md | 07-technical-design.md | 6 | 07-technical-design.approval.md | approval:TECH-LEAD-DESIGN-401 | approved |
+ 
+ ## Responsibility Plan Reference
+ 
+ | Work Item ID | Plan Reference | Plan Revision | Design Revision |
+ |---|---|---|---|
+-| WORK-ADMIN-LOCKS | 08-migration-plan.md | 3 | DESIGN-401@6 |
++| WORK-ADMIN-LOCKS | 08-migration-plan.md | 4 | DESIGN-401@6 |
+ 
+ ## Exemplar Read Evidence
+ 
+ | Concern | Path | Inspected Symbols | Evidence | Read Status |
+ |---|---|---|---|---|
+ | module/container composition | lib/admin/admin_module.dart | AdminModule.build | discovery.md#EX-01 | read-complete |
+ | main/child presentation boundaries | lib/admin/admin_panel.dart | AdminPanel.build | discovery.md#EX-02 | read-complete |
+ | unit/component organization | lib/admin/lock_section.dart | LockSection.build | discovery.md#EX-03 | read-complete |
+ | controller/provider/state pattern | lib/admin/lock_controller.dart | LockController.build | discovery.md#EX-04 | read-complete |
+ | routing and lifecycle | lib/admin/admin_route.dart | AdminRoute.build | discovery.md#EX-05 | read-complete |
+@@ -381,21 +381,21 @@ result: complete
+ approval_source: human
+ ---
+ '@
+   $adapter = switch ($AdapterKind) {
+     'none' { 'none | not-applicable | not-applicable | not-applicable | not-applicable' }
+     'task' { 'task | TASK-42 | jira:ADMIN | 12 | approval:TASK-42' }
+     'story' { 'story | STORY-9 | ado:ADMIN | 6 | approval:STORY-9' }
+     'package' { 'package | pkg:admin-locks | repo:packages | 4 | approval:PACKAGE-4' }
+     'phase' { 'phase | PHASE-2 | plan:ADMIN | 8 | approval:PHASE-2' }
+     'milestone' { 'milestone | MILESTONE-Q3 | roadmap:ADMIN | 5 | approval:MILESTONE-Q3' }
+-    default { 'migration-unit | UNIT-ADM-002 | 08-migration-plan.md | 3 | approval:UNIT-ADM-002' }
++    default { 'migration-unit | UNIT-ADM-002 | 08-migration-plan.md | 4 | approval:UNIT-ADM-002' }
+   }
+   $workItemAdapter = switch ($AdapterKind) {
+     'none' { 'none' }
+     'task' { 'task:TASK-42' }
+     'story' { 'story:STORY-9' }
+     'package' { 'package:pkg:admin-locks' }
+     'phase' { 'phase:PHASE-2' }
+     'milestone' { 'milestone:MILESTONE-Q3' }
+     default { 'migration-unit:UNIT-ADM-002' }
+   }
+@@ -449,21 +449,21 @@ supersedes: PLAN-ADMIN-001@3
+ | 1 | UNIT-ADM-002 | not-required | not-applicable | not-applicable | none | REQ-101; SC-101; all lock changes finish within 2 seconds | incremental/preserve-existing | REQ-101, SC-101, DESIGN-401 | one-unit-one-change | approval:UNIT-ADM-002 | approved |
+ "@
+   } else { '' }
+   Write-Utf8 (Join-Path $fixture '08-migration-plan.md') @"
+ ---
+ step_id: 08-plan-waves
+ status: approved
+ result: complete
+ approval_source: human
+ run_id: RUN-ADMIN-001
+-revision: 3
++revision: 4
+ produced_at: 2026-08-19
+ responsibility_contract:
+   version: 1
+   applicability: required
+ ---
+ 
+ $orderedUnitsSection
+ 
+ ## Work Item Adapter Trace
+ 
+@@ -724,21 +724,21 @@ function Set-StructuralMode([string]$Root, [switch]$UseGreenfieldAuthority) {
+       Write-Utf8 $path $text
+     }
+     Write-DesignApproval $Root
+   }
+ }
+ 
+ try {
+   . $validatorPath
+   . $deliveryValidatorPath
+   . $targetValidatorPath
+-  $canonicalSelectorReportRow = '| WORK-ADMIN-LOCKS | migration-unit | UNIT-ADM-002 | 08-migration-plan.md | 3 | approval:UNIT-ADM-002 | not-applicable | REQ-101; SC-101; all lock changes finish within 2 seconds | REQ-101, SC-101, DESIGN-401 | incremental/preserve-existing | DESIGN-401@6 | not-applicable | not-applicable | PASS |'
++  $canonicalSelectorReportRow = '| WORK-ADMIN-LOCKS | migration-unit | UNIT-ADM-002 | 08-migration-plan.md | 4 | approval:UNIT-ADM-002 | not-applicable | REQ-101; SC-101; all lock changes finish within 2 seconds | REQ-101, SC-101, DESIGN-401 | incremental/preserve-existing | DESIGN-401@6 | not-applicable | not-applicable | PASS |'
+   $canonicalTaskSelectorReportRow = '| WORK-ADMIN-LOCKS | task | TASK-42 | jira:ADMIN | 12 | approval:TASK-42 | not-applicable | REQ-101; SC-101; all lock changes finish within 2 seconds | REQ-101, SC-101, DESIGN-401 | incremental/preserve-existing | DESIGN-401@6 | not-applicable | not-applicable | PASS |'
+ 
+   $root = New-Case 'canonical-task5-selector-fixture'
+   Write-CanonicalTask5Fixture $root
+   $script:errors.Clear()
+   Test-DeliveryAdapters $root (Get-Content -Raw -Encoding utf8 (Join-Path $root 'contracts/migration-scope-orchestration.md'))
+   if ($script:errors.Count -ne 0) { throw "canonical Task 5 fixture expected PASS, got: $($script:errors -join ' || ')" }
+   $script:passed++
+ 
+   $root = New-Case 'greenfield-responsibility-mode'
+@@ -936,21 +936,21 @@ try {
+   $root = New-Case 'generic-adapter-invented-responsibility-plan-unit'
+   $inventedUnitReport = (Get-ValidReport) -replace [regex]::Escape($canonicalSelectorReportRow), $canonicalTaskSelectorReportRow
+   $inventedUnitReport = $inventedUnitReport -replace '(?s)## Selected Migration Unit.*?(?=## Conformance Matrix Reference)', ''
+   Write-Report $root $inventedUnitReport
+   Write-AuthorityArtifacts $root 'task'
+   $inventedUnitPlanPath = Join-Path $root 'structural-gate-fixture/08-migration-plan.md'
+   Write-Utf8 $inventedUnitPlanPath ((Get-Content -Raw -Encoding utf8 -LiteralPath $inventedUnitPlanPath).Replace('| not-applicable | WORK-ADMIN-LOCKS |', '| UNIT-INVENTED | WORK-ADMIN-LOCKS |'))
+   Assert-Rejected 'generic adapter responsibility plan cannot invent a migration unit' $root 'responsibility-owner-extra'
+ 
+   $root = New-Case 'generic-adapter-stale-responsibility-plan-revision'
+-  $stalePlanReport = ((Get-ValidReport) -replace [regex]::Escape($canonicalSelectorReportRow), $canonicalTaskSelectorReportRow).Replace('| WORK-ADMIN-LOCKS | 08-migration-plan.md | 3 | DESIGN-401@6 |', '| WORK-ADMIN-LOCKS | 08-migration-plan.md | 2 | DESIGN-401@6 |')
++  $stalePlanReport = ((Get-ValidReport) -replace [regex]::Escape($canonicalSelectorReportRow), $canonicalTaskSelectorReportRow).Replace('| WORK-ADMIN-LOCKS | 08-migration-plan.md | 4 | DESIGN-401@6 |', '| WORK-ADMIN-LOCKS | 08-migration-plan.md | 2 | DESIGN-401@6 |')
+   $stalePlanReport = $stalePlanReport -replace '(?s)## Selected Migration Unit.*?(?=## Conformance Matrix Reference)', ''
+   Write-Report $root $stalePlanReport
+   Write-AuthorityArtifacts $root 'task'
+   Assert-Rejected 'generic adapter must bind the exact approved responsibility-plan revision' $root 'responsibility-owner-extra'
+ 
+   $root = New-Case 'generic-adapter-multi-work-item-responsibility-plan'
+   $multiPlanReport = (Get-ValidReport) -replace [regex]::Escape($canonicalSelectorReportRow), $canonicalTaskSelectorReportRow
+   $multiPlanReport = $multiPlanReport -replace '(?s)## Selected Migration Unit.*?(?=## Conformance Matrix Reference)', ''
+   Write-Report $root $multiPlanReport
+   Write-AuthorityArtifacts $root 'task'
+@@ -1340,21 +1340,21 @@ try {
+   Write-Report $root ((Get-ValidReport) -replace '(?m)^---\r?\n\r?\n## Master Scope Context', '## Master Scope Context')
+   Assert-Rejected 'unclosed report frontmatter is rejected' $root 'Structural gate implementation report frontmatter is invalid or spoofed'
+ 
+   $root = New-Case 'report-absent-frontmatter'
+   Write-Report $root ((Get-ValidReport) -replace '\A---\r?\n', '')
+   Assert-Rejected 'absent report frontmatter is rejected' $root 'Structural gate implementation report frontmatter is invalid or spoofed'
+ 
+   foreach ($authorityCase in @(
+     @{ Name = 'master-spec'; File = 'master-spec.md'; Duplicate = 'status: approved'; DuplicateValue = "status: approved`nstatus: draft"; Heading = 'master spec'; Expected = 'Structural gate master spec frontmatter is invalid or spoofed' },
+     @{ Name = 'master-plan'; File = 'master-plan.md'; Duplicate = 'revision: 4'; DuplicateValue = "revision: 4`nrevision: 999"; Heading = 'Work Items'; Expected = 'Structural gate master plan frontmatter is invalid or spoofed' },
+-    @{ Name = 'canonical-plan'; File = '08-migration-plan.md'; Duplicate = 'revision: 3'; DuplicateValue = "revision: 3`nrevision: 999"; Heading = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('Q8OhYyDEkcahbiB24buLIG1pZ3JhdGlvbiB0aGVvIHRo4bupIHThu7E=')); Expected = 'Structural gate canonical migration plan frontmatter is invalid or spoofed' }
++    @{ Name = 'canonical-plan'; File = '08-migration-plan.md'; Duplicate = 'revision: 4'; DuplicateValue = "revision: 4`nrevision: 999"; Heading = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('Q8OhYyDEkcahbiB24buLIG1pZ3JhdGlvbiB0aGVvIHRo4bupIHThu7E=')); Expected = 'Structural gate canonical migration plan frontmatter is invalid or spoofed' }
+   )) {
+     $root = New-Case "$($authorityCase.Name)-duplicate-frontmatter-key"
+     Write-Report $root (Get-ValidReport)
+     $path = Join-Path $root "structural-gate-fixture/$($authorityCase.File)"
+     Write-Utf8 $path ((Get-Content -Raw -Encoding utf8 -LiteralPath $path).Replace($authorityCase.Duplicate, $authorityCase.DuplicateValue))
+     Assert-Rejected "$($authorityCase.Name) duplicate key is rejected" $root $authorityCase.Expected
+ 
+     $root = New-Case "$($authorityCase.Name)-unclosed-frontmatter"
+     Write-Report $root (Get-ValidReport)
+     $path = Join-Path $root "structural-gate-fixture/$($authorityCase.File)"
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+index 37b6d2c..9c89ee8 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+@@ -75,48 +75,62 @@ function Get-AuthorityTreeRevision([string]$Root) {
+ }
+ 
+ function Write-ApprovedModeAuthority {
+   param(
+     [string]$Root,
+     [ValidateSet('incremental','greenfield')][string]$Mode
+   )
+ 
+   $docsRoot = Join-Path $Root 'docs/aitoolkit'
+   $packRoot = Join-Path $docsRoot 'migration-project'
++  $legacyRoot = Join-Path $Root 'legacy'
++  $targetRoot = Join-Path $Root 'target'
++  $inputRoot = Join-Path $Root 'inputs'
+   [void](New-Item -ItemType Directory -Path $packRoot -Force)
++  [void](New-Item -ItemType Directory -Path $legacyRoot -Force)
++  [void](New-Item -ItemType Directory -Path $targetRoot -Force)
++  [void](New-Item -ItemType Directory -Path $inputRoot -Force)
+   $packText = "# Approved fixture project pack`n"
+   Set-Content -Encoding utf8 -LiteralPath (Join-Path $packRoot 'SKILL.md') -Value $packText
++  Set-Content -Encoding utf8 -LiteralPath (Join-Path $legacyRoot 'source.txt') -Value "approved legacy source`n"
++  Set-Content -Encoding utf8 -LiteralPath (Join-Path $targetRoot 'baseline.txt') -Value "approved target baseline`n"
++  Set-Content -Encoding utf8 -LiteralPath (Join-Path $inputRoot 'requirements.md') -Value "# Approved requirements`n"
+   $reviewedAt = '2026-08-20T12:00:00Z'
+   $reviewEvidence = 'docs/aitoolkit/project-pack-review.md'
+   $policy = if ($Mode -ceq 'greenfield') { 'design-new' } else { 'preserve-existing' }
+   $profileText = @"
+ schema_version: 1
+ project:
+   id: target-conformance-fixture
+ migration:
+   mode: $Mode
+   unit: feature
+   architecture_policy: $policy
+ automation:
+   mode: interactive
+ output:
+   artifact_language: vi
+ legacy:
+-  path: null
++  path: legacy
+   language: unknown
+   framework: unknown
+ target:
+-  path: null
++  path: target
+   language: unknown
+   framework: unknown
+ documents:
+-  requirements: []
++  requirements:
++    - path: inputs/requirements.md
++      input_source: explicit
++      format: markdown
++      readability: readable
++      evidence_id: DOC-REQ-001
+   uiux: []
+   migration: []
+   architecture: []
+ base_branch: null
+ test_cmd: null
+ lint_cmd: null
+ build_cmd: null
+ coverage_cmd: null
+ review_focus: []
+ verification:
+@@ -124,35 +138,45 @@ verification:
+   regression: optional
+   visual_fidelity: optional
+ project_pack:
+   path: docs/aitoolkit/migration-project
+   reviewed_at: $reviewedAt
+   review_evidence: $reviewEvidence
+ "@
+   $profileForRevision = $profileText.Replace("reviewed_at: $reviewedAt", 'reviewed_at: <review-metadata>').Replace("review_evidence: $reviewEvidence", 'review_evidence: <review-metadata>')
+   $profileRevision = Get-AuthorityTextRevision $profileForRevision
+   $packRevision = Get-AuthorityTreeRevision $packRoot
++  $legacyRevision = Get-AuthorityTreeRevision $legacyRoot
++  $targetRevision = Get-AuthorityTreeRevision $targetRoot
++  $documentRevision = Get-AuthorityTextRevision (Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $inputRoot 'requirements.md'))
++  $citedRevisions = "legacy:legacy@$legacyRevision; target:target@$targetRevision; document:DOC-REQ-001:inputs/requirements.md@$documentRevision"
+   Set-Content -Encoding utf8 -LiteralPath (Join-Path $docsRoot 'project.yaml') -Value $profileText
+   Set-Content -Encoding utf8 -LiteralPath (Join-Path $docsRoot 'project-pack-review.md') -Value @"
+ ---
+ step_id: 04-project-pack-review
+ status: approved
+ result: complete
+ approval_source: human
+ produced_at: 2026-08-20
+ ---
+ 
+ ## Độ mới của review
+ 
+ | Reviewed At | Profile Revision | Pack Revision | Source/Target/Document Revisions | Approval Evidence |
+ |---|---|---|---|---|
+-| $reviewedAt | $profileRevision | $packRevision | not-applicable | approval:TECH-LEAD-PROJECT-PACK-001 |
++| $reviewedAt | $profileRevision | $packRevision | $citedRevisions | approval:TECH-LEAD-PROJECT-PACK-001 |
++
++## Bằng chứng tài liệu profile
++
++| Category | Canonical Path | Input Source | Format | Readability | Evidence ID |
++|---|---|---|---|---|---|
++| requirements | inputs/requirements.md | explicit | markdown | readable | DOC-REQ-001 |
+ "@
+ }
+ 
+ function New-ScenarioRoot {
+   param(
+     [ValidateSet('incremental','greenfield')][string]$ApprovedMode = 'incremental',
+     [switch]$OmitModeAuthority
+   )
+   $scenarioRoot = Join-Path ([IO.Path]::GetTempPath()) ('aitoolkit-target-conformance-' + [guid]::NewGuid().ToString('N'))
+   [void](New-Item -ItemType Directory -Path (Join-Path $scenarioRoot 'contracts') -Force)
+@@ -1205,20 +1229,42 @@ Invoke-ConformanceCase `
+   '' `
+   (New-DesignArtifact) `
+   $false `
+   'Stale approved migration mode authority' `
+   -ModeAuthorityMutation {
+     param($root)
+     $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+     $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+     Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('id: target-conformance-fixture', 'id: target-conformance-fixture-mutated')
+   }
++Invoke-ConformanceCase `
++  'target conformance rejects cited source content changed after project-pack review' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Stale approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    Set-Content -Encoding utf8 -LiteralPath (Join-Path $root 'legacy/source.txt') -Value "changed legacy source`n"
++  }
++Invoke-ConformanceCase `
++  'target conformance rejects mismatched cited evidence revision' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Stale approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project-pack-review.md'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value ([regex]::Replace($text, 'legacy:legacy@sha256:[0-9A-F]{64}', ('legacy:legacy@sha256:' + ('0' * 64)), 1))
++  }
+ Invoke-ConformanceCase `
+   'target conformance rejects non-approved project-pack review authority' `
+   '' `
+   (New-DesignArtifact) `
+   $false `
+   'Missing approved migration mode authority' `
+   -ModeAuthorityMutation {
+     param($root)
+     $path = Join-Path $root 'docs/aitoolkit/project-pack-review.md'
+     $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+@@ -1241,20 +1287,68 @@ Invoke-ConformanceCase `
+   '' `
+   (New-DesignArtifact) `
+   $false `
+   'Invalid approved migration mode authority' `
+   -ModeAuthorityMutation {
+     param($root)
+     $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+     $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+     Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  unit: feature', "  migration_mode: incremental`n  unit: feature")
+   }
++Invoke-ConformanceCase `
++  'target conformance rejects unsupported nested source alias key' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  path: legacy', "  path: legacy`n  source_path: legacy")
++  }
++Invoke-ConformanceCase `
++  'target conformance rejects a deeply nested alias hidden below a canonical source key' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  path: legacy', "  path: legacy`n    source_path: legacy")
++  }
++Invoke-ConformanceCase `
++  'target conformance rejects duplicate nested target path key' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace("target:`n  path: target", "target:`n  path: target`n  path: target")
++  }
++Invoke-ConformanceCase `
++  'target conformance rejects a noncanonical source path with traversal segments' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  path: legacy', '  path: legacy/../target')
++  }
+ Invoke-ConformanceCase `
+   'target conformance rejects a design without responsibility matrices' `
+   '' `
+   (New-DesignArtifact -OmitResponsibilityMatrices) `
+   $false `
+   'ARC-CONTRACT-MISSING-TABLE: File Responsibility Matrix'
+ Invoke-ConformanceCase `
+   'design accepts comma-separated canonical Acceptance references plus measurable outcome prose' `
+   '' `
+   (New-DesignArtifact -Acceptance 'REQ-001, SC-001, target panel renders within 2 seconds' -BindApprovedPlanToTrace) `
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+index b093466..4a5e9f1 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+@@ -565,33 +565,31 @@ function Test-ResponsibilityPlan {
+     -not $designHasHumanApprovalEnvelope -or $designRevisionMatches.Count -ne 1
+   ) {
+     $errors.Add('responsibility-owner-extra')
+   }
+   $designRevision = if ($designRevisionMatches.Count -eq 1) { $designRevisionMatches[0].Groups['revision'].Value } else { '' }
+   $planFrontMatter = Get-ArcBoundedFrontMatter -Text $PlanText
+   $planIsApproved = @([regex]::Matches($planFrontMatter, '(?m)^status:\s*approved\s*$')).Count -eq 1
+   $planRunMatches = @([regex]::Matches($planFrontMatter, '(?m)^run_id:\s*(?<run>RUN-[A-Z0-9]+(?:-[A-Z0-9]+)*)\s*$'))
+   $planRevisionMatches = @([regex]::Matches($planFrontMatter, '(?m)^revision:\s*(?<revision>[1-9][0-9]*)\s*$'))
+   $planTopLevelKeys = @([regex]::Matches($planFrontMatter, '(?m)^(?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+-  $approvedPlanKeyShape = ($planTopLevelKeys -join '|') -cin @(
+-    'approval_source|produced_at|responsibility_contract|result|run_id|status|step_id',
+-    'approval_source|produced_at|responsibility_contract|result|revision|run_id|status|step_id'
+-  )
++  $approvedPlanKeyShape = ($planTopLevelKeys -join '|') -ceq 'approval_source|produced_at|responsibility_contract|result|revision|run_id|status|step_id'
+   $draftPlanKeyShape = ($planTopLevelKeys -join '|') -cin @(
+     'produced_at|responsibility_contract|result|run_id|status|step_id',
+     'produced_at|responsibility_contract|result|revision|run_id|status|step_id'
+   )
+   $planRevisionShapeValid = @([regex]::Matches($planFrontMatter, '(?m)^revision:')).Count -eq $planRevisionMatches.Count -and $planRevisionMatches.Count -le 1
++  $planRevision = if ($planRevisionMatches.Count -eq 1) { $planRevisionMatches[0].Groups['revision'].Value } else { '' }
+   $planHasHumanApprovalEnvelope = $planIsApproved -and
+     @([regex]::Matches($planFrontMatter, '(?m)^result:\s*complete\s*$')).Count -eq 1 -and
+     @([regex]::Matches($planFrontMatter, '(?m)^approval_source:\s*human\s*$')).Count -eq 1 -and
+-    $planRunMatches.Count -eq 1 -and $designRunMatches.Count -eq 1 -and
++    $planRunMatches.Count -eq 1 -and $designRunMatches.Count -eq 1 -and $planRevisionMatches.Count -eq 1 -and
+     $planRunMatches[0].Groups['run'].Value -ceq $designRunMatches[0].Groups['run'].Value -and
+     $approvedPlanKeyShape -and $planRevisionShapeValid
+   if (
+     @([regex]::Matches($planFrontMatter, '(?m)^step_id:\s*08-plan-waves\s*$')).Count -ne 1 -or
+     @([regex]::Matches($planFrontMatter, '(?m)^status:\s*(?:draft|approved)\s*$')).Count -ne 1 -or
+     @([regex]::Matches($planFrontMatter, '(?m)^result:\s*complete\s*$')).Count -ne 1 -or
+     $planRunMatches.Count -ne 1 -or
+     (
+       ($planIsApproved -and -not $approvedPlanKeyShape) -or
+       (-not $planIsApproved -and -not $draftPlanKeyShape) -or
+@@ -621,24 +619,30 @@ function Test-ResponsibilityPlan {
+   )
+   $planColumns = @(
+     'Work Item ID', 'Design Revision', 'Responsibility IDs', 'Shared Foundation IDs',
+     'Integration Responsibility IDs', 'Independent Boundary Evidence'
+   )
+ 
+   $designResponsibilityTable = @(Get-ArcStrictMarkdownTable -Text $DesignText -Heading 'File Responsibility Matrix' -Columns $responsibilityColumns -Errors $errors)
+   $designVerificationTable = @(Get-ArcStrictMarkdownTable -Text $DesignText -Heading 'Verification Ownership Matrix' -Columns $verificationColumns -Errors $errors)
+   $adapterTable = @(Get-ArcStrictMarkdownTable -Text $PlanText -Heading 'Work Item Adapter Trace' -Columns $adapterColumns -Errors $errors)
+   $planTable = @(Get-ArcStrictMarkdownTable -Text $PlanText -Heading 'Responsibility Owner References' -Columns $planColumns -Errors $errors)
++  $decisionColumns = @('Decision Reference', 'Parent Work Item ID', 'Child Work Item ID', 'Master Plan Reference', 'Master Plan Revision', 'Design Revision', 'Approval Reference', 'Immutable Evidence Reference')
++  $decisionHeadingCount = @([regex]::Matches($DesignText, '(?m)^##\s+Approved Decomposition Decisions\s*$')).Count
++  $decisionTable = @(if ($decisionHeadingCount -eq 1) {
++    Get-ArcStrictMarkdownTable -Text $DesignText -Heading 'Approved Decomposition Decisions' -Columns $decisionColumns -Errors $errors
++  })
+   if (@([regex]::Matches($DesignText, '(?m)^##\s+File Responsibility Matrix\s*$')).Count -ne 1) { $errors.Add('responsibility-owner-extra') }
+   if (@([regex]::Matches($DesignText, '(?m)^##\s+Verification Ownership Matrix\s*$')).Count -ne 1) { $errors.Add('verification-owner-extra') }
+   if (@([regex]::Matches($PlanText, '(?m)^##\s+Work Item Adapter Trace\s*$')).Count -ne 1) { $errors.Add('responsibility-owner-extra') }
+   if (@([regex]::Matches($PlanText, '(?m)^##\s+Responsibility Owner References\s*$')).Count -ne 1) { $errors.Add('responsibility-owner-extra') }
++  if ($decisionHeadingCount -gt 1) { $errors.Add('responsibility-owner-extra') }
+   if ($designResponsibilityTable.Count -lt 3 -or $designVerificationTable.Count -lt 3 -or $adapterTable.Count -lt 3 -or $planTable.Count -lt 3) {
+     return @($errors | Select-Object -Unique)
+   }
+ 
+   $toRow = {
+     param([string[]]$Cells, [string[]]$Columns)
+     $row = [ordered]@{}
+     for ($index = 0; $index -lt $Columns.Count; $index++) { $row[$Columns[$index]] = $Cells[$index] }
+     return $row
+   }
+@@ -659,20 +663,29 @@ function Test-ResponsibilityPlan {
+     $Value -match '(?i)reviewable' -and
+     $Value -match '(?i)verifiable|testable' -and
+     $Value -match '(?i)revertible' -and
+     $Value -match '^(?:(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.md#(?:RULE|DECISION|APPROVAL)-[A-Z0-9-]+|approval:(?:TECH-LEAD|OWNER)-[A-Z0-9-]+)(?::\s*.+)?$'
+   }
+ 
+   $designResponsibilities = @($designResponsibilityTable | Select-Object -Skip 2 | ForEach-Object { & $toRow $_ $responsibilityColumns })
+   $designVerifications = @($designVerificationTable | Select-Object -Skip 2 | ForEach-Object { & $toRow $_ $verificationColumns })
+   $adapterRows = @($adapterTable | Select-Object -Skip 2 | ForEach-Object { & $toRow $_ $adapterColumns })
+   $planRows = @($planTable | Select-Object -Skip 2 | ForEach-Object { & $toRow $_ $planColumns })
++  $decisionRows = if ($decisionTable.Count -ge 3) { @($decisionTable | Select-Object -Skip 2 | ForEach-Object { & $toRow $_ $decisionColumns }) } else { @() }
++  if (
++    $planIsApproved -and
++    (
++      -not $planHasHumanApprovalEnvelope -or
++      @($adapterRows | Where-Object { $_['Master Plan Revision'] -cne $planRevision }).Count -ne 0 -or
++      @($decisionRows | Where-Object { $_['Master Plan Revision'] -cne $planRevision }).Count -ne 0
++    )
++  ) { $errors.Add('responsibility-owner-extra') }
+   $adapterWorkItems = @($adapterRows | ForEach-Object { $_['Work Item ID'] } | Sort-Object)
+   $referenceWorkItems = @($planRows | ForEach-Object { $_['Work Item ID'] } | Sort-Object)
+   $migrationUnitIds = @($adapterRows | ForEach-Object { $_['Migration Unit ID'] })
+   $concreteMigrationUnitIds = @($migrationUnitIds | Where-Object { $_ -cne 'not-applicable' })
+   if (
+     @($planRows | ForEach-Object { $_['Work Item ID'] } | Sort-Object -Unique).Count -ne $planRows.Count -or
+     @($adapterRows | ForEach-Object { $_['Work Item ID'] } | Sort-Object -Unique).Count -ne $adapterRows.Count -or
+     @($concreteMigrationUnitIds | Where-Object { $_ -cnotmatch '^UNIT-[A-Z0-9]+(?:-[A-Z0-9]+)*$' }).Count -ne 0 -or
+     @($concreteMigrationUnitIds | Sort-Object -Unique).Count -ne $concreteMigrationUnitIds.Count -or
+     -not (Test-ArcExactSet -Actual $referenceWorkItems -Expected $adapterWorkItems)
+@@ -736,37 +749,35 @@ function Test-ResponsibilityPlan {
+         $currentAdapter = @($adapterRows | Where-Object { $_['Work Item ID'] -ceq $workItem })
+         $approvedParentChildReuse = $planHasHumanApprovalEnvelope -and $designHasHumanApprovalEnvelope -and $previousAdapter.Count -eq 1 -and $currentAdapter.Count -eq 1 -and
+           $currentAdapter[0]['Decomposition Decision Reference'] -cmatch '^DEC-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -and
+           $currentAdapter[0]['Decomposition Decision Reference'] -ceq $previousAdapter[0]['Decomposition Decision Reference'] -and
+           $currentAdapter[0]['Master Plan Reference'] -ceq $previousAdapter[0]['Master Plan Reference'] -and
+           $currentAdapter[0]['Master Plan Revision'] -ceq $previousAdapter[0]['Master Plan Revision'] -and
+           $currentAdapter[0]['Design Revision'] -ceq $previousAdapter[0]['Design Revision'] -and
+           (
+             ($currentAdapter[0]['Parent Work Item ID'] -ceq $previousWorkItem -and $previousAdapter[0]['Parent Work Item ID'] -ceq 'not-applicable') -or
+             ($previousAdapter[0]['Parent Work Item ID'] -ceq $workItem -and $currentAdapter[0]['Parent Work Item ID'] -ceq 'not-applicable')
+-          )
++        )
+         if ($approvedParentChildReuse) {
+           $parentWorkItem = if ($currentAdapter[0]['Parent Work Item ID'] -ceq $previousWorkItem) { $previousWorkItem } else { $workItem }
+           $childWorkItem = if ($parentWorkItem -ceq $previousWorkItem) { $workItem } else { $previousWorkItem }
+-          $decisionColumns = @('Decision Reference', 'Parent Work Item ID', 'Child Work Item ID', 'Master Plan Reference', 'Master Plan Revision', 'Design Revision', 'Approval Reference', 'Immutable Evidence Reference')
+-          $decisionTable = @(Get-ArcStrictMarkdownTable -Text $DesignText -Heading 'Approved Decomposition Decisions' -Columns $decisionColumns -Errors $errors)
+-          $decisionRows = if ($decisionTable.Count -ge 3) { @($decisionTable | Select-Object -Skip 2 | ForEach-Object { & $toRow $_ $decisionColumns }) } else { @() }
+           $decisionReference = $currentAdapter[0]['Decomposition Decision Reference']
+           $matchingDecisions = @($decisionRows | Where-Object {
+             $_['Decision Reference'] -ceq $decisionReference -and
+             $_['Parent Work Item ID'] -ceq $parentWorkItem -and
+             $_['Child Work Item ID'] -ceq $childWorkItem -and
+             $_['Master Plan Reference'] -ceq $currentAdapter[0]['Master Plan Reference'] -and
+             $_['Master Plan Revision'] -ceq $currentAdapter[0]['Master Plan Revision'] -and
++            $_['Master Plan Revision'] -ceq $planRevision -and
+             $_['Design Revision'] -ceq $designRevision -and
+-            $_['Approval Reference'] -cmatch '^approval:TECH-LEAD-(?!PENDING(?:-|$)|TBD(?:-|$)|UNKNOWN(?:-|$)|PLACEHOLDER(?:-|$))[A-Z0-9]+(?:-[A-Z0-9]+)*$' -and
+-            $_['Immutable Evidence Reference'] -ceq "$($_['Master Plan Reference'])@revision=$($_['Master Plan Revision']):$decisionReference"
++            $_['Approval Reference'] -cmatch '^approval:TECH-LEAD-(?![^\r\n]*(?:PENDING|TBD|UNKNOWN|PLACEHOLDER))[A-Z0-9]+(?:-[A-Z0-9]+)*$' -and
++            $_['Immutable Evidence Reference'] -ceq "$($_['Master Plan Reference'])@revision=$planRevision`:$decisionReference"
+           })
+           $approvedParentChildReuse = $matchingDecisions.Count -eq 1
+         }
+         if (-not $approvedParentChildReuse) { $errors.Add('responsibility-owner-extra') }
+       }
+       else { $referencedByWorkItem[$reference] = $workItem }
+     }
+     foreach ($reference in $groups['Responsibility IDs']) {
+       if ($responsibilityById.ContainsKey($reference) -and ($responsibilityById[$reference]['Co-location Policy'] -ceq 'shared-foundation' -or $responsibilityById[$reference]['Boundary Kind'] -ceq 'integration')) {
+         $errors.Add('responsibility-owner-extra')
+@@ -1570,39 +1581,66 @@ function Test-ResponsibilityHandoff {
+   if (
+     @([regex]::Matches($planFrontMatter, '(?m)^artifact_type:\s*migration-master-plan\s*$')).Count -ne 1 -or
+     @([regex]::Matches($planFrontMatter, '(?m)^status:\s*approved\s*$')).Count -ne 1 -or
+     $planIdMatches.Count -ne 1 -or $planRevisionMatches.Count -ne 1 -or $planSelections.Count -lt 3 -or $workItemTable.Count -lt 3 -or
+     $planIdMatches[0].Groups['value'].Value -cne $source.Scope['Master Plan ID'] -or
+     $planRevisionMatches[0].Groups['value'].Value -cne $source.Scope['Master Plan Revision']
+   ) {
+     $errors.Add('responsibility-evidence-missing')
+   }
+   else {
+-    $selectionRows = @($planSelections | Select-Object -Skip 2 | Where-Object { $_[0] -ceq $source.Scope['Work Item ID'] })
+-    $workItemRows = @($workItemTable | Select-Object -Skip 2 | Where-Object { $_[0] -ceq $source.Scope['Work Item ID'] })
++    $allSelectionRows = @($planSelections | Select-Object -Skip 2)
++    $allWorkItemRows = @($workItemTable | Select-Object -Skip 2)
++    $selectionWorkItemIds = @($allSelectionRows | ForEach-Object { [string]$_[0] })
++    $planWorkItemIds = @($allWorkItemRows | ForEach-Object { [string]$_[0] })
++    $selectionWorkItemSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++    $planWorkItemSet = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++    foreach ($workItemId in $selectionWorkItemIds) { [void]$selectionWorkItemSet.Add($workItemId) }
++    foreach ($workItemId in $planWorkItemIds) { [void]$planWorkItemSet.Add($workItemId) }
++    if (
++      $selectionWorkItemSet.Count -ne $selectionWorkItemIds.Count -or
++      $planWorkItemSet.Count -ne $planWorkItemIds.Count -or
++      -not $selectionWorkItemSet.SetEquals($planWorkItemSet)
++    ) { $errors.Add('responsibility-evidence-missing') }
++    $selectionRows = @($allSelectionRows | Where-Object { $_[0] -ceq $source.Scope['Work Item ID'] })
++    $workItemRows = @($allWorkItemRows | Where-Object { $_[0] -ceq $source.Scope['Work Item ID'] })
+     if ($selectionRows.Count -ne 1 -or $workItemRows.Count -ne 1) { $errors.Add('responsibility-evidence-missing') }
+     else {
+       $selection = [ordered]@{}
+       for ($index = 0; $index -lt $planSelectionColumns.Count; $index++) { $selection[$planSelectionColumns[$index]] = [string]$selectionRows[0][$index] }
+       $workItem = [ordered]@{}
+       for ($index = 0; $index -lt $workItemColumns.Count; $index++) { $workItem[$workItemColumns[$index]] = [string]$workItemRows[0][$index] }
+-      $expectedAdapter = if ($selection['Adapter Kind'] -ceq 'none') { 'none' } else { "$($selection['Adapter Kind']):$($selection['External ID'])" }
+       $resolvedApprovalPattern = '^approval:(?![^\r\n]*(?:PENDING|TBD|UNKNOWN|PLACEHOLDER))[A-Z0-9]+(?:-[A-Z0-9]+)*$'
++      $selectorAuthorityValid = if ($selection['Adapter Kind'] -ceq 'none') {
++        @(@('External ID', 'Authority', 'Authority Revision', 'Approval Reference', 'Parent Selector') | Where-Object { $selection[$_] -cne 'not-applicable' }).Count -eq 0
++      }
++      else {
++        $selection['Adapter Kind'] -cin @('migration-unit', 'task', 'story', 'package', 'phase', 'milestone') -and
++        $selection['External ID'] -cmatch '^[A-Za-z0-9][A-Za-z0-9:._/-]*$' -and
++        $selection['External ID'] -notmatch '^(?:not-applicable|pending|unknown|placeholder|<[^>]+>)$' -and
++        $selection['Authority'] -cmatch '^[A-Za-z0-9][A-Za-z0-9:._/-]*$' -and
++        $selection['Authority'] -notmatch '^(?:not-applicable|pending|unknown|placeholder|<[^>]+>)$' -and
++        $selection['Authority Revision'] -cmatch '^[1-9][0-9]*$' -and
++        $selection['Approval Reference'] -cmatch $resolvedApprovalPattern
++      }
++      $workItemAdapterValid = if ($selection['Adapter Kind'] -ceq 'none') {
++        $workItem['Delivery Adapter'] -ceq 'none' -or $workItem['Delivery Adapter'] -cmatch '^generic:[A-Za-z0-9][A-Za-z0-9._-]*$'
++      }
++      else {
++        $workItem['Delivery Adapter'] -ceq "$($selection['Adapter Kind']):$($selection['External ID'])"
++      }
+       if (
+         $selection['Adapter Kind'] -cne $source.AdapterKind -or $selection['Adapter Kind'] -cne $target.AdapterKind -or
+         $selection['Adapter Kind'] -cnotin @('migration-unit', 'task', 'story', 'package', 'phase', 'milestone', 'none') -or
+-        $selection['External ID'] -cnotmatch '^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$' -or
+-        $selection['Authority'] -cmatch '^(?:|not-applicable|pending|unknown|<[^>]+>)$' -or
+-        $selection['Authority Revision'] -cnotmatch '^[1-9][0-9]*$' -or
+-        $selection['Approval Reference'] -cnotmatch $resolvedApprovalPattern -or
++        -not $selectorAuthorityValid -or
+         $selection['Design Revision'] -cnotmatch '^DESIGN-[A-Z0-9]+(?:-[A-Z0-9]+)*@[1-9][0-9]*$' -or
+-        $workItem['Delivery Adapter'] -cne $expectedAdapter -or
++        -not $workItemAdapterValid -or
+         $workItem['Acceptance'] -cne $selection['Acceptance'] -or
+         $workItem['Trace IDs'] -cne $selection['Trace IDs'] -or
+         $workItem['Approval Reference'] -cnotmatch $resolvedApprovalPattern
+       ) { $errors.Add('responsibility-evidence-missing') }
+       if ($selection['Adapter Kind'] -ceq 'migration-unit') {
+         foreach ($artifact in @($source, $target)) {
+           if ($null -eq $artifact.SelectedUnit -or
+             $artifact.SelectedUnit['Migration Unit ID'] -cne $selection['External ID'] -or
+             $artifact.SelectedUnit['Plan Reference'] -cne "$($selection['Authority'])@$($selection['Authority Revision'])" -or
+             $artifact.SelectedUnit['Approval Reference'] -cne $selection['Approval Reference'] -or
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1
+index 8df6b08..1d699a1 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1
+@@ -143,28 +143,46 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
+   foreach ($row in $workRows) {
+     $cells = $row.Cells; $workItemId = $cells[0]; $planOrder = $cells[4]
+     if (-not (& $placeholder $workItemId) -and $workItemId -notmatch '^WORK-[A-Z0-9]+-[A-Z0-9-]+$') { & $addError "master plan invalid Work Item ID: $workItemId" }
+     if (-not $workIds.Add($workItemId)) { & $addError "master plan duplicate Work Item ID: $workItemId" } else { $workById.Add($workItemId, $row) }
+     if ($cells[2] -cnotin @('yes', 'no') -and -not (& $placeholder $cells[2])) { & $addError "master plan invalid Required value: $($cells[2])" }
+     if ($cells[8] -cnotin @('proposed', 'pending', 'ready', 'in-progress', 'blocked', 'complete', 'cancelled-approved', 'not-applicable-approved') -and -not (& $placeholder $cells[8])) { & $addError "master plan invalid Work Item Status: $($cells[8])" }
+     if (-not (& $placeholder $planOrder) -and $planOrder -notmatch '^[1-9][0-9]*$') { & $addError "master plan Plan Order must be a positive integer: $planOrder" }
+     if (-not $planOrders.Add($planOrder)) { & $addError "master plan duplicate Plan Order: $planOrder" }
+     foreach ($dependency in @($cells[3].Split(',') | ForEach-Object { $_.Trim() })) { if ($dependency -ne 'none' -and $dependency -notmatch '^WORK-[A-Z0-9]+-[A-Z0-9-]+$') { & $addError "master plan invalid dependency reference: $dependency" } }
+   }
+-  if ($selectorRows.Count -ne $workRows.Count) { & $addError 'master plan Delivery Adapter Selection must contain exactly one row per Work Item' }
++  $selectorWorkIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+   foreach ($row in $selectorRows) {
+     $cells = $row.Cells
++    [void]$selectorWorkIds.Add($cells[0])
+     if (-not $workById.ContainsKey($cells[0])) { & $addError "master plan selector references unknown Work Item ID: $($cells[0])"; continue }
+     $workCells = $workById[$cells[0]].Cells
+     $expectedAdapter = if ($cells[1] -ceq 'none') { 'none' } else { "$($cells[1]):$($cells[2])" }
+     $adapterMatches = $workCells[7] -ceq $expectedAdapter -or ($cells[1] -ceq 'none' -and $workCells[7] -cmatch '^generic:[A-Za-z0-9][A-Za-z0-9._-]*$')
+-    if (-not $adapterMatches -or $workCells[5] -cne $cells[7] -or $workCells[6] -cne $cells[8]) { & $addError "master plan selector must match Work Item authority: $($cells[0])" }
++    $resolvedApprovalPattern = '^approval:(?![^\r\n]*(?:PENDING|TBD|UNKNOWN|PLACEHOLDER))[A-Z0-9]+(?:-[A-Z0-9]+)*$'
++    $selectorAuthorityValid = if ($cells[1] -ceq 'none') {
++      @($cells[2..6] | Where-Object { $_ -cne 'not-applicable' }).Count -eq 0
++    }
++    else {
++      $cells[1] -cin @('migration-unit', 'task', 'story', 'package', 'phase', 'milestone') -and
++      $cells[2] -cmatch '^[A-Za-z0-9][A-Za-z0-9:._/-]*$' -and
++      $cells[2] -notmatch '^(?:not-applicable|pending|unknown|placeholder|<[^>]+>)$' -and
++      $cells[3] -cmatch '^[A-Za-z0-9][A-Za-z0-9:._/-]*$' -and
++      $cells[3] -notmatch '^(?:not-applicable|pending|unknown|placeholder|<[^>]+>)$' -and
++      $cells[4] -cmatch '^[1-9][0-9]*$' -and
++      $cells[5] -cmatch $resolvedApprovalPattern -and
++      $cells[6] -cmatch '^(?:not-applicable|[A-Za-z0-9][A-Za-z0-9:._/-]*)$'
++    }
++    if (-not $selectorAuthorityValid -or -not $adapterMatches -or $workCells[5] -cne $cells[7] -or $workCells[6] -cne $cells[8]) { & $addError "master plan selector must match Work Item authority: $($cells[0])" }
++  }
++  if ($selectorRows.Count -ne $workRows.Count -or $selectorWorkIds.Count -ne $selectorRows.Count -or -not $selectorWorkIds.SetEquals($workIds)) {
++    & $addError 'master plan Delivery Adapter Selection must contain exactly one row per Work Item'
+   }
+   foreach ($row in $workRows) {
+     foreach ($dependency in @($row.Cells[3].Split(',') | ForEach-Object { $_.Trim() })) {
+       if ($dependency -ne 'none' -and -not $workIds.Contains($dependency)) { & $addError "master plan dependency does not reference a Work Item ID: $dependency" }
+     }
+   }
+   $requirementIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+   foreach ($row in $requirementRows) {
+     $requirementId = $row.Cells[0]
+     if ($requirementId -notmatch '^REQ-[0-9]{3}$' -and -not (& $placeholder $requirementId)) { & $addError "master spec invalid Requirement ID: $requirementId" }
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/structural-gate.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/structural-gate.validation.ps1
+index b136b5f..de1715c 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/structural-gate.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/structural-gate.validation.ps1
+@@ -419,20 +419,21 @@ function Test-StructuralGate([string]$Root, [string]$ContractText) {
+ 
+   $selectedAdapterCells = @($responsibilityAdapterColumns | ForEach-Object { $responsibilityAdapterRow.$_ })
+   $selectedOwnerCells = @($ownerReferenceColumns | ForEach-Object { $planOwnerMatches[0].$_ })
+   $selectedResponsibilityPlanText = @"
+ ---
+ step_id: 08-plan-waves
+ status: approved
+ result: complete
+ approval_source: human
+ run_id: $responsibilityPlanRunId
++revision: $($responsibilityPlanReference.Rows[0].'Plan Revision')
+ produced_at: selected-gate-projection
+ responsibility_contract:
+   version: 1
+   applicability: required
+ ---
+ 
+ ## Work Item Adapter Trace
+ 
+ | $($responsibilityAdapterColumns -join ' | ') |
+ | $(($responsibilityAdapterColumns | ForEach-Object { '---' }) -join ' | ') |
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+index 608606b..d8d36f9 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+@@ -262,42 +262,155 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+       ) -join "`n"
+       return & $getTextRevision $manifest
+     }
+ 
+     $expectedTopLevelKeys = @(
+       'automation', 'base_branch', 'build_cmd', 'coverage_cmd', 'documents', 'legacy', 'lint_cmd',
+       'migration', 'output', 'project', 'project_pack', 'review_focus', 'schema_version', 'target',
+       'test_cmd', 'verification'
+     )
+     $topLevelKeys = @([regex]::Matches($profileText, '(?m)^(?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+-    $migrationBody = & $getYamlSection $profileText 'migration'
+-    $projectPackBody = & $getYamlSection $profileText 'project_pack'
++    $profileSectionNames = @('project', 'migration', 'automation', 'output', 'legacy', 'target', 'documents', 'verification', 'project_pack')
++    $profileSections = @{}
++    foreach ($sectionName in $profileSectionNames) {
++      $sectionBody = & $getYamlSection $profileText $sectionName
++      $profileSections[$sectionName] = if ($null -eq $sectionBody) { '' } else { $sectionBody }
++    }
++    $migrationBody = $profileSections['migration']
++    $projectPackBody = $profileSections['project_pack']
++    $getSectionKeys = {
++      param([string]$Body)
++      if ($null -eq $Body) { return @() }
++      return @([regex]::Matches($Body, '(?m)^  (?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
++    }
++    $sectionKeyShapes = [ordered]@{
++      project = 'id'
++      migration = 'architecture_policy|mode|unit'
++      automation = 'mode'
++      output = 'artifact_language'
++      legacy = 'framework|language|path'
++      target = 'framework|language|path'
++      documents = 'architecture|migration|requirements|uiux'
++      verification = 'behavior_parity|regression|visual_fidelity'
++      project_pack = 'path|review_evidence|reviewed_at'
++    }
+     $authorityInvalid = (
+       @([regex]::Matches($profileText, '(?m)^schema_version:\s*1\s*$')).Count -ne 1 -or
+       ($topLevelKeys -join '|') -cne ($expectedTopLevelKeys -join '|') -or
+       @([regex]::Matches($profileText, '(?m)^(?:mode|migration_mode|architecture_policy):')).Count -ne 0 -or
+-      $null -eq $migrationBody -or $null -eq $projectPackBody
++      @([regex]::Matches($profileText, '(?m)^base_branch:\s*[^\r\n]+\s*$')).Count -ne 1 -or
++      @([regex]::Matches($profileText, '(?m)^test_cmd:\s*[^\r\n]+\s*$')).Count -ne 1 -or
++      @([regex]::Matches($profileText, '(?m)^lint_cmd:\s*[^\r\n]+\s*$')).Count -ne 1 -or
++      @([regex]::Matches($profileText, '(?m)^build_cmd:\s*[^\r\n]+\s*$')).Count -ne 1 -or
++      @([regex]::Matches($profileText, '(?m)^coverage_cmd:\s*[^\r\n]+\s*$')).Count -ne 1 -or
++      @([regex]::Matches($profileText, '(?m)^review_focus:\s*(?:\[\]|[^\r\n]+)\s*$')).Count -ne 1
++    )
++    foreach ($sectionName in $sectionKeyShapes.Keys) {
++      $sectionKeys = @(& $getSectionKeys $profileSections[$sectionName])
++      $sectionLines = @($profileSections[$sectionName] -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
++      if (
++        $null -eq $profileSections[$sectionName] -or
++        ($sectionKeys -join '|') -cne $sectionKeyShapes[$sectionName] -or
++        (
++          $sectionName -cne 'documents' -and
++          (
++            $sectionLines.Count -ne $sectionKeys.Count -or
++            @($sectionLines | Where-Object { $_ -cnotmatch '^  [a-z_][a-z0-9_]*:\s*[^\r\n]*$' }).Count -ne 0
++          )
++        )
++      ) {
++        $authorityInvalid = $true
++      }
++    }
++
++    $projectIdMatches = @([regex]::Matches($profileSections['project'], '(?m)^  id:\s*(?<value>[A-Za-z0-9][A-Za-z0-9._-]*)\s*$'))
++    $automationMatches = @([regex]::Matches($profileSections['automation'], '(?m)^  mode:\s*(?:interactive|auto|auto-waive)\s*$'))
++    $outputMatches = @([regex]::Matches($profileSections['output'], '(?m)^  artifact_language:\s*vi\s*$'))
++    $legacyPathMatches = @([regex]::Matches($profileSections['legacy'], '(?m)^  path:\s*(?<value>null|[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)\s*$'))
++    $targetPathMatches = @([regex]::Matches($profileSections['target'], '(?m)^  path:\s*(?<value>null|[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)\s*$'))
++    $legacyLanguageMatches = @([regex]::Matches($profileSections['legacy'], '(?m)^  language:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
++    $legacyFrameworkMatches = @([regex]::Matches($profileSections['legacy'], '(?m)^  framework:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
++    $targetLanguageMatches = @([regex]::Matches($profileSections['target'], '(?m)^  language:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
++    $targetFrameworkMatches = @([regex]::Matches($profileSections['target'], '(?m)^  framework:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
++    $isCanonicalRelativePath = {
++      param([string]$Value)
++      return $Value -cmatch '^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$' -and
++        @($Value.Split('/') | Where-Object { $_ -cin @('.', '..') }).Count -eq 0
++    }
++    $legacyPathValid = $legacyPathMatches.Count -eq 1 -and (
++      $legacyPathMatches[0].Groups['value'].Value -ceq 'null' -or
++      (& $isCanonicalRelativePath $legacyPathMatches[0].Groups['value'].Value)
++    )
++    $targetPathValid = $targetPathMatches.Count -eq 1 -and (
++      $targetPathMatches[0].Groups['value'].Value -ceq 'null' -or
++      (& $isCanonicalRelativePath $targetPathMatches[0].Groups['value'].Value)
++    )
++    $verificationValid = (
++      @([regex]::Matches($profileSections['verification'], '(?m)^  behavior_parity:\s*(?:required|optional)\s*$')).Count -eq 1 -and
++      @([regex]::Matches($profileSections['verification'], '(?m)^  regression:\s*(?:required|optional)\s*$')).Count -eq 1 -and
++      @([regex]::Matches($profileSections['verification'], '(?m)^  visual_fidelity:\s*(?:required|optional)\s*$')).Count -eq 1
+     )
++    if (
++      $projectIdMatches.Count -ne 1 -or $automationMatches.Count -ne 1 -or $outputMatches.Count -ne 1 -or
++      -not $legacyPathValid -or -not $targetPathValid -or
++      $legacyLanguageMatches.Count -ne 1 -or $legacyFrameworkMatches.Count -ne 1 -or
++      $targetLanguageMatches.Count -ne 1 -or $targetFrameworkMatches.Count -ne 1 -or -not $verificationValid
++    ) { $authorityInvalid = $true }
++
++    $documentEntries = [Collections.Generic.List[object]]::new()
++    $documentEvidenceIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++    $documentCategoryNames = @('requirements', 'uiux', 'migration', 'architecture')
++    foreach ($categoryName in $documentCategoryNames) {
++      $categoryMatch = [regex]::Match(
++        $profileSections['documents'],
++        '(?ms)^  ' + [regex]::Escape($categoryName) + ':(?<value>[^\r\n]*)\r?\n(?<body>.*?)(?=^  (?:requirements|uiux|migration|architecture):|\z)'
++      )
++      if (-not $categoryMatch.Success) { $authorityInvalid = $true; continue }
++      $categoryValue = $categoryMatch.Groups['value'].Value.Trim()
++      $categoryBody = $categoryMatch.Groups['body'].Value
++      if ($categoryValue -ceq '[]') {
++        if (-not [string]::IsNullOrWhiteSpace($categoryBody)) { $authorityInvalid = $true }
++        continue
++      }
++      if ($categoryValue -cne '') { $authorityInvalid = $true; continue }
++      $entryMatches = @([regex]::Matches(
++        $categoryBody,
++        '(?ms)^    - path:\s*(?<path>[^\r\n]+)\r?\n      input_source:\s*(?<input>explicit|inbox)\s*\r?\n      format:\s*(?<format>[A-Za-z0-9][A-Za-z0-9._+-]*)\s*\r?\n      readability:\s*(?<readability>readable)\s*\r?\n      evidence_id:\s*(?<evidence>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\s*(?:\r?\n|\z)'
++      ))
++      $consumed = ($entryMatches | ForEach-Object { $_.Value }) -join ''
++      if ($entryMatches.Count -eq 0 -or $consumed.Trim() -cne $categoryBody.Trim()) { $authorityInvalid = $true; continue }
++      foreach ($entryMatch in $entryMatches) {
++        $entryPath = $entryMatch.Groups['path'].Value.Trim()
++        $evidenceId = $entryMatch.Groups['evidence'].Value
++        if (-not (& $isCanonicalRelativePath $entryPath) -or -not $documentEvidenceIds.Add($evidenceId)) {
++          $authorityInvalid = $true
++        }
++        $documentEntries.Add([pscustomobject]@{
++          Category = $categoryName
++          Path = $entryPath
++          InputSource = $entryMatch.Groups['input'].Value
++          Format = $entryMatch.Groups['format'].Value
++          Readability = $entryMatch.Groups['readability'].Value
++          EvidenceId = $evidenceId
++        })
++      }
++    }
+     $modeMatches = @()
+     $policyMatches = @()
+     if (-not $authorityInvalid) {
+-      $migrationKeys = @([regex]::Matches($migrationBody, '(?m)^  (?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+-      $projectPackKeys = @([regex]::Matches($projectPackBody, '(?m)^  (?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+       $modeMatches = @([regex]::Matches($migrationBody, '(?m)^  mode:\s*(?<value>greenfield|incremental)\s*$'))
+       $unitMatches = @([regex]::Matches($migrationBody, '(?m)^  unit:\s*feature\s*$'))
+       $policyMatches = @([regex]::Matches($migrationBody, '(?m)^  architecture_policy:\s*(?<value>design-new|preserve-existing)\s*$'))
+       $reviewedAtMatches = @([regex]::Matches($projectPackBody, '(?m)^  reviewed_at:\s*(?<value>[^\r\n]+?)\s*$'))
+       $reviewEvidenceMatches = @([regex]::Matches($projectPackBody, '(?m)^  review_evidence:\s*(?<value>[^\r\n]+?)\s*$'))
+       $packPathMatches = @([regex]::Matches($projectPackBody, '(?m)^  path:\s*(?<value>docs/aitoolkit/[A-Za-z0-9_.\-/]+)\s*$'))
+       $authorityInvalid = (
+-        ($migrationKeys -join '|') -cne 'architecture_policy|mode|unit' -or
+-        ($projectPackKeys -join '|') -cne 'path|review_evidence|reviewed_at' -or
+         $modeMatches.Count -ne 1 -or $unitMatches.Count -ne 1 -or $policyMatches.Count -ne 1 -or
+         $reviewedAtMatches.Count -ne 1 -or $reviewEvidenceMatches.Count -ne 1 -or $packPathMatches.Count -ne 1
+       )
+     }
+     if ($authorityInvalid) {
+       $errors.Add('Invalid approved migration mode authority')
+     }
+     else {
+       $approvedResponsibilityMode = $modeMatches[0].Groups['value'].Value
+       $expectedPolicy = if ($approvedResponsibilityMode -ceq 'greenfield') { 'design-new' } else { 'preserve-existing' }
+@@ -341,26 +454,82 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+         if (-not $reviewApproved) {
+           $errors.Add('Missing approved migration mode authority')
+           $approvedResponsibilityMode = ''
+         }
+         else {
+           $freshness = $freshnessTable.Rows[0]
+           $profileForRevision = [regex]::Replace($profileText, '(?m)^  reviewed_at:\s*[^\r\n]+\s*$', '  reviewed_at: <review-metadata>')
+           $profileForRevision = [regex]::Replace($profileForRevision, '(?m)^  review_evidence:\s*[^\r\n]+\s*$', '  review_evidence: <review-metadata>')
+           $expectedProfileRevision = & $getTextRevision $profileForRevision
+           $expectedPackRevision = & $getTreeRevision $packPath
++          $citationSpecs = [Collections.Generic.List[object]]::new()
++          $legacyPathValue = $legacyPathMatches[0].Groups['value'].Value
++          $targetPathValue = $targetPathMatches[0].Groups['value'].Value
++          if ($legacyPathValue -cne 'null') { $citationSpecs.Add([pscustomobject]@{ Kind = 'legacy'; Path = $legacyPathValue; EvidenceId = '' }) }
++          if ($targetPathValue -cne 'null') { $citationSpecs.Add([pscustomobject]@{ Kind = 'target'; Path = $targetPathValue; EvidenceId = '' }) }
++          foreach ($entry in $documentEntries) { $citationSpecs.Add([pscustomobject]@{ Kind = 'document'; Path = $entry.Path; EvidenceId = $entry.EvidenceId }) }
++
++          $citationRevisionParts = [Collections.Generic.List[string]]::new()
++          $citationRevisionsValid = $true
++          foreach ($citation in $citationSpecs) {
++            $citationFullPath = [IO.Path]::GetFullPath((Join-Path $Root $citation.Path.Replace('/', [IO.Path]::DirectorySeparatorChar)))
++            if (-not $citationFullPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $citationFullPath)) {
++              $citationRevisionsValid = $false
++              continue
++            }
++            $citationRevision = if (Test-Path -LiteralPath $citationFullPath -PathType Container) {
++              & $getTreeRevision $citationFullPath
++            }
++            elseif (Test-Path -LiteralPath $citationFullPath -PathType Leaf) {
++              & $getTextRevision (Get-Content -Raw -Encoding utf8 -LiteralPath $citationFullPath)
++            }
++            else {
++              $citationRevisionsValid = $false
++              ''
++            }
++            if ([string]::IsNullOrWhiteSpace($citationRevision)) { continue }
++            $citationLabel = if ($citation.Kind -ceq 'document') {
++              "document:$($citation.EvidenceId):$($citation.Path)@$citationRevision"
++            }
++            else {
++              "$($citation.Kind):$($citation.Path)@$citationRevision"
++            }
++            $citationRevisionParts.Add($citationLabel)
++          }
++          $expectedCitationRevisions = if ($citationRevisionParts.Count -eq 0) { 'not-applicable' } else { $citationRevisionParts -join '; ' }
++
++          $documentEvidenceValid = $true
++          if ($documentEntries.Count -gt 0) {
++            $documentEvidenceTable = & $getStrictTable $reviewText 'Bằng chứng tài liệu profile'
++            $documentEvidenceValid = (
++              $null -ne $documentEvidenceTable -and
++              ($documentEvidenceTable.Columns -join '|') -ceq 'Category|Canonical Path|Input Source|Format|Readability|Evidence ID' -and
++              $documentEvidenceTable.Rows.Count -eq $documentEntries.Count
++            )
++            if ($documentEvidenceValid) {
++              foreach ($entry in $documentEntries) {
++                $matches = @($documentEvidenceTable.Rows | Where-Object {
++                  $_.Category -ceq $entry.Category -and $_.'Canonical Path' -ceq $entry.Path -and
++                  $_.'Input Source' -ceq $entry.InputSource -and $_.Format -ceq $entry.Format -and
++                  $_.Readability -ceq $entry.Readability -and $_.'Evidence ID' -ceq $entry.EvidenceId
++                })
++                if ($matches.Count -ne 1) { $documentEvidenceValid = $false; break }
++              }
++            }
++          }
+           if (
+             $freshness.'Reviewed At' -cne $reviewedAt -or
+             $freshness.'Profile Revision' -cne $expectedProfileRevision -or
+             $freshness.'Pack Revision' -cne $expectedPackRevision -or
+-            $freshness.'Source/Target/Document Revisions' -cne 'not-applicable' -or
+-            $freshness.'Approval Evidence' -cnotmatch '^approval:TECH-LEAD-(?!PENDING(?:-|$)|TBD(?:-|$)|UNKNOWN(?:-|$))[A-Z0-9]+(?:-[A-Z0-9]+)*$'
++            -not $citationRevisionsValid -or -not $documentEvidenceValid -or
++            $freshness.'Source/Target/Document Revisions' -cne $expectedCitationRevisions -or
++            $freshness.'Approval Evidence' -cnotmatch '^approval:TECH-LEAD-(?![^\r\n]*(?:PENDING|TBD|UNKNOWN|PLACEHOLDER))[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+           ) {
+             $errors.Add('Stale approved migration mode authority')
+             $approvedResponsibilityMode = ''
+           }
+         }
+       }
+     }
+   }
+   if (Test-Path -LiteralPath $designPath -PathType Leaf) {
+     $modeAuthorityText = Get-Content -Raw -Encoding utf8 -LiteralPath $designPath

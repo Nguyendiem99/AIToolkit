@@ -1,0 +1,1076 @@
+# Review package: 1d91cb5..f61ffc1
+
+## Commits
+f61ffc1 feat: require target conformance evidence
+
+## Files changed
+ .../aitoolkit/skills/migration/discovery/SKILL.md  |   6 +-
+ .../skills/migration/technical-design/SKILL.md     |   8 +-
+ .../aitoolkit/templates/migration/discovery.md     |   8 +-
+ .../templates/migration/technical-design.md        |   8 +-
+ .../tests/scenarios/target-conformance.Tests.ps1   | 261 +++++++++++++++++++--
+ .../validation/target-conformance.validation.ps1   | 207 ++++++++++++++--
+ 6 files changed, 451 insertions(+), 47 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md
+index 4d95857..a27ffb7 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md
+@@ -55,23 +55,23 @@ Khảo sát cả upstream và downstream, gồm `requested-key`, `parse-model`,
+ ## Quick reference
+ 
+ | Quan sát | Xử lý |
+ |---|---|
+ | Fact có nguồn trực tiếp | Ghi record và Evidence |
+ | Inference được pack cho phép | Ghi nguồn và mức tin cậy |
+ | Marker không phân loại được | Ghi unknown; block nếu ảnh hưởng taxonomy |
+ 
+ ## Target exemplar responsibilities
+ 
+-Với `incremental` / `preserve-existing`, dựng `Comparable Target Exemplars` từ đúng tám concern trong canonical target-structure contract; không tự sao chép hay đổi tên danh sách concern. Mỗi concern phải có đúng một row với real target `Path`, toàn bộ `Inspected Symbols`, `Observed Pattern`, lý do nghiệp vụ/activation cụ thể trong `Comparable Reason`, exact `Evidence`, và `Status`. Một generic controller, tên framework, hoặc chỉ một file có cùng technology không chứng minh complete working exemplar.
++Với `incremental` / `preserve-existing`, dựng `Comparable Target Exemplars` từ đúng tám concern trong canonical target-structure contract; set và cardinality phải khớp chính xác, không thiếu, duplicate hay thêm invented concern. Mỗi concern phải có đúng một row với real target `Path`, toàn bộ `Inspected Symbols`, `Observed Pattern`, lý do nghiệp vụ/activation cụ thể trong `Comparable Reason`, exact `Evidence`, và `Status`. Một generic controller, tên framework, hoặc chỉ một file có cùng technology không chứng minh complete working exemplar.
+ 
+-`Inspected Symbols` ghi từng symbol đã đọc trọn vẹn declaration, production consumers và lifecycle liên quan; giá trị rỗng hoặc wildcard không hợp lệ. `Target Data-flow Trace` theo dấu input qua provider/state, normalization, router, localization, subscription, lifecycle đến production consumer và test boundary. Không suy data flow từ tên class.
++`Inspected Symbols`, `Target Data-flow Trace` và `No-equivalent Gaps` giữ exact columns của template và không được là table shell rỗng. `Inspected Symbols` ghi từng symbol explicit đã đọc trọn vẹn declaration, production consumers và lifecycle liên quan; giá trị rỗng, `*`, `all`, wildcard hoặc generic category không hợp lệ. `Target Data-flow Trace` phải có path/symbol endpoint, input, transformation cụ thể, output/production consumer và exact trace evidence; không suy data flow từ tên class hoặc ghi chung chung “state management”.
+ 
+-`no-equivalent` không cho phép phát minh pattern. Mỗi row này phải có row tương ứng trong `No-equivalent Gaps`, gắn stable gap/conflict, resolved decision và exact approval reference từ gaps/conflicts. `unknown`, concern applicable bị thiếu, path/symbol/evidence rỗng, lý do không chứng minh comparability, hoặc no-equivalent chưa resolve đều giữ `status: draft` và `result: blocked`.
++`no-equivalent` không cho phép phát minh pattern. Set gap rows phải khớp chính xác set concern có status này; khi không có thì chỉ dùng sentinel `none` canonical. Mỗi gap thật gắn `GAP-*`, `CONFLICT-*`, quyết định cụ thể `resolved: <decision>` và approval thật `approval:TECH-LEAD-*`; `none`, `unknown`, `pending`, placeholder hoặc prefix rỗng không phải decision/approval. `unknown`, concern applicable bị thiếu, path/symbol/evidence rỗng, lý do không chứng minh comparability, hoặc no-equivalent chưa resolve đều giữ `status: draft` và `result: blocked`.
+ 
+ Hợp đồng đầu ra giữ đủ `Comparable Target Exemplars`, `Inspected Symbols`, `Target Data-flow Trace`, và `No-equivalent Gaps`. Với incremental output, complete chỉ khi đủ tám concern canonical, không có `unknown`, và mọi `no-equivalent` đã có resolved decision.
+ 
+ ## Common mistakes
+ 
+ - Áp taxonomy quen thuộc khi project pack không cung cấp.
+ - Biến suy luận từ tên file thành fact.
+ - Gộp nhiều hành vi vào một record khiến mất traceability.
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/technical-design/SKILL.md b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/technical-design/SKILL.md
+index 6fa878f..4f447ff 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/technical-design/SKILL.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/technical-design/SKILL.md
+@@ -42,27 +42,27 @@ An approval applies only to the cited design revision and trace IDs. A meeting,
+ 
+ 1. Read `aitoolkit-schemas`, `aitoolkit/contracts/activation-slice.md`, the profile, project pack, predecessor artifact, and `aitoolkit/templates/migration/technical-design.md`.
+ 2. Validate mode/policy before designing. Forward affected requirement, inventory, mapping, discovery, gap, and conflict trace IDs.
+ 3. For `design-new`, describe boundaries, responsibilities, data/control flow, interfaces, dependencies, and acceptance constraints without assuming a technology.
+ 4. For `preserve-existing`, cite target Evidence for each proposed extension and show conformance; route architecture changes to an approval conflict.
+ 5. Put unsupported assumptions in `Unknowns`. Any unknown that blocks architecture, scope, or acceptance makes the result blocked.
+ 6. Write the artifact and request the Tech Lead gate when approval is required.
+ 
+ ## Target structure conformance responsibilities
+ 
+-Với `preserve-existing`, lập `Target Structure Conformance Matrix` với exact columns và đúng tám concern do canonical target-structure contract định nghĩa. Mỗi row phải trỏ đến working exemplar đã inspect, mô tả observed target pattern, nêu cả proposed path lẫn symbol, và quyết định `Conforms`. Hướng dẫn kiểu “use framework” hoặc “follow architecture” không phải structural evidence.
++Với `preserve-existing`, lập `Target Structure Conformance Matrix` với exact columns và exact set/cardinality tám concern do canonical target-structure contract định nghĩa; reject missing, duplicate và invented concern. Mỗi row phải trỏ đến working exemplar đã inspect, mô tả observed target pattern, nêu cả concrete proposed path lẫn symbol, và quyết định `Conforms`. Hướng dẫn chỉ nêu framework, architecture style, state management hoặc provider pattern mà không có path/symbol/boundary cụ thể không phải structural evidence.
+ 
+-`Work Item Trace` giữ đúng Work Item ID được master plan giao, exact master-plan reference/revision và acceptance trace IDs. Nếu work item là child sau decomposition, ghi stable decomposition decision reference; nếu không áp dụng thì ghi `not-applicable`. Thiếu hoặc mismatch bất kỳ field nào làm design bị block và không được tự chọn work item khác.
++`Work Item Trace` giữ canonical `WORK-<SCOPE>-*`, exact `master-plan.md#PLAN-<SCOPE>-*`, positive revision và danh sách chỉ gồm unique `REQ-* | SC-* | AC-*` acceptance IDs. Scope trong Work Item ID và master-plan ID phải bằng nhau để bind predecessor plan evidence. Nếu work item là child sau decomposition, ghi stable `DEC-*` không-placeholder; nếu không áp dụng thì ghi `not-applicable`. Thiếu, malformed hoặc mismatch bất kỳ field nào làm design bị block và không được tự chọn work item khác.
+ 
+-Mỗi `Conforms = no` phải trỏ đúng một row trong `Approved Structural Deviations` có resolved conflict, resolved decision và exact Tech Lead approval. Thiếu decision, decision chưa resolve, hoặc approval bằng `not-applicable` thì design bị block. Không đánh `Conforms = yes` nếu proposed panel wrapper, provider ownership, router, localization, subscription hoặc lifecycle khác observed exemplar.
++Mỗi `Conforms = no` phải dùng canonical `DEV-*` và trỏ đúng một row trong `Approved Structural Deviations` có `CONFLICT-*`, concrete `resolved: <decision>` và exact `approval:TECH-LEAD-*`. `none`, `unknown`, `pending`, placeholder hoặc prefix rỗng không hợp lệ. Không đánh `Conforms = yes` nếu proposed panel wrapper, provider ownership, router, localization, subscription hoặc lifecycle khác observed exemplar; khi observed presentation có `wrapper=<symbol>`, proposed row conforming phải có cùng wrapper, còn khác wrapper chỉ hợp lệ qua approved deviation.
+ 
+-`Planned File Tree` liệt kê mỗi file và symbol sẽ tạo/sửa, responsibility và exemplar/deviation chi phối. `Provider/Router/Localization/Subscription Boundaries` ghi riêng provider, router, localization, subscription và lifecycle owner; mỗi boundary có owner path/symbol, input, output, lifecycle/failure policy và evidence. Data flow phải nối các boundary này với Activation Slice, gồm initial loading, update/watch, reselection, failure, state preservation/reset và dispose/cancel.
++`Planned File Tree` liệt kê mỗi file và symbol sẽ tạo/sửa, responsibility và exemplar/deviation chi phối. Set `Planned Path` phải bằng chính xác unique path set lấy từ mọi matrix `Proposed Path/Symbol`; reject path thiếu, unrelated hoặc duplicate. `Provider/Router/Localization/Subscription Boundaries` ghi riêng provider, router, localization, subscription và lifecycle owner; mỗi boundary có owner path/symbol, input, output, lifecycle/failure policy và evidence. Data flow phải nối các boundary này với Activation Slice, gồm initial loading, update/watch, reselection, failure, state preservation/reset và dispose/cancel.
+ 
+ Hợp đồng đầu ra giữ `Work Item Trace`, `Target Structure Conformance Matrix`, `Approved Structural Deviations`, `Planned File Tree`, và `Provider/Router/Localization/Subscription Boundaries`; complete chỉ khi work-item/master-plan/acceptance trace khớp, coverage/boundary đầy đủ và mọi non-conforming row có resolved decision.
+ 
+ ## Evidence and Unknowns
+ 
+ Evidence must locate the profile decision, target observations, requirement/constraint sources, trace IDs, and approval identity/revision. Unknowns name missing evidence, owner, or decision and the downstream work it blocks.
+ 
+ ## Hợp đồng đầu ra
+ 
+ - File: `<RUN_DIR>/07-technical-design.md`.
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md b/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md
+index 40419f6..bd0dc0c 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md
+@@ -15,48 +15,52 @@ produced_at: <yyyy-mm-dd>
+ |---|---|---|---|
+ | Feature | <tính năng> | <tham chiếu nguồn> | <ghi chú> |
+ | Screen | <màn hình> | <tham chiếu nguồn> | <ghi chú> |
+ | Component | <thành phần> | <tham chiếu nguồn> | <ghi chú> |
+ | State | <trạng thái> | <tham chiếu nguồn> | <ghi chú> |
+ | Service | <dịch vụ> | <tham chiếu nguồn> | <ghi chú> |
+ | Dependency | <dependency> | <tham chiếu nguồn> | <ghi chú> |
+ 
+ ## Comparable Target Exemplars
+ 
+-Giữ đúng tám concern canonical. Mỗi row applicable cần path thật, toàn bộ symbol đã inspect, pattern quan sát được, lý do comparability cụ thể và evidence chính xác. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`.
++Giữ exact set/cardinality tám concern canonical: không thiếu, duplicate hoặc invented concern. Mỗi row applicable cần path thật, toàn bộ symbol explicit đã inspect (không wildcard/`all`), pattern quan sát được, lý do comparability cụ thể và evidence chính xác. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`.
+ 
+ | Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+ |---|---|---|---|---|---|---|
+ | module/container composition | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | main/child presentation boundaries | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | unit/component organization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | controller/provider/state pattern | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | routing and lifecycle | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | localization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | service/config subscription and normalization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ | test harness and production-boundary tests | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+ 
+ ## Inspected Symbols
+ 
++Giữ exact columns và ít nhất một evidence row; mỗi symbol phải explicit, không dùng `*`, `all` hoặc generic category.
++
+ | Concern | Path | Symbol | Inspection Scope | Evidence |
+ |---|---|---|---|---|
+ | <concern canonical> | <đường dẫn thật> | <symbol cụ thể> | <declaration, consumers và lifecycle đã đọc> | <path:line> |
+ 
+ ## Target Data-flow Trace
+ 
++Giữ exact columns và ít nhất một row có source path/symbol, input, transformation, output/production consumer và exact evidence endpoint.
++
+ | Stage | Path/Symbol | Input | Transformation | Output/Consumer | Evidence |
+ |---|---|---|---|---|---|
+ | <provider/router/localization/subscription/lifecycle/test> | <path và symbol> | <input> | <normalization hoặc state transition> | <production consumer> | <path:line> |
+ 
+ ## No-equivalent Gaps
+ 
+-Chỉ giữ row cho concern có `Status = no-equivalent`; nếu không có, ghi `none` với các field còn lại là `not-applicable`.
++Set gap rows phải khớp chính xác concern có `Status = no-equivalent`; dùng `resolved: <quyết định cụ thể>` và `approval:TECH-LEAD-*`. Nếu không có gap thật, ghi đúng một sentinel `none` với các field còn lại là `not-applicable`.
+ 
+ | Concern | Gap Reference | Conflict Reference | Resolved Decision | Approval Reference |
+ |---|---|---|---|---|
+ | <concern canonical hoặc none> | <GAP-* hoặc not-applicable> | <CONFLICT-* hoặc not-applicable> | <resolved: quyết định hoặc not-applicable> | <approval:* hoặc not-applicable> |
+ 
+ ## Activation Slice
+ 
+ Ghi `not-applicable-approved` với evidence và decision reference khi unit không có activation selector; không được bỏ section.
+ 
+ | Activation Slice ID | Applicability | Seam | Input | Output | Source Reference | Trace IDs | Disposition | Status | Decision Reference | Deferred Unit ID |
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/technical-design.md b/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/technical-design.md
+index dc54e00..058bb29 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/technical-design.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/technical-design.md
+@@ -10,51 +10,53 @@ produced_at: <yyyy-mm-dd>
+ # Thiết kế kỹ thuật migration
+ 
+ ## Kiến trúc
+ 
+ | Mode / Policy | Target Conformance / New Architecture | Trace IDs | Decision |
+ |---|---|---|---|
+ | <mode/policy> | <mức tuân thủ hoặc kiến trúc> | <REQ/ITEM IDs> | <quyết định> |
+ 
+ ## Work Item Trace
+ 
+-Giữ đúng work item do master plan giao. Với child tạo bởi decomposition, dùng exact decision reference; nếu không áp dụng, ghi `not-applicable`.
++Giữ đúng work item do master plan giao. `WORK-<SCOPE>-*` và `master-plan.md#PLAN-<SCOPE>-*` phải cùng scope; revision là số nguyên dương và acceptance list chỉ gồm unique `REQ-*`, `SC-*`, `AC-*`. Với child tạo bởi decomposition, dùng exact `DEC-*`; nếu không áp dụng, ghi `not-applicable`.
+ 
+ | Work Item ID | Master Plan Reference | Master Plan Revision | Acceptance Traces | Decomposition Decision Reference |
+ |---|---|---|---|---|
+ | <WORK-*> | <master-plan.md#PLAN-*> | <revision nguyên dương> | <REQ/SC/AC IDs> | <DEC-* hoặc not-applicable> |
+ 
+ ## Target Structure Conformance Matrix
+ 
+-Giữ đúng tám concern canonical. `Working Exemplar`, observed pattern và proposed path/symbol phải cụ thể; hướng dẫn technology chung không phải evidence.
++Giữ exact set/cardinality tám concern canonical, không thiếu, duplicate hoặc invented concern. `Working Exemplar`, observed pattern và proposed path/symbol phải cụ thể; hướng dẫn chỉ nêu framework/architecture/state management không phải evidence. Nếu observed presentation ghi `wrapper=<symbol>`, proposed conforming row phải ghi cùng wrapper.
+ 
+ | Concern | Working Exemplar | Observed Target Pattern | Proposed Path/Symbol | Conforms | Deviation Reference |
+ |---|---|---|---|---|---|
+ | module/container composition | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | main/child presentation boundaries | <tham chiếu exemplar> | <wrapper và child boundary> | <path, symbol và wrapper dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | unit/component organization | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | controller/provider/state pattern | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | routing and lifecycle | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | localization | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | service/config subscription and normalization | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ | test harness and production-boundary tests | <tham chiếu exemplar> | <pattern target quan sát được> | <path và symbol dự kiến> | <yes / no> | <not-applicable hoặc DEV-*> |
+ 
+ ## Approved Structural Deviations
+ 
+-Mỗi row `Conforms = no` cần đúng một deviation đã resolve và Tech Lead approval chính xác. Nếu mọi row conform, ghi `none` với các field còn lại là `not-applicable`.
++Mỗi row `Conforms = no` cần canonical `DEV-*`, `CONFLICT-*`, concrete `resolved: <quyết định cụ thể>` và exact `approval:TECH-LEAD-*`. Nếu mọi row conform, ghi `none` với các field còn lại là `not-applicable`.
+ 
+ | Deviation Reference | Concern | Conflict Reference | Resolved Decision | Tech Lead Approval |
+ |---|---|---|---|---|
+ | <DEV-* hoặc none> | <concern canonical hoặc not-applicable> | <CONFLICT-* hoặc not-applicable> | <resolved: quyết định hoặc not-applicable> | <approval:* hoặc not-applicable> |
+ 
+ ## Planned File Tree
+ 
++Unique `Planned Path` set phải khớp chính xác path set từ mọi matrix `Proposed Path/Symbol`; không thêm unrelated path hoặc bỏ sót proposed path.
++
+ | Planned Path | Planned Symbol | Responsibility | Exemplar or Deviation Reference |
+ |---|---|---|---|
+ | <đường dẫn file sẽ tạo hoặc sửa> | <symbol dự kiến> | <trách nhiệm cấu trúc> | <exemplar hoặc DEV-*> |
+ 
+ ## Provider/Router/Localization/Subscription Boundaries
+ 
+ | Boundary | Owner Path/Symbol | Input | Output | Lifecycle/Failure Policy | Evidence |
+ |---|---|---|---|---|---|
+ | provider | <owner path/symbol> | <input> | <state/output> | <loading, update và failure policy> | <evidence> |
+ | router | <owner path/symbol> | <route input> | <destination> | <guard, reselection và disposal> | <evidence> |
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+index 3377599..c62da94 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+@@ -56,128 +56,209 @@ function New-ScenarioRoot {
+   Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot 'contracts/target-structure-conformance.md') -Value $contractText
+   return $scenarioRoot
+ }
+ 
+ function New-DiscoveryArtifact {
+   param(
+     [string[]]$IncludedConcerns = $concerns,
+     [string]$BlankSymbolsConcern = '',
+     [string]$NotComparableConcern = '',
+     [string]$UnknownConcern = '',
+-    [string]$NoEquivalentConcern = ''
++    [string]$NoEquivalentConcern = '',
++    [switch]$ExtraConcern,
++    [switch]$DuplicateConcern,
++    [switch]$WildcardSymbols,
++    [switch]$EmptyInspectedSymbols,
++    [switch]$EmptyDataFlow,
++    [switch]$MeaninglessDataFlow,
++    [switch]$StrayGapRow,
++    [switch]$InvalidGapSentinel,
++    [switch]$WeakGapDecision,
++    [switch]$PendingGapApproval
+   )
+ 
+   $rows = foreach ($concern in $IncludedConcerns) {
+-    $symbols = if ($concern -ceq $BlankSymbolsConcern) { '' } else { 'TargetShell, TargetController' }
++    $symbols = if ($concern -ceq $BlankSymbolsConcern) {
++      ''
++    }
++    elseif ($WildcardSymbols -and $concern -ceq 'controller/provider/state pattern') {
++      '*'
++    }
++    else {
++      'TargetShell, TargetController'
++    }
+     $comparableReason = if ($concern -ceq $NotComparableConcern) { 'not comparable' } else { 'same production responsibility and activation path' }
+     $status = if ($concern -ceq $UnknownConcern) {
+       'unknown'
+     }
+     elseif ($concern -ceq $NoEquivalentConcern) {
+       'no-equivalent'
+     }
+     else {
+       'verified'
+     }
+     "| $concern | lib/target_shell.dart | $symbols | working target pattern for $concern | $comparableReason | lib/target_shell.dart:10-80 | $status |"
+   }
++  if ($ExtraConcern) {
++    $rows += '| invented concern | lib/invented.dart | InventedController | invented pattern | same production responsibility and activation path | lib/invented.dart:1-20 | verified |'
++  }
++  if ($DuplicateConcern) {
++    $rows += '| module/container composition | lib/duplicate.dart | DuplicateShell | duplicate pattern | same production responsibility and activation path | lib/duplicate.dart:1-20 | verified |'
++  }
+ 
+-  $gapRow = if ([string]::IsNullOrWhiteSpace($NoEquivalentConcern)) {
++  $gapDecision = if ($WeakGapDecision) { 'resolved: none' } else { 'resolved: reuse adjacent target boundary' }
++  $gapApproval = if ($PendingGapApproval) { 'approval:pending' } else { 'approval:TECH-LEAD-014' }
++  $gapRow = if ($StrayGapRow) {
++    '| localization | GAP-099 | CONFLICT-099 | resolved: use approved localization boundary | approval:TECH-LEAD-099 |'
++  }
++  elseif ($InvalidGapSentinel) {
++    '| none | GAP-FAKE | not-applicable | resolved: none | approval:pending |'
++  }
++  elseif ([string]::IsNullOrWhiteSpace($NoEquivalentConcern)) {
+     '| none | not-applicable | not-applicable | not-applicable | not-applicable |'
+   }
+   else {
+-    "| $NoEquivalentConcern | GAP-014 | CONFLICT-014 | resolved: reuse adjacent target boundary | approval:TECH-LEAD-014 |"
++    "| $NoEquivalentConcern | GAP-014 | CONFLICT-014 | $gapDecision | $gapApproval |"
+   }
+ 
++  $inspectedSymbolRow = if ($EmptyInspectedSymbols) {
++    ''
++  }
++  else {
++    '| controller/provider/state pattern | lib/target_shell.dart | TargetController | complete declaration and production consumers | lib/target_shell.dart:10-80 |'
++  }
++  $dataFlowRow = if ($EmptyDataFlow) {
++    ''
++  }
++  elseif ($MeaninglessDataFlow) {
++    '| provider | none | none | state management | none | none |'
++  }
++  else {
++    '| provider | lib/target_shell.dart#TargetController | config event | normalize and select | TargetShell | lib/target_shell.dart:10-80 |'
++  }
+   return @"
+ ---
+ step_id: 02-discovery
+ status: draft
+ result: complete
+ produced_at: 2026-08-19
+ ---
+ 
+ # Discovery
+ 
+ ## Comparable Target Exemplars
+ 
+ | Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+ |---|---|---|---|---|---|---|
+ $($rows -join "`n")
+ 
+ ## Inspected Symbols
+ 
+ | Concern | Path | Symbol | Inspection Scope | Evidence |
+ |---|---|---|---|---|
+-| controller/provider/state pattern | lib/target_shell.dart | TargetController | complete declaration and production consumers | lib/target_shell.dart:10-80 |
++$inspectedSymbolRow
+ 
+ ## Target Data-flow Trace
+ 
+ | Stage | Path/Symbol | Input | Transformation | Output/Consumer | Evidence |
+ |---|---|---|---|---|---|
+-| provider | lib/target_shell.dart#TargetController | config event | normalize and select | TargetShell | lib/target_shell.dart:10-80 |
++$dataFlowRow
+ 
+ ## No-equivalent Gaps
+ 
+ | Concern | Gap Reference | Conflict Reference | Resolved Decision | Approval Reference |
+ |---|---|---|---|---|
+ $gapRow
+ "@
+ }
+ 
+ function New-DesignArtifact {
+   param(
+     [string[]]$IncludedConcerns = $concerns,
+     [string]$VagueConcern = '',
++    [string]$VagueValue = 'Use Riverpod',
+     [string]$NonConformingConcern = '',
+     [switch]$ResolveDeviation,
+     [switch]$OmitWorkItemTrace,
+     [switch]$OmitPlannedTree,
+     [switch]$PanelWrapperMismatch,
+-    [switch]$OmitLifecycleBoundary
++    [switch]$OmitLifecycleBoundary,
++    [switch]$ExtraConcern,
++    [switch]$DuplicateConcern,
++    [switch]$WeakDeviationDecision,
++    [switch]$PendingDeviationApproval,
++    [switch]$OmitProposedWrapper,
++    [switch]$OmitPlannedMatrixPath,
++    [switch]$AddUnrelatedPlannedPath,
++    [string]$WorkItemId = 'WORK-ADMIN-TARGET',
++    [string]$MasterPlanReference = 'master-plan.md#PLAN-ADMIN-001',
++    [string]$MasterPlanRevision = '2',
++    [string]$AcceptanceTraces = 'REQ-014, SC-014',
++    [string]$DecompositionReference = 'not-applicable'
+   )
+ 
+   $rows = foreach ($concern in $IncludedConcerns) {
+     $observed = "target convention for $concern"
+     $proposed = "lib/admin/target_feature.dart#TargetFeature ($concern)"
+     if ($concern -ceq 'main/child presentation boundaries') {
+       $observed = 'wrapper=TargetPanel; child content is composed inside the production panel'
+       $wrapper = if ($PanelWrapperMismatch) { 'RawContainer' } else { 'TargetPanel' }
+-      $proposed = "lib/admin/target_panel.dart#TargetFeaturePanel; wrapper=$wrapper"
++      $proposed = if ($OmitProposedWrapper) {
++        'lib/admin/target_panel.dart#TargetFeaturePanel'
++      }
++      else {
++        "lib/admin/target_panel.dart#TargetFeaturePanel; wrapper=$wrapper"
++      }
+     }
+     if ($concern -ceq $VagueConcern) {
+-      $observed = 'Use Riverpod'
+-      $proposed = 'Use Riverpod'
++      $observed = $VagueValue
++      $proposed = $VagueValue
+     }
+     $conforms = if ($concern -ceq $NonConformingConcern) { 'no' } else { 'yes' }
+     $deviation = if ($conforms -ceq 'no') { 'DEV-014' } else { 'not-applicable' }
+     "| $concern | 02-discovery.md#$concern | $observed | $proposed | $conforms | $deviation |"
+   }
++  if ($ExtraConcern) {
++    $rows += '| invented concern | 02-discovery.md#invented | invented concrete pattern | lib/admin/invented.dart#Invented | yes | not-applicable |'
++  }
++  if ($DuplicateConcern) {
++    $rows += '| module/container composition | 02-discovery.md#duplicate | duplicate concrete pattern | lib/admin/duplicate.dart#Duplicate | yes | not-applicable |'
++  }
+ 
++  $deviationDecision = if ($WeakDeviationDecision) { 'resolved: none' } else { 'resolved: approved alternate panel wrapper' }
++  $deviationApproval = if ($PendingDeviationApproval) { 'approval:pending' } else { 'approval:TECH-LEAD-014' }
+   $deviationRow = if ($ResolveDeviation) {
+-    '| DEV-014 | main/child presentation boundaries | CONFLICT-014 | resolved: approved alternate panel wrapper | approval:TECH-LEAD-014 |'
++    "| DEV-014 | main/child presentation boundaries | CONFLICT-014 | $deviationDecision | $deviationApproval |"
+   }
+   else {
+     '| none | not-applicable | not-applicable | not-applicable | not-applicable |'
+   }
+ 
++  $plannedTreeRows = @(
++    '| lib/admin/target_feature.dart | TargetFeature | provider-owned feature state | 02-discovery.md#controller/provider/state-pattern |'
++  )
++  if (-not $OmitPlannedMatrixPath) {
++    $plannedTreeRows += '| lib/admin/target_panel.dart | TargetFeaturePanel | TargetPanel child presentation | 02-discovery.md#main-child-presentation-boundaries |'
++  }
++  if ($AddUnrelatedPlannedPath) {
++    $plannedTreeRows += '| lib/admin/unrelated.dart | Unrelated | unrelated structure | 02-discovery.md#module-container-composition |'
++  }
+   $plannedTree = if ($OmitPlannedTree) {
+     ''
+   }
+   else {
+ @"
+ ## Planned File Tree
+ 
+ | Planned Path | Planned Symbol | Responsibility | Exemplar or Deviation Reference |
+ |---|---|---|---|
+-| lib/admin/target_feature.dart | TargetFeature | provider-owned feature state | 02-discovery.md#controller/provider/state-pattern |
+-| lib/admin/target_panel.dart | TargetFeaturePanel | TargetPanel child presentation | 02-discovery.md#main-child-presentation-boundaries |
++$($plannedTreeRows -join "`n")
+ "@
+   }
+ 
+   $boundaryRows = @(
+     '| provider | lib/admin/target_feature.dart#TargetFeatureProvider | config input | normalized state | loading/error/data policy | 02-discovery.md#controller-provider-state |',
+     '| router | lib/router.dart#targetRoute | route request | TargetFeaturePanel | route guard and disposal | 02-discovery.md#routing-lifecycle |',
+     '| localization | lib/l10n/app_localizations.dart#targetLabel | locale key | localized label | generated localization lookup | 02-discovery.md#localization |',
+     '| subscription | lib/admin/target_feature.dart#TargetSubscription | service event | provider update | subscribe, normalize, cancel | 02-discovery.md#service-config |'
+   )
+   if (-not $OmitLifecycleBoundary) {
+@@ -186,21 +267,21 @@ function New-DesignArtifact {
+ 
+   $workItemTrace = if ($OmitWorkItemTrace) {
+     ''
+   }
+   else {
+ @"
+ ## Work Item Trace
+ 
+ | Work Item ID | Master Plan Reference | Master Plan Revision | Acceptance Traces | Decomposition Decision Reference |
+ |---|---|---|---|---|
+-| WORK-ADMIN-TARGET | master-plan.md#PLAN-ADMIN-001 | 2 | REQ-014, SC-014 | not-applicable |
++| $WorkItemId | $MasterPlanReference | $MasterPlanRevision | $AcceptanceTraces | $DecompositionReference |
+ "@
+   }
+ 
+   return @"
+ ---
+ step_id: 07-technical-design
+ status: draft
+ result: complete
+ produced_at: 2026-08-19
+ ---
+@@ -278,84 +359,236 @@ Invoke-ConformanceCase `
+   (New-DiscoveryArtifact -IncludedConcerns @('controller/provider/state pattern')) `
+   '' `
+   $false `
+   'missing applicable concern'
+ Invoke-ConformanceCase `
+   'discovery rejects one missing concern' `
+   (New-DiscoveryArtifact -IncludedConcerns $concerns[0..6]) `
+   '' `
+   $false `
+   'test harness and production-boundary tests'
++Invoke-ConformanceCase `
++  'discovery rejects an invented extra concern' `
++  (New-DiscoveryArtifact -ExtraConcern) `
++  '' `
++  $false `
++  'unexpected concern'
++Invoke-ConformanceCase `
++  'discovery rejects duplicate concern coverage' `
++  (New-DiscoveryArtifact -DuplicateConcern) `
++  '' `
++  $false `
++  'must appear exactly once'
+ Invoke-ConformanceCase `
+   'discovery rejects blank inspected symbols' `
+   (New-DiscoveryArtifact -BlankSymbolsConcern 'controller/provider/state pattern') `
+   '' `
+   $false `
+   'Inspected Symbols must not be blank'
++Invoke-ConformanceCase `
++  'discovery rejects wildcard inspected symbols' `
++  (New-DiscoveryArtifact -WildcardSymbols) `
++  '' `
++  $false `
++  'Inspected Symbols must name explicit symbols'
++Invoke-ConformanceCase `
++  'discovery rejects empty inspected-symbol rows' `
++  (New-DiscoveryArtifact -EmptyInspectedSymbols) `
++  '' `
++  $false `
++  'Inspected Symbols requires at least one evidence row'
++Invoke-ConformanceCase `
++  'discovery rejects wrong inspected-symbol columns' `
++  ((New-DiscoveryArtifact).Replace(
++    '| Concern | Path | Symbol | Inspection Scope | Evidence |',
++    '| Path | Concern | Symbol | Inspection Scope | Evidence |'
++  )) `
++  '' `
++  $false `
++  'Inspected Symbols table columns must be exactly'
++Invoke-ConformanceCase `
++  'discovery rejects empty target data-flow rows' `
++  (New-DiscoveryArtifact -EmptyDataFlow) `
++  '' `
++  $false `
++  'Target Data-flow Trace requires at least one evidence row'
++Invoke-ConformanceCase `
++  'discovery rejects meaningless target data-flow endpoints' `
++  (New-DiscoveryArtifact -MeaninglessDataFlow) `
++  '' `
++  $false `
++  'Target Data-flow Trace requires meaningful endpoints and evidence'
++Invoke-ConformanceCase `
++  'discovery rejects gap rows without no-equivalent status' `
++  (New-DiscoveryArtifact -StrayGapRow) `
++  '' `
++  $false `
++  'No-equivalent Gaps must match no-equivalent statuses exactly'
++Invoke-ConformanceCase `
++  'discovery rejects malformed no-gap sentinel' `
++  (New-DiscoveryArtifact -InvalidGapSentinel) `
++  '' `
++  $false `
++  'No-equivalent Gaps sentinel must be canonical'
+ Invoke-ConformanceCase `
+   'discovery rejects a non-comparable reason' `
+   (New-DiscoveryArtifact -NotComparableConcern 'localization') `
+   '' `
+   $false `
+   'Comparable Reason must explain comparability'
+ Invoke-ConformanceCase `
+   'discovery rejects unknown exemplar status' `
+   (New-DiscoveryArtifact -UnknownConcern 'routing and lifecycle') `
+   '' `
+   $false `
+   'unknown status blocks discovery'
+ Invoke-ConformanceCase `
+   'discovery accepts approved no-equivalent gap' `
+   (New-DiscoveryArtifact -NoEquivalentConcern 'localization') `
+   '' `
+   $true
++Invoke-ConformanceCase `
++  'discovery rejects placeholder resolved gap decision' `
++  (New-DiscoveryArtifact -NoEquivalentConcern 'localization' -WeakGapDecision) `
++  '' `
++  $false `
++  'resolved gap/conflict decision'
++Invoke-ConformanceCase `
++  'discovery rejects pending gap approval' `
++  (New-DiscoveryArtifact -NoEquivalentConcern 'localization' -PendingGapApproval) `
++  '' `
++  $false `
++  'resolved gap/conflict decision'
+ Invoke-ConformanceCase `
+   'discovery accepts complete eight-concern evidence' `
+   (New-DiscoveryArtifact) `
+   '' `
+   $true
+ 
+ Invoke-ConformanceCase `
+   'design rejects vague Riverpod guidance' `
+   '' `
+   (New-DesignArtifact -VagueConcern 'controller/provider/state pattern') `
+   $false `
+   'generic technology guidance is not evidence'
++Invoke-ConformanceCase `
++  'design rejects vague state-management variant' `
++  '' `
++  (New-DesignArtifact -VagueConcern 'controller/provider/state pattern' -VagueValue 'Adopt state management provider pattern') `
++  $false `
++  'generic technology guidance is not evidence'
++Invoke-ConformanceCase `
++  'design rejects vague clean-architecture variant' `
++  '' `
++  (New-DesignArtifact -VagueConcern 'controller/provider/state pattern' -VagueValue 'Follow Clean Architecture with state management') `
++  $false `
++  'generic technology guidance is not evidence'
++Invoke-ConformanceCase `
++  'design rejects an invented extra concern' `
++  '' `
++  (New-DesignArtifact -ExtraConcern) `
++  $false `
++  'unexpected concern'
++Invoke-ConformanceCase `
++  'design rejects duplicate concern coverage' `
++  '' `
++  (New-DesignArtifact -DuplicateConcern) `
++  $false `
++  'must appear exactly once'
+ Invoke-ConformanceCase `
+   'design rejects missing planned file tree' `
+   '' `
+   (New-DesignArtifact -OmitPlannedTree) `
+   $false `
+   'missing Planned File Tree'
+ Invoke-ConformanceCase `
+   'design rejects missing work-item trace' `
+   '' `
+   (New-DesignArtifact -OmitWorkItemTrace) `
+   $false `
+   'missing Work Item Trace'
++Invoke-ConformanceCase `
++  'design rejects noncanonical master-plan reference' `
++  '' `
++  (New-DesignArtifact -MasterPlanReference 'notes.md#PLAN-ADMIN-001') `
++  $false `
++  'canonical master-plan reference'
++Invoke-ConformanceCase `
++  'design rejects cross-scope work-item and master-plan binding' `
++  '' `
++  (New-DesignArtifact -MasterPlanReference 'master-plan.md#PLAN-SETTINGS-001') `
++  $false `
++  'must bind the same scope'
++Invoke-ConformanceCase `
++  'design rejects malformed acceptance trace tokens' `
++  '' `
++  (New-DesignArtifact -AcceptanceTraces 'REQ-014, garbage, SC-014') `
++  $false `
++  'requires only canonical acceptance trace IDs'
++Invoke-ConformanceCase `
++  'design rejects malformed canonical-like acceptance IDs' `
++  '' `
++  (New-DesignArtifact -AcceptanceTraces 'REQ--014, SC-014') `
++  $false `
++  'requires only canonical acceptance trace IDs'
+ Invoke-ConformanceCase `
+   'design rejects unresolved structural deviation' `
+   '' `
+   (New-DesignArtifact -NonConformingConcern 'main/child presentation boundaries') `
+   $false `
+   'requires a resolved decision and Tech Lead approval'
+ Invoke-ConformanceCase `
+   'design accepts approved structural deviation' `
+   '' `
+   (New-DesignArtifact -NonConformingConcern 'main/child presentation boundaries' -ResolveDeviation) `
+   $true
++Invoke-ConformanceCase `
++  'design rejects placeholder resolved deviation decision' `
++  '' `
++  (New-DesignArtifact -NonConformingConcern 'main/child presentation boundaries' -ResolveDeviation -WeakDeviationDecision) `
++  $false `
++  'resolved decision and Tech Lead approval'
++Invoke-ConformanceCase `
++  'design rejects pending deviation approval' `
++  '' `
++  (New-DesignArtifact -NonConformingConcern 'main/child presentation boundaries' -ResolveDeviation -PendingDeviationApproval) `
++  $false `
++  'resolved decision and Tech Lead approval'
+ Invoke-ConformanceCase `
+   'design rejects panel-wrapper mismatch' `
+   '' `
+   (New-DesignArtifact -PanelWrapperMismatch) `
+   $false `
+   'panel wrapper does not conform'
++Invoke-ConformanceCase `
++  'design rejects missing proposed panel wrapper' `
++  '' `
++  (New-DesignArtifact -OmitProposedWrapper) `
++  $false `
++  'proposed panel wrapper is required'
++Invoke-ConformanceCase `
++  'design accepts approved panel-wrapper deviation' `
++  '' `
++  (New-DesignArtifact -NonConformingConcern 'main/child presentation boundaries' -PanelWrapperMismatch -ResolveDeviation) `
++  $true
++Invoke-ConformanceCase `
++  'design rejects planned tree missing a matrix path' `
++  '' `
++  (New-DesignArtifact -OmitPlannedMatrixPath) `
++  $false `
++  'Planned File Tree path set must exactly match matrix proposed paths'
++Invoke-ConformanceCase `
++  'design rejects unrelated planned tree path' `
++  '' `
++  (New-DesignArtifact -AddUnrelatedPlannedPath) `
++  $false `
++  'Planned File Tree path set must exactly match matrix proposed paths'
+ Invoke-ConformanceCase `
+   'design rejects missing lifecycle boundary' `
+   '' `
+   (New-DesignArtifact -OmitLifecycleBoundary) `
+   $false `
+   'missing required boundary: lifecycle'
+ Invoke-ConformanceCase `
+   'design accepts complete conforming evidence' `
+   '' `
+   (New-DesignArtifact) `
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+index 391e6bc..3f57954 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+@@ -92,39 +92,51 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+   if (Test-Path -LiteralPath $discoveryPath -PathType Leaf) {
+     $discoveryText = Get-Content -Raw -Encoding utf8 -LiteralPath $discoveryPath
+     $discoveryTable = & $getTable $discoveryText 'Comparable Target Exemplars'
+     if ($null -eq $discoveryTable) {
+       $errors.Add('Discovery missing Comparable Target Exemplars')
+     }
+     else {
+       if (($discoveryTable.Columns -join '|') -cne ($contractExemplarTable.Columns -join '|')) {
+         $errors.Add("Discovery Comparable Target Exemplars table columns must be exactly: $($contractExemplarTable.Columns -join ' | ')")
+       }
++      if ($discoveryTable.Rows.Count -ne $canonicalConcerns.Count) {
++        $errors.Add("Discovery concern cardinality must equal canonical eight; found $($discoveryTable.Rows.Count)")
++      }
++      @($discoveryTable.Rows | Where-Object { $_.Concern -cnotin $canonicalConcerns }) | ForEach-Object {
++        $errors.Add("Discovery unexpected concern: $($_.Concern)")
++      }
+       foreach ($concern in $canonicalConcerns) {
+         $matchingRows = @($discoveryTable.Rows | Where-Object { $_.Concern -ceq $concern })
+         if ($matchingRows.Count -eq 0) {
+           $errors.Add("Discovery missing applicable concern: $concern")
+           continue
+         }
+         if ($matchingRows.Count -gt 1) {
+           $errors.Add("Discovery concern must appear exactly once: $concern")
+           continue
+         }
+         $row = $matchingRows[0]
+         foreach ($requiredColumn in @('Path', 'Observed Pattern', 'Comparable Reason', 'Evidence')) {
+           if (& $isMissingValue $row.$requiredColumn) {
+             $errors.Add("Discovery $concern $requiredColumn must not be blank")
+           }
+         }
+         if (& $isMissingValue $row.'Inspected Symbols') {
+           $errors.Add("Discovery $concern Inspected Symbols must not be blank")
+         }
++        elseif (
++          $row.'Inspected Symbols' -match '\*' -or
++          $row.'Inspected Symbols' -match '^(?i:all|any|generic|symbols?|controllers?|providers?|all\s+symbols)$'
++        ) {
++          $errors.Add("Discovery $concern Inspected Symbols must name explicit symbols")
++        }
+         if ($row.'Comparable Reason' -match '^(?i:not comparable|non-comparable|generic|same technology|uses?\s+\S+)$') {
+           $errors.Add("Discovery $concern Comparable Reason must explain comparability")
+         }
+         if ($row.Status -ceq 'unknown') {
+           $errors.Add("Discovery $concern unknown status blocks discovery")
+         }
+         elseif ($row.Status -cnotin @('verified', 'no-equivalent')) {
+           $errors.Add("Discovery $concern has invalid exemplar status: $($row.Status)")
+         }
+       }
+@@ -135,35 +147,122 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+         $gapColumns = @('Concern', 'Gap Reference', 'Conflict Reference', 'Resolved Decision', 'Approval Reference')
+         if ($null -eq $gapTable -or ($gapTable.Columns -join '|') -cne ($gapColumns -join '|')) {
+           $errors.Add("Discovery No-equivalent Gaps table columns must be exactly: $($gapColumns -join ' | ')")
+         }
+         else {
+           foreach ($noEquivalentRow in $noEquivalentRows) {
+             $gapRows = @($gapTable.Rows | Where-Object { $_.Concern -ceq $noEquivalentRow.Concern })
+             $resolvedGap = if ($gapRows.Count -eq 1) { $gapRows[0] } else { $null }
+             if (
+               $null -eq $resolvedGap -or
+-              $resolvedGap.'Gap Reference' -cnotmatch '^GAP-[A-Z0-9-]+$' -or
+-              $resolvedGap.'Conflict Reference' -cnotmatch '^CONFLICT-[A-Z0-9-]+$' -or
+-              $resolvedGap.'Resolved Decision' -cnotmatch '^(?i:resolved:).+' -or
+-              $resolvedGap.'Approval Reference' -cnotmatch '^(?i:approval:).+'
++              $resolvedGap.'Gap Reference' -cnotmatch '^GAP-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or
++              $resolvedGap.'Conflict Reference' -cnotmatch '^CONFLICT-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or
++              $resolvedGap.'Resolved Decision' -cnotmatch '^resolved:\s+\S.+' -or
++              $resolvedGap.'Resolved Decision' -match '^resolved:\s*(?i:none|unknown|pending|not-applicable|n/?a|<[^>]+>)\s*$' -or
++              $resolvedGap.'Approval Reference' -cnotmatch '^approval:TECH-LEAD-[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+             ) {
+               $errors.Add("Discovery no-equivalent concern requires a resolved gap/conflict decision: $($noEquivalentRow.Concern)")
+             }
+           }
+         }
+       }
+     }
+ 
+-    foreach ($requiredSection in @('Inspected Symbols', 'Target Data-flow Trace', 'No-equivalent Gaps')) {
+-      if ($null -eq (& $getTable $discoveryText $requiredSection)) {
+-        $errors.Add("Discovery missing $requiredSection")
++    $inspectedTable = & $getTable $discoveryText 'Inspected Symbols'
++    $inspectedColumns = @('Concern', 'Path', 'Symbol', 'Inspection Scope', 'Evidence')
++    if ($null -eq $inspectedTable) {
++      $errors.Add('Discovery missing Inspected Symbols')
++    }
++    elseif (($inspectedTable.Columns -join '|') -cne ($inspectedColumns -join '|')) {
++      $errors.Add("Discovery Inspected Symbols table columns must be exactly: $($inspectedColumns -join ' | ')")
++    }
++    elseif ($inspectedTable.Rows.Count -eq 0) {
++      $errors.Add('Discovery Inspected Symbols requires at least one evidence row')
++    }
++    else {
++      foreach ($inspectedRow in $inspectedTable.Rows) {
++        $invalidInspectedValue = $false
++        foreach ($column in $inspectedColumns) {
++          if (& $isMissingValue $inspectedRow.$column) { $invalidInspectedValue = $true }
++        }
++        if (
++          $invalidInspectedValue -or
++          $inspectedRow.Symbol -match '\*' -or
++          $inspectedRow.Symbol -match '^(?i:all|any|generic|symbols?|controllers?|providers?|all\s+symbols)$'
++        ) {
++          $errors.Add('Discovery Inspected Symbols rows require explicit path, symbol, scope, and evidence')
++        }
++      }
++    }
++
++    $dataFlowTable = & $getTable $discoveryText 'Target Data-flow Trace'
++    $dataFlowColumns = @('Stage', 'Path/Symbol', 'Input', 'Transformation', 'Output/Consumer', 'Evidence')
++    if ($null -eq $dataFlowTable) {
++      $errors.Add('Discovery missing Target Data-flow Trace')
++    }
++    elseif (($dataFlowTable.Columns -join '|') -cne ($dataFlowColumns -join '|')) {
++      $errors.Add("Discovery Target Data-flow Trace table columns must be exactly: $($dataFlowColumns -join ' | ')")
++    }
++    elseif ($dataFlowTable.Rows.Count -eq 0) {
++      $errors.Add('Discovery Target Data-flow Trace requires at least one evidence row')
++    }
++    else {
++      foreach ($flowRow in $dataFlowTable.Rows) {
++        if (
++          (& $isMissingValue $flowRow.Stage) -or
++          (& $isMissingValue $flowRow.'Path/Symbol') -or
++          $flowRow.'Path/Symbol' -cnotmatch '[/\\].+#.+' -or
++          (& $isMissingValue $flowRow.Input) -or
++          (& $isMissingValue $flowRow.Transformation) -or
++          $flowRow.Transformation -match '^(?i:state management|framework|generic)$' -or
++          (& $isMissingValue $flowRow.'Output/Consumer') -or
++          (& $isMissingValue $flowRow.Evidence) -or
++          $flowRow.Evidence -cnotmatch '[:#][A-Za-z0-9-]+'
++        ) {
++          $errors.Add('Discovery Target Data-flow Trace requires meaningful endpoints and evidence')
++        }
++      }
++    }
++
++    $gapTable = & $getTable $discoveryText 'No-equivalent Gaps'
++    $gapColumns = @('Concern', 'Gap Reference', 'Conflict Reference', 'Resolved Decision', 'Approval Reference')
++    if ($null -eq $gapTable) {
++      $errors.Add('Discovery missing No-equivalent Gaps')
++    }
++    elseif (($gapTable.Columns -join '|') -cne ($gapColumns -join '|')) {
++      $errors.Add("Discovery No-equivalent Gaps table columns must be exactly: $($gapColumns -join ' | ')")
++    }
++    else {
++      $noEquivalentConcerns = @($discoveryTable.Rows | Where-Object { $_.Status -ceq 'no-equivalent' } | ForEach-Object { $_.Concern })
++      $realGapRows = @($gapTable.Rows | Where-Object { $_.Concern -cne 'none' })
++      $sentinelRows = @($gapTable.Rows | Where-Object { $_.Concern -ceq 'none' })
++      $gapConcernSet = @($realGapRows | ForEach-Object { $_.Concern } | Sort-Object)
++      $statusConcernSet = @($noEquivalentConcerns | Sort-Object)
++      $gapSetsMatch = (($gapConcernSet -join '|') -ceq ($statusConcernSet -join '|'))
++      if (
++        $realGapRows.Count -ne $noEquivalentConcerns.Count -or
++        -not $gapSetsMatch -or
++        ($noEquivalentConcerns.Count -eq 0 -and $sentinelRows.Count -ne 1) -or
++        ($noEquivalentConcerns.Count -gt 0 -and $sentinelRows.Count -ne 0)
++      ) {
++        $errors.Add('Discovery No-equivalent Gaps must match no-equivalent statuses exactly')
++      }
++      elseif ($noEquivalentConcerns.Count -eq 0) {
++        $sentinel = $sentinelRows[0]
++        if (
++          $sentinel.'Gap Reference' -cne 'not-applicable' -or
++          $sentinel.'Conflict Reference' -cne 'not-applicable' -or
++          $sentinel.'Resolved Decision' -cne 'not-applicable' -or
++          $sentinel.'Approval Reference' -cne 'not-applicable'
++        ) {
++          $errors.Add('Discovery No-equivalent Gaps sentinel must be canonical')
++        }
+       }
+     }
+   }
+ 
+   $designPath = Join-Path $Root '07-technical-design.md'
+   if (Test-Path -LiteralPath $designPath -PathType Leaf) {
+     $designText = Get-Content -Raw -Encoding utf8 -LiteralPath $designPath
+     $workItemTrace = & $getTable $designText 'Work Item Trace'
+     $workItemTraceColumns = @(
+       'Work Item ID', 'Master Plan Reference', 'Master Plan Revision',
+@@ -173,65 +272,97 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+       $errors.Add('Technical design missing Work Item Trace')
+     }
+     elseif (
+       ($workItemTrace.Columns -join '|') -cne ($workItemTraceColumns -join '|') -or
+       $workItemTrace.Rows.Count -ne 1
+     ) {
+       $errors.Add("Technical design Work Item Trace table columns must be exactly: $($workItemTraceColumns -join ' | ') and contain exactly one work item")
+     }
+     else {
+       $workItemRow = $workItemTrace.Rows[0]
+-      if ($workItemRow.'Work Item ID' -cnotmatch '^WORK-[A-Z0-9-]+$') {
++      $workItemMatch = [regex]::Match($workItemRow.'Work Item ID', '^WORK-(?<scope>[A-Z0-9]+)(?:-[A-Z0-9]+)+$')
++      if (-not $workItemMatch.Success) {
+         $errors.Add('Technical design Work Item Trace requires a canonical Work Item ID')
+       }
+-      if (& $isMissingValue $workItemRow.'Master Plan Reference') {
+-        $errors.Add('Technical design Work Item Trace requires a master-plan reference')
++      $masterPlanMatch = [regex]::Match(
++        $workItemRow.'Master Plan Reference',
++        '^master-plan\.md#PLAN-(?<scope>[A-Z0-9]+)(?:-[A-Z0-9]+)+$'
++      )
++      if (-not $masterPlanMatch.Success) {
++        $errors.Add('Technical design Work Item Trace requires a canonical master-plan reference')
++      }
++      elseif ($workItemMatch.Success -and $workItemMatch.Groups['scope'].Value -cne $masterPlanMatch.Groups['scope'].Value) {
++        $errors.Add('Technical design Work Item Trace work item and master plan must bind the same scope')
+       }
+       if ($workItemRow.'Master Plan Revision' -cnotmatch '^[1-9][0-9]*$') {
+         $errors.Add('Technical design Work Item Trace requires a positive master-plan revision')
+       }
+-      if ($workItemRow.'Acceptance Traces' -cnotmatch '(?:^|[ ,;])(?:REQ|SC|AC)-[A-Z0-9-]+(?:$|[ ,;])') {
+-        $errors.Add('Technical design Work Item Trace requires acceptance traces')
++      $acceptanceTraceIds = @(
++        $workItemRow.'Acceptance Traces'.Split(',') |
++          ForEach-Object { $_.Trim() } |
++          Where-Object { $_ -ne '' }
++      )
++      $invalidAcceptanceIds = @($acceptanceTraceIds | Where-Object { $_ -cnotmatch '^(?:REQ|SC|AC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$' })
++      if (
++        $acceptanceTraceIds.Count -eq 0 -or
++        $invalidAcceptanceIds.Count -gt 0 -or
++        @($acceptanceTraceIds | Sort-Object -Unique).Count -ne $acceptanceTraceIds.Count
++      ) {
++        $errors.Add('Technical design Work Item Trace requires only canonical acceptance trace IDs')
+       }
+-      if ($workItemRow.'Decomposition Decision Reference' -cnotmatch '^(?:not-applicable|DEC-[A-Z0-9-]+)$') {
++      if (
++        $workItemRow.'Decomposition Decision Reference' -cnotmatch '^(?:not-applicable|DEC-[A-Z0-9]+(?:-[A-Z0-9]+)*)$' -or
++        $workItemRow.'Decomposition Decision Reference' -match '^DEC-(?:NONE|UNKNOWN|PENDING|NOT-APPLICABLE)$'
++      ) {
+         $errors.Add('Technical design Work Item Trace requires a decomposition decision reference or not-applicable')
+       }
+     }
+     $matrix = & $getTable $designText 'Target Structure Conformance Matrix'
+     if ($null -eq $matrix) {
+       $errors.Add('Technical design missing Target Structure Conformance Matrix')
+     }
+     else {
+       if (($matrix.Columns -join '|') -cne ($contractMatrixTable.Columns -join '|')) {
+         $errors.Add("Technical design Target Structure Conformance Matrix table columns must be exactly: $($contractMatrixTable.Columns -join ' | ')")
+       }
++      if ($matrix.Rows.Count -ne $canonicalConcerns.Count) {
++        $errors.Add("Technical design concern cardinality must equal canonical eight; found $($matrix.Rows.Count)")
++      }
++      @($matrix.Rows | Where-Object { $_.Concern -cnotin $canonicalConcerns }) | ForEach-Object {
++        $errors.Add("Technical design unexpected concern: $($_.Concern)")
++      }
+       $deviationTable = & $getTable $designText 'Approved Structural Deviations'
+       foreach ($concern in $canonicalConcerns) {
+         $matchingRows = @($matrix.Rows | Where-Object { $_.Concern -ceq $concern })
+         if ($matchingRows.Count -eq 0) {
+           $errors.Add("Technical design missing applicable concern: $concern")
+           continue
+         }
+         if ($matchingRows.Count -gt 1) {
+           $errors.Add("Technical design concern must appear exactly once: $concern")
+           continue
+         }
+         $row = $matchingRows[0]
+         foreach ($requiredColumn in @('Working Exemplar', 'Observed Target Pattern', 'Proposed Path/Symbol')) {
+           if (& $isMissingValue $row.$requiredColumn) {
+             $errors.Add("Technical design $concern $requiredColumn must not be blank")
+           }
+         }
+-        if (
+-          $row.'Observed Target Pattern' -match '^(?i:\s*(use\s+riverpod|follow\s+clean architecture)\s*)$' -or
+-          $row.'Proposed Path/Symbol' -match '^(?i:\s*(use\s+riverpod|follow\s+clean architecture)\s*)$'
+-        ) {
++        $genericGuidanceOnly = $false
++        foreach ($guidanceValue in @($row.'Observed Target Pattern', $row.'Proposed Path/Symbol')) {
++          $mentionsGenericArchitecture = $guidanceValue -match '(?i)\b(?:riverpod|clean architecture|state management|provider pattern)\b'
++          $hasConcreteStructureEvidence = $guidanceValue -match '(?:[/\\].+(?:#|:[0-9])|#\w+|(?i:owner|boundary|wrapper|router|subscription|lifecycle|path|symbol)=\S+)'
++          if ($mentionsGenericArchitecture -and -not $hasConcreteStructureEvidence) {
++            $genericGuidanceOnly = $true
++          }
++        }
++        if ($genericGuidanceOnly) {
+           $errors.Add("Technical design $concern generic technology guidance is not evidence")
+         }
+         if ($row.Conforms -cnotin @('yes', 'no')) {
+           $errors.Add("Technical design $concern Conforms must be yes or no")
+         }
+         elseif ($row.Conforms -ceq 'yes' -and $row.'Deviation Reference' -cne 'not-applicable') {
+           $errors.Add("Technical design conforming row must use not-applicable deviation: $concern")
+         }
+         elseif ($row.Conforms -ceq 'no') {
+           $requiredDeviationReference = $row.'Deviation Reference'
+@@ -241,33 +372,44 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+           }
+           else {
+             $deviationRows = @($deviationTable.Rows | Where-Object {
+               ($_.'Deviation Reference' -ceq $requiredDeviationReference) -and
+               ($_.Concern -ceq $requiredDeviationConcern)
+             })
+           }
+           $resolvedDeviation = if ($deviationRows.Count -eq 1) { $deviationRows[0] } else { $null }
+           if (
+             (& $isMissingValue $row.'Deviation Reference') -or
++            $row.'Deviation Reference' -cnotmatch '^DEV-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or
+             $null -eq $resolvedDeviation -or
+-            $resolvedDeviation.'Conflict Reference' -cnotmatch '^CONFLICT-[A-Z0-9-]+$' -or
+-            $resolvedDeviation.'Resolved Decision' -cnotmatch '^(?i:resolved:).+' -or
+-            $resolvedDeviation.'Tech Lead Approval' -cnotmatch '^(?i:approval:).+'
++            $resolvedDeviation.'Deviation Reference' -cnotmatch '^DEV-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or
++            $resolvedDeviation.'Conflict Reference' -cnotmatch '^CONFLICT-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or
++            $resolvedDeviation.'Resolved Decision' -cnotmatch '^resolved:\s+\S.+' -or
++            $resolvedDeviation.'Resolved Decision' -match '^resolved:\s*(?i:none|unknown|pending|not-applicable|n/?a|<[^>]+>)\s*$' -or
++            $resolvedDeviation.'Tech Lead Approval' -cnotmatch '^approval:TECH-LEAD-[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+           ) {
+             $errors.Add("Technical design Conforms = no requires a resolved decision and Tech Lead approval: $concern")
+           }
+         }
+ 
+-        if ($concern -ceq 'main/child presentation boundaries' -and $row.Conforms -ceq 'yes') {
++        if ($concern -ceq 'main/child presentation boundaries') {
+           $observedWrapper = [regex]::Match($row.'Observed Target Pattern', '(?i)(?:^|[;\s])wrapper=(?<name>[A-Za-z_][A-Za-z0-9_]*)')
+           $proposedWrapper = [regex]::Match($row.'Proposed Path/Symbol', '(?i)(?:^|[;\s])wrapper=(?<name>[A-Za-z_][A-Za-z0-9_]*)')
+           if (
++            $row.Conforms -ceq 'yes' -and
++            $observedWrapper.Success -and
++            -not $proposedWrapper.Success
++          ) {
++            $errors.Add('Technical design proposed panel wrapper is required for a conforming presentation row')
++          }
++          elseif (
++            $row.Conforms -ceq 'yes' -and
+             $observedWrapper.Success -and
+             $proposedWrapper.Success -and
+             $observedWrapper.Groups['name'].Value -cne $proposedWrapper.Groups['name'].Value
+           ) {
+             $errors.Add("Technical design panel wrapper does not conform: observed $($observedWrapper.Groups['name'].Value), proposed $($proposedWrapper.Groups['name'].Value)")
+           }
+         }
+       }
+     }
+ 
+@@ -280,20 +422,43 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+       $errors.Add("Technical design Planned File Tree table columns must be exactly: $($plannedTreeColumns -join ' | ') and include at least one planned file")
+     }
+     else {
+       foreach ($row in $plannedTree.Rows) {
+         foreach ($column in $plannedTreeColumns) {
+           if (& $isMissingValue $row.$column) {
+             $errors.Add("Technical design Planned File Tree $column must not be blank")
+           }
+         }
+       }
++      if ($null -ne $matrix) {
++        $matrixPaths = [Collections.Generic.List[string]]::new()
++        foreach ($matrixRow in $matrix.Rows) {
++          $proposedPathMatch = [regex]::Match(
++            $matrixRow.'Proposed Path/Symbol',
++            '^(?<path>[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)+)#(?<symbol>[A-Za-z_][A-Za-z0-9_]*)'
++          )
++          if (-not $proposedPathMatch.Success) {
++            $errors.Add("Technical design matrix requires a concrete proposed path/symbol: $($matrixRow.Concern)")
++          }
++          else {
++            $matrixPaths.Add($proposedPathMatch.Groups['path'].Value)
++          }
++        }
++        $expectedPathSet = @($matrixPaths | Sort-Object -Unique)
++        $plannedPathSet = @($plannedTree.Rows | ForEach-Object { $_.'Planned Path' } | Sort-Object -Unique)
++        if (
++          ($expectedPathSet -join '|') -cne ($plannedPathSet -join '|') -or
++          $plannedTree.Rows.Count -ne $plannedPathSet.Count
++        ) {
++          $errors.Add('Technical design Planned File Tree path set must exactly match matrix proposed paths')
++        }
++      }
+     }
+ 
+     $boundaryTable = & $getTable $designText 'Provider/Router/Localization/Subscription Boundaries'
+     $boundaryColumns = @('Boundary', 'Owner Path/Symbol', 'Input', 'Output', 'Lifecycle/Failure Policy', 'Evidence')
+     if ($null -eq $boundaryTable -or ($boundaryTable.Columns -join '|') -cne ($boundaryColumns -join '|')) {
+       $errors.Add("Technical design Provider/Router/Localization/Subscription Boundaries table columns must be exactly: $($boundaryColumns -join ' | ')")
+     }
+     else {
+       foreach ($requiredBoundary in @('provider', 'router', 'localization', 'subscription', 'lifecycle')) {
+         $boundaryRows = @($boundaryTable.Rows | Where-Object { $_.Boundary -ceq $requiredBoundary })

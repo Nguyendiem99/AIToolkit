@@ -1,0 +1,625 @@
+# Review package: 1e9c3a3f031079eeb1fdb4c3d2483cf5750f5ac6..19225b064763a27f834411e3b6f843b6678a9b0a
+
+## Commits
+19225b0 feat: classify migration exemplars by authority
+
+## Files changed
+ .../aitoolkit/skills/migration/discovery/SKILL.md  |   6 +-
+ .../aitoolkit/templates/migration/discovery.md     |  27 +++--
+ .../scenarios/responsibility-conformance.Tests.ps1 | 125 +++++++++++++++++++++
+ .../tests/scenarios/target-conformance.Tests.ps1   |  33 +++++-
+ .../responsibility-conformance.validation.ps1      | 104 ++++++++++++++++-
+ .../validation/target-conformance.validation.ps1   |  33 ++++--
+ 6 files changed, 300 insertions(+), 28 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md
+index d688893..374046d 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/discovery/SKILL.md
+@@ -55,21 +55,25 @@ Khảo sát cả upstream và downstream, gồm `requested-key`, `parse-model`,
+ ## Quick reference
+ 
+ | Quan sát | Xử lý |
+ |---|---|
+ | Fact có nguồn trực tiếp | Ghi record và Evidence |
+ | Inference được pack cho phép | Ghi nguồn và mức tin cậy |
+ | Marker không phân loại được | Ghi unknown; block nếu ảnh hưởng taxonomy |
+ 
+ ## Target exemplar responsibilities
+ 
+-Với `incremental` / `preserve-existing`, dựng `Comparable Target Exemplars` từ đúng tám concern trong canonical target-structure contract; set và cardinality phải khớp chính xác, không thiếu, duplicate hay thêm invented concern. Mỗi concern phải có đúng một row với real target `Path`, toàn bộ `Inspected Symbols`, `Observed Pattern`, lý do nghiệp vụ/activation cụ thể trong `Comparable Reason`, exact `Evidence`, và `Status`. Một generic controller, tên framework, hoặc chỉ một file có cùng technology không chứng minh complete working exemplar.
++Read `aitoolkit/contracts/file-responsibility-conformance.md` as the sole authority for responsibility-contract versioning and classification values; do not recreate its enums or table definition here.
++
++`Inspection Status` and `Classification` are separate decisions. `preferred` requires repeated working target evidence and no authoritative conflict. `compatibility-only` requires a project-pack rule or approved owner decision. `legacy-debt` requires project documentation, a debt record, or a Tech Lead-approved conflict. `no-equivalent` requires factual search or inspection evidence. Agent opinion is not classification authority, and classification authority/evidence must be exact immutable references.
++
++Với `incremental` / `preserve-existing`, dựng `Comparable Target Exemplars` từ đúng tám concern trong canonical target-structure contract; set và cardinality phải khớp chính xác, không thiếu, duplicate hay thêm invented concern. Mỗi concern phải có đúng một row với real target `Path`, toàn bộ `Inspected Symbols`, `Observed Pattern`, `Primary Responsibility`, `Owned Capabilities`, `Verification Owner`, lý do nghiệp vụ/activation cụ thể trong `Comparable Reason`, exact `Evidence`, `Inspection Status`, `Classification`, `Classification Authority` và `Classification Evidence`. Một generic controller, tên framework, hoặc chỉ một file có cùng technology không chứng minh complete working exemplar.
+ 
+ `Inspected Symbols`, `Target Data-flow Trace` và `No-equivalent Gaps` giữ exact columns của template và không được là table shell rỗng. Tokenize mọi danh sách symbol theo dấu phẩy/chấm phẩy; từng token phải là explicit identifier hoặc qualified symbol, không chứa `*`, `all`, `any`, `generic`, `symbol(s)`, `controller(s)`, `provider(s)`, `category/categories` hoặc generic controller/provider/category ở bất kỳ vị trí nào. `Target Data-flow Trace` phải cover đúng thứ tự `source -> subscription -> normalization -> state -> selection -> render -> test`, với output của mỗi stage exact-match input của stage kế tiếp; mỗi row có path/symbol endpoint, input, structured `operation=<identifier>; owner=<path#symbol>`, output/production consumer và exact trace evidence. Một provider row hoặc transformation prose không chứng minh end-to-end flow.
+ 
+ `no-equivalent` không cho phép phát minh pattern. Set gap rows phải khớp chính xác set concern có status này; khi không có thì chỉ dùng sentinel `none` canonical. Mỗi gap thật gắn `GAP-*`, `CONFLICT-*`, quyết định dương `resolved:DECISION-<ID>: <nội dung cụ thể>` và approval thật `approval:TECH-LEAD-<ID>`; reject placeholder semantic ở bất kỳ vị trí nào như `none`, `unknown`, `pending`, `TBD`, `review`, `not-applicable`. `unknown`, concern applicable bị thiếu, path/symbol/evidence rỗng, lý do không chứng minh comparability, hoặc no-equivalent chưa resolve đều giữ `status: draft` và `result: blocked`.
+ 
+ Hợp đồng đầu ra giữ đủ `Comparable Target Exemplars`, `Inspected Symbols`, `Target Data-flow Trace`, và `No-equivalent Gaps`. Với incremental output, complete chỉ khi đủ tám concern canonical, không có `unknown`, và mọi `no-equivalent` đã có resolved decision.
+ 
+ ## Common mistakes
+ 
+ - Áp taxonomy quen thuộc khi project pack không cung cấp.
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md b/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md
+index 39a1a97..ae463ca 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/templates/migration/discovery.md
+@@ -1,46 +1,49 @@
+ ---
+ step_id: <orchestrator-provided>
+ status: draft
+ result: complete
+ produced_at: <yyyy-mm-dd>
++responsibility_contract:
++  version: 1
++  applicability: required
+ ---
+ 
+ <!-- artifact_language: vi -->
+ 
+ # Khảo sát migration
+ 
+ ## Danh mục khảo sát
+ 
+ | Type | Name | Source Reference | Notes |
+ |---|---|---|---|
+ | Feature | <tính năng> | <tham chiếu nguồn> | <ghi chú> |
+ | Screen | <màn hình> | <tham chiếu nguồn> | <ghi chú> |
+ | Component | <thành phần> | <tham chiếu nguồn> | <ghi chú> |
+ | State | <trạng thái> | <tham chiếu nguồn> | <ghi chú> |
+ | Service | <dịch vụ> | <tham chiếu nguồn> | <ghi chú> |
+ | Dependency | <dependency> | <tham chiếu nguồn> | <ghi chú> |
+ 
+ ## Comparable Target Exemplars
+ 
+-Giữ exact set/cardinality tám concern canonical: không thiếu, duplicate hoặc invented concern. Mỗi row applicable cần path thật, toàn bộ symbol explicit đã inspect (không wildcard/`all`), pattern quan sát được, lý do comparability cụ thể và evidence chính xác. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`.
+-
+-| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+-|---|---|---|---|---|---|---|
+-| module/container composition | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| main/child presentation boundaries | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| unit/component organization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| controller/provider/state pattern | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| routing and lifecycle | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| localization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| service/config subscription and normalization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+-| test harness and production-boundary tests | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
++Giữ exact set/cardinality tám concern canonical: không thiếu, duplicate hoặc invented concern. Mỗi row applicable cần path thật, toàn bộ symbol explicit đã inspect (không wildcard/`all`), pattern quan sát được, primary responsibility, owned capabilities, verification owner, lý do comparability cụ thể, evidence chính xác, inspection status và classification authority/evidence immutable. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`. Classification không phải self-attestation của agent: `preferred` cần repeated working evidence và không authoritative conflict; `compatibility-only` cần project-pack rule hoặc approved owner decision; `legacy-debt` cần project documentation, debt record hoặc Tech Lead-approved conflict; `no-equivalent` cần factual search/inspection evidence.
++
++| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |
++|---|---|---|---|---|---|---|---|---|---|---|---|---|
++| module/container composition | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| main/child presentation boundaries | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| unit/component organization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| controller/provider/state pattern | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| routing and lifecycle | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| localization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| service/config subscription and normalization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
++| test harness and production-boundary tests | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <project-pack-rule / approved-owner-decision / factual-discovery-evidence> | <tham chiếu immutable chính xác> |
+ 
+ ## Inspected Symbols
+ 
+ Giữ exact columns và ít nhất một evidence row; tokenize danh sách bằng dấu phẩy/chấm phẩy, mỗi token là explicit/qualified symbol, không dùng `*`, `all`, `any`, `generic`, `symbol(s)`, `controller(s)`, `provider(s)`, `category/categories` hoặc generic controller/provider/category.
+ 
+ | Concern | Path | Symbol | Inspection Scope | Evidence |
+ |---|---|---|---|---|
+ | <concern canonical> | <đường dẫn thật> | <symbol cụ thể> | <declaration, consumers và lifecycle đã đọc> | <path:line> |
+ 
+ ## Target Data-flow Trace
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+index be8e66b..62d6729 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+@@ -54,11 +54,136 @@ $stageCases = @(
+   [pscustomobject]@{ Name = 'HANDOFF'; Invoke = { param($text) Test-ResponsibilityHandoff -SourceText '' -TargetText '' -ContractText $text } }
+ )
+ foreach ($stageCase in $stageCases) {
+   $stageErrors = @(& $stageCase.Invoke $rawVersionBody)
+   $expected = "ARC-$($stageCase.Name)-CONTRACT-VERSION: responsibility contract requires version 1 and applicability required"
+   if ($stageErrors -notcontains $expected) {
+     throw "Expected bounded-front-matter diagnostic for $($stageCase.Name): $($stageErrors -join '; ')"
+   }
+ }
+ 
++$discoveryConcerns = @(
++  'module/container composition',
++  'main/child presentation boundaries',
++  'unit/component organization',
++  'controller/provider/state pattern',
++  'routing and lifecycle',
++  'localization',
++  'service/config subscription and normalization',
++  'test harness and production-boundary tests'
++)
++
++function New-DiscoveryClassificationFixture {
++  param(
++    [string]$Classification = 'preferred',
++    [string]$Authority = 'factual-discovery-evidence',
++    [string]$ClassificationEvidence = 'inspection:lib/target_shell.dart:10-80; inspection:test/target_shell_test.dart:10-60'
++  )
++
++  $rows = foreach ($concern in $discoveryConcerns) {
++    "| $concern | lib/target_shell.dart | TargetShell, TargetController | working target pattern | one focused $concern responsibility | CAP-001 | VERIFY-OWNER-001 | same production responsibility and activation path | lib/target_shell.dart:10-80 | verified | $Classification | $Authority | $ClassificationEvidence |"
++  }
++  return @"
++---
++step_id: 02-discovery
++status: draft
++result: complete
++produced_at: 2026-08-21
++responsibility_contract:
++  version: 1
++  applicability: required
++---
++
++## Comparable Target Exemplars
++
++| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |
++|---|---|---|---|---|---|---|---|---|---|---|---|---|
++$($rows -join "`n")
++"@
++}
++
++function Set-DiscoveryClassification([string]$Root, [string]$Classification, [string]$Authority, [string]$Evidence) {
++  $path = Join-Path $Root '02-discovery.md'
++  $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++  $updated = [regex]::Replace(
++    $text,
++    '(?m)^(\| module/container composition \|[^\r\n]*?\|)\s*(?:preferred|compatibility-only|legacy-debt|no-equivalent)\s*\|\s*[^|]+\|\s*[^|]+\|\s*$',
++    "`$1 $Classification | $Authority | $Evidence |",
++    1
++  )
++  if ($updated -ceq $text) { throw 'Discovery classification fixture replacement failed' }
++  Set-Content -Encoding utf8 -LiteralPath $path -Value $updated
++}
++
++function Invoke-DiscoveryClassificationCase([string]$Root) {
++  $text = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $Root '02-discovery.md')
++  return @(Test-ResponsibilityDiscovery -DiscoveryText $text -Mode incremental -ContractText $contract)
++}
++
++function Assert-Rejected([string]$Name, [scriptblock]$Mutation, [string]$ExpectedDiagnostic) {
++  $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('aitoolkit-responsibility-discovery-' + [guid]::NewGuid().ToString('N'))
++  try {
++    [void](New-Item -ItemType Directory -Path $fixtureRoot -Force)
++    Set-Content -Encoding utf8 -LiteralPath (Join-Path $fixtureRoot '02-discovery.md') -Value (New-DiscoveryClassificationFixture)
++    & $Mutation $fixtureRoot
++    $diagnostics = @(Invoke-DiscoveryClassificationCase $fixtureRoot)
++    if ($diagnostics -notcontains $ExpectedDiagnostic) {
++      throw "$Name expected $ExpectedDiagnostic but got: $($diagnostics -join '; ')"
++    }
++    Write-Output "PASS: $Name"
++  }
++  finally {
++    if (Test-Path -LiteralPath $fixtureRoot) { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force }
++  }
++}
++
++function Assert-Accepted([string]$Name, [scriptblock]$Mutation) {
++  $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ('aitoolkit-responsibility-discovery-' + [guid]::NewGuid().ToString('N'))
++  try {
++    [void](New-Item -ItemType Directory -Path $fixtureRoot -Force)
++    Set-Content -Encoding utf8 -LiteralPath (Join-Path $fixtureRoot '02-discovery.md') -Value (New-DiscoveryClassificationFixture)
++    & $Mutation $fixtureRoot
++    $diagnostics = @(Invoke-DiscoveryClassificationCase $fixtureRoot)
++    if ($diagnostics.Count -ne 0) { throw "$Name should pass but got: $($diagnostics -join '; ')" }
++    Write-Output "PASS: $Name"
++  }
++  finally {
++    if (Test-Path -LiteralPath $fixtureRoot) { Remove-Item -LiteralPath $fixtureRoot -Recurse -Force }
++  }
++}
++
++Assert-Rejected 'agent cannot self-declare legacy debt' {
++  param($root)
++  Set-DiscoveryClassification $root 'legacy-debt' 'agent-opinion' 'looks aggregate'
++} 'exemplar-classification-authority-missing'
++
++Assert-Accepted 'project pack may classify compatibility-only' {
++  param($root)
++  Set-DiscoveryClassification $root 'compatibility-only' 'project-pack-rule' 'architecture-rules.md#RULE-007'
++}
++
++Assert-Rejected 'preferred requires repeated working evidence' {
++  param($root)
++  Set-DiscoveryClassification $root 'preferred' 'factual-discovery-evidence' 'inspection:lib/generic.dart:1'
++} 'exemplar-classification-authority-missing'
++
++Assert-Rejected 'no-equivalent requires factual search evidence' {
++  param($root)
++  Set-DiscoveryClassification $root 'no-equivalent' 'factual-discovery-evidence' 'looks unavailable'
++} 'exemplar-classification-authority-missing'
++
++Assert-Rejected 'duplicate classification row is rejected' {
++  param($root)
++  $path = Join-Path $root '02-discovery.md'
++  Add-Content -Encoding utf8 -LiteralPath $path -Value '| module/container composition | lib/duplicate.dart | DuplicateShell | duplicate target pattern | duplicate responsibility | CAP-002 | VERIFY-OWNER-002 | duplicate | lib/duplicate.dart:1-2 | verified | preferred | factual-discovery-evidence | inspection:lib/duplicate.dart:1; inspection:test/duplicate_test.dart:1 |'
++} 'exemplar-classification-row-duplicate'
++
++Assert-Rejected 'discovery requires responsibility contract version' {
++  param($root)
++  $path = Join-Path $root '02-discovery.md'
++  $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++  $updated = $text.Replace("responsibility_contract:`n  version: 1`n  applicability: required`n", '')
++  if ($updated -ceq $text) { throw 'Discovery version fixture replacement failed' }
++  Set-Content -Encoding utf8 -LiteralPath $path -Value $updated
++} 'responsibility-contract-version-invalid'
++
+ Write-Output 'PASS: responsibility conformance contract'
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+index 36053f3..207d6fa 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+@@ -77,21 +77,22 @@ function New-DiscoveryArtifact {
+     [switch]$InvalidGapSentinel,
+     [switch]$WeakGapDecision,
+     [switch]$PendingGapApproval,
+     [string]$GapDecisionOverride = '',
+     [string]$GapApprovalOverride = '',
+     [switch]$GenericSymbolList,
+     [switch]$SingleProviderDataFlow,
+     [switch]$UnstructuredTransformation,
+     [switch]$DisconnectedDataFlow,
+     [string]$ComparableSymbolsOverride = '',
+-    [string]$InspectedSymbolOverride = ''
++    [string]$InspectedSymbolOverride = '',
++    [switch]$OmitResponsibilityContractVersion
+   )
+ 
+   $rows = foreach ($concern in $IncludedConcerns) {
+     $symbols = if (
+       -not [string]::IsNullOrWhiteSpace($ComparableSymbolsOverride) -and
+       $concern -ceq 'controller/provider/state pattern'
+     ) {
+       $ComparableSymbolsOverride
+     }
+     elseif ($concern -ceq $BlankSymbolsConcern) {
+@@ -109,27 +110,34 @@ function New-DiscoveryArtifact {
+     $comparableReason = if ($concern -ceq $NotComparableConcern) { 'not comparable' } else { 'same production responsibility and activation path' }
+     $status = if ($concern -ceq $UnknownConcern) {
+       'unknown'
+     }
+     elseif ($concern -ceq $NoEquivalentConcern) {
+       'no-equivalent'
+     }
+     else {
+       'verified'
+     }
+-    "| $concern | lib/target_shell.dart | $symbols | working target pattern for $concern | $comparableReason | lib/target_shell.dart:10-80 | $status |"
++    $classification = if ($status -ceq 'no-equivalent') { 'no-equivalent' } else { 'preferred' }
++    $classificationEvidence = if ($status -ceq 'no-equivalent') {
++      'search:target/lib for comparable pattern:0 results'
++    }
++    else {
++      'inspection:lib/target_shell.dart:10-80; inspection:test/target_shell_test.dart:10-60'
++    }
++    "| $concern | lib/target_shell.dart | $symbols | working target pattern for $concern | one focused $concern responsibility | CAP-001 | VERIFY-OWNER-001 | $comparableReason | lib/target_shell.dart:10-80 | $status | $classification | factual-discovery-evidence | $classificationEvidence |"
+   }
+   if ($ExtraConcern) {
+-    $rows += '| invented concern | lib/invented.dart | InventedController | invented pattern | same production responsibility and activation path | lib/invented.dart:1-20 | verified |'
++    $rows += '| invented concern | lib/invented.dart | InventedController | invented pattern | one focused invented responsibility | CAP-099 | VERIFY-OWNER-099 | same production responsibility and activation path | lib/invented.dart:1-20 | verified | preferred | factual-discovery-evidence | inspection:lib/invented.dart:1-20; inspection:test/invented_test.dart:1 |'
+   }
+   if ($DuplicateConcern) {
+-    $rows += '| module/container composition | lib/duplicate.dart | DuplicateShell | duplicate pattern | same production responsibility and activation path | lib/duplicate.dart:1-20 | verified |'
++    $rows += '| module/container composition | lib/duplicate.dart | DuplicateShell | duplicate pattern | one focused duplicate responsibility | CAP-098 | VERIFY-OWNER-098 | same production responsibility and activation path | lib/duplicate.dart:1-20 | verified | preferred | factual-discovery-evidence | inspection:lib/duplicate.dart:1-20; inspection:test/duplicate_test.dart:1 |'
+   }
+ 
+   $gapDecision = if (-not [string]::IsNullOrWhiteSpace($GapDecisionOverride)) {
+     $GapDecisionOverride
+   }
+   elseif ($WeakGapDecision) {
+     'resolved: none'
+   }
+   else {
+     'resolved:DECISION-014: reuse adjacent target boundary'
+@@ -188,28 +196,29 @@ function New-DiscoveryArtifact {
+   }
+   if ($DisconnectedDataFlow -and $dataFlowRows.Count -gt 0) {
+     $dataFlowRows[3] = '| state | lib/target_shell.dart#TargetController | unrelated payload | operation=store; owner=lib/target_shell.dart#TargetController | feature state | lib/target_shell.dart:10-45 |'
+   }
+   return @"
+ ---
+ step_id: 02-discovery
+ status: draft
+ result: complete
+ produced_at: 2026-08-19
++$(if ($OmitResponsibilityContractVersion) { '' } else { "responsibility_contract:`n  version: 1`n  applicability: required" })
+ ---
+ 
+ # Discovery
+ 
+ ## Comparable Target Exemplars
+ 
+-| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+-|---|---|---|---|---|---|---|
++| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |
++|---|---|---|---|---|---|---|---|---|---|---|---|---|
+ $($rows -join "`n")
+ 
+ ## Inspected Symbols
+ 
+ | Concern | Path | Symbol | Inspection Scope | Evidence |
+ |---|---|---|---|---|
+ $inspectedSymbolRow
+ 
+ ## Target Data-flow Trace
+ 
+@@ -981,20 +990,32 @@ Invoke-ConformanceCase `
+   'discovery rejects placeholder inside canonical-looking approval' `
+   (New-DiscoveryArtifact -NoEquivalentConcern 'localization' -GapApprovalOverride 'approval:TECH-LEAD-PENDING') `
+   '' `
+   $false `
+   'resolved gap/conflict decision'
+ Invoke-ConformanceCase `
+   'discovery accepts complete eight-concern evidence' `
+   (New-DiscoveryArtifact) `
+   '' `
+   $true
++Invoke-ConformanceCase `
++  'target conformance rejects discovery agent-opinion classification' `
++  ((New-DiscoveryArtifact).Replace('factual-discovery-evidence', 'agent-opinion')) `
++  '' `
++  $false `
++  'exemplar-classification-authority-missing'
++Invoke-ConformanceCase `
++  'target conformance rejects discovery missing responsibility version' `
++  (New-DiscoveryArtifact -OmitResponsibilityContractVersion) `
++  '' `
++  $false `
++  'responsibility-contract-version-invalid'
+ 
+ Invoke-ConformanceCase `
+   'design accepts canonical Acceptance references plus measurable outcome prose' `
+   '' `
+   (New-DesignArtifact) `
+   $true
+ Invoke-ConformanceCase `
+   'design accepts comma-separated canonical Acceptance references plus measurable outcome prose' `
+   '' `
+   (New-DesignArtifact -Acceptance 'REQ-001, SC-001, target panel renders within 2 seconds' -BindApprovedPlanToTrace) `
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+index e205b52..f8ef999 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+@@ -166,24 +166,124 @@ function Test-ArcResponsibilityStageVersion {
+   if (
+     $null -eq $frontMatter -or
+     @([regex]::Matches($frontMatter, '(?m)^version:\s*1\s*$')).Count -ne 1 -or
+     @([regex]::Matches($frontMatter, '(?m)^applicability:\s*required\s*$')).Count -ne 1
+   ) {
+     $errors.Add("ARC-$Stage-CONTRACT-VERSION: responsibility contract requires version 1 and applicability required")
+   }
+   return $errors.ToArray()
+ }
+ 
++function Get-ArcContractEnumValues {
++  [CmdletBinding()]
++  param(
++    [Parameter(Mandatory)][string]$ContractText,
++    [Parameter(Mandatory)][string]$Name
++  )
++
++  $match = [regex]::Match($ContractText, '(?m)^' + [regex]::Escape($Name) + '\s*=\s*(?<values>[^\r\n]+)\s*$')
++  if (-not $match.Success) { return @() }
++  return @($match.Groups['values'].Value.Split('|') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
++}
++
++function Test-ArcDiscoveryResponsibilityContractVersion {
++  [CmdletBinding()]
++  param([Parameter(Mandatory)][string]$DiscoveryText)
++
++  $frontMatter = Get-ArcBoundedFrontMatter -Text $DiscoveryText
++  if ($null -eq $frontMatter) { return @('responsibility-contract-version-invalid') }
++  $responsibilityContractCount = @([regex]::Matches($frontMatter, '(?m)^responsibility_contract:\s*$')).Count
++  $versionCount = @([regex]::Matches($frontMatter, '(?m)^\s{2}version:\s*1\s*$')).Count
++  $applicabilityCount = @([regex]::Matches($frontMatter, '(?m)^\s{2}applicability:\s*required\s*$')).Count
++  if ($responsibilityContractCount -ne 1 -or $versionCount -ne 1 -or $applicabilityCount -ne 1) {
++    return @('responsibility-contract-version-invalid')
++  }
++  return @()
++}
++
+ function Test-ResponsibilityDiscovery {
+   [CmdletBinding()]
+-  param([string]$DiscoveryText, [ValidateSet('incremental','greenfield')][string]$Mode, [string]$ContractText)
+-  return Test-ArcResponsibilityStageVersion $ContractText 'DISCOVERY'
++  param([AllowEmptyString()][string]$DiscoveryText, [ValidateSet('incremental','greenfield')][string]$Mode, [string]$ContractText)
++
++  $errors = [Collections.Generic.List[string]]::new()
++  foreach ($error in @(Test-ArcResponsibilityStageVersion $ContractText 'DISCOVERY')) { $errors.Add($error) }
++  if ([string]::IsNullOrWhiteSpace($DiscoveryText)) { return $errors.ToArray() }
++  foreach ($error in @(Test-ArcDiscoveryResponsibilityContractVersion -DiscoveryText $DiscoveryText)) { $errors.Add($error) }
++
++  $columns = @(
++    'Concern', 'Path', 'Inspected Symbols', 'Observed Pattern', 'Primary Responsibility',
++    'Owned Capabilities', 'Verification Owner', 'Comparable Reason', 'Evidence',
++    'Inspection Status', 'Classification', 'Classification Authority', 'Classification Evidence'
++  )
++  $table = @(Get-ArcStrictMarkdownTable -Text $DiscoveryText -Heading 'Comparable Target Exemplars' -Columns $columns -Errors $errors)
++  if ($table.Count -lt 3) { return $errors.ToArray() }
++  $rows = @($table | Select-Object -Skip 2)
++  if ($Mode -ceq 'incremental' -and $rows.Count -ne 8) {
++    $errors.Add('exemplar-classification-cardinality-invalid')
++  }
++
++  foreach ($concern in @($rows | ForEach-Object { $_[0] } | Sort-Object -Unique)) {
++    if (@($rows | Where-Object { $_[0] -ceq $concern }).Count -gt 1) {
++      $errors.Add('exemplar-classification-row-duplicate')
++    }
++  }
++
++  $inspectionStatuses = @(Get-ArcContractEnumValues -ContractText $ContractText -Name 'Inspection Status')
++  $classifications = @(Get-ArcContractEnumValues -ContractText $ContractText -Name 'Classification')
++  foreach ($cells in $rows) {
++    $row = [ordered]@{}
++    for ($index = 0; $index -lt $columns.Count; $index++) { $row[$columns[$index]] = $cells[$index] }
++    $status = $row['Inspection Status']
++    $classification = $row['Classification']
++    $authority = $row['Classification Authority']
++    $classificationEvidence = $row['Classification Evidence']
++    $invalidAuthority = (
++      [string]::IsNullOrWhiteSpace($authority) -or
++      [string]::IsNullOrWhiteSpace($classificationEvidence) -or
++      $inspectionStatuses -cnotcontains $status -or
++      $classifications -cnotcontains $classification -or
++      $status -ceq 'unknown' -or
++      ($classification -ceq 'no-equivalent' -and $status -cne 'no-equivalent') -or
++      ($classification -cne 'no-equivalent' -and $status -cne 'verified')
++    )
++    switch ($classification) {
++      'preferred' {
++        $evidenceItems = @($classificationEvidence.Split(';') | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
++        if (
++          $authority -cne 'factual-discovery-evidence' -or
++          $evidenceItems.Count -lt 2 -or
++          @($evidenceItems | Where-Object { $_ -cnotmatch '(?i)^(?:inspection|working-evidence):.+[:#].+$' -or $_ -match '(?i)generic' }).Count -gt 0
++        ) { $invalidAuthority = $true }
++      }
++      'compatibility-only' {
++        if (
++          $authority -cnotin @('project-pack-rule', 'approved-owner-decision') -or
++          $classificationEvidence -cnotmatch '^(?:[A-Za-z0-9_./-]+\.md#RULE-[A-Z0-9-]+|approval:OWNER-[A-Z0-9-]+)$'
++        ) { $invalidAuthority = $true }
++      }
++      'legacy-debt' {
++        if (
++          $authority -cnotin @('project-documentation', 'debt-record', 'tech-lead-approved-conflict') -or
++          $classificationEvidence -cnotmatch '^(?:[A-Za-z0-9_./-]+\.md#(?:DEBT|CONFLICT)-[A-Z0-9-]+|debt-record:[A-Z0-9-]+|approval:TECH-LEAD-[A-Z0-9-]+)$'
++        ) { $invalidAuthority = $true }
++      }
++      'no-equivalent' {
++        if (
++          $authority -cne 'factual-discovery-evidence' -or
++          $classificationEvidence -cnotmatch '(?i)^(?:search|inspection):.+[:#].+$'
++        ) { $invalidAuthority = $true }
++      }
++      default { $invalidAuthority = $true }
++    }
++    if ($invalidAuthority) { $errors.Add('exemplar-classification-authority-missing') }
++  }
++  return @($errors | Select-Object -Unique)
+ }
+ 
+ function Test-ResponsibilityDesign {
+   [CmdletBinding()]
+   param([string]$DiscoveryText, [string]$DesignText, [ValidateSet('incremental','greenfield')][string]$Mode, [string]$ContractText)
+   return Test-ArcResponsibilityStageVersion $ContractText 'DESIGN'
+ }
+ 
+ function Test-ResponsibilityPlan {
+   [CmdletBinding()]
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+index 3a386da..be2dd87 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+@@ -224,27 +224,46 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+       ForEach-Object { $_.Groups['concern'].Value }
+   )
+   if ($canonicalConcerns.Count -ne 8) {
+     $errors.Add("Target structure conformance contract must define exactly eight concerns; found $($canonicalConcerns.Count)")
+     return
+   }
+ 
+   $discoveryPath = Join-Path $Root '02-discovery.md'
+   if (Test-Path -LiteralPath $discoveryPath -PathType Leaf) {
+     $discoveryText = Get-Content -Raw -Encoding utf8 -LiteralPath $discoveryPath
++    $responsibilityContractPath = Join-Path $PSScriptRoot '../../contracts/file-responsibility-conformance.md'
++    if (-not (Test-Path -LiteralPath $responsibilityContractPath -PathType Leaf)) {
++      $errors.Add('Missing responsibility conformance contract resource')
++    }
++    else {
++      $responsibilityContractText = Get-Content -Raw -Encoding utf8 -LiteralPath $responsibilityContractPath
++      $responsibilityDiagnostics = @(& {
++        . (Join-Path $PSScriptRoot 'responsibility-conformance.validation.ps1')
++        Test-ResponsibilityDiscovery -DiscoveryText $discoveryText -Mode incremental -ContractText $responsibilityContractText
++      })
++      $responsibilityDiagnostics | ForEach-Object {
++        $errors.Add($_)
++      }
++    }
+     $discoveryTable = & $getTable $discoveryText 'Comparable Target Exemplars'
+     if ($null -eq $discoveryTable) {
+       $errors.Add('Discovery missing Comparable Target Exemplars')
+     }
+     else {
+-      if (($discoveryTable.Columns -join '|') -cne ($contractExemplarTable.Columns -join '|')) {
+-        $errors.Add("Discovery Comparable Target Exemplars table columns must be exactly: $($contractExemplarTable.Columns -join ' | ')")
++      $discoveryExemplarColumns = @(
++        'Concern', 'Path', 'Inspected Symbols', 'Observed Pattern', 'Primary Responsibility',
++        'Owned Capabilities', 'Verification Owner', 'Comparable Reason', 'Evidence',
++        'Inspection Status', 'Classification', 'Classification Authority', 'Classification Evidence'
++      )
++      if (($discoveryTable.Columns -join '|') -cne ($discoveryExemplarColumns -join '|')) {
++        $errors.Add("Discovery Comparable Target Exemplars table columns must be exactly: $($discoveryExemplarColumns -join ' | ')")
+       }
+       if ($discoveryTable.Rows.Count -ne $canonicalConcerns.Count) {
+         $errors.Add("Discovery concern cardinality must equal canonical eight; found $($discoveryTable.Rows.Count)")
+       }
+       @($discoveryTable.Rows | Where-Object { $_.Concern -cnotin $canonicalConcerns }) | ForEach-Object {
+         $errors.Add("Discovery unexpected concern: $($_.Concern)")
+       }
+       foreach ($concern in $canonicalConcerns) {
+         $matchingRows = @($discoveryTable.Rows | Where-Object { $_.Concern -ceq $concern })
+         if ($matchingRows.Count -eq 0) {
+@@ -274,29 +293,29 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+             $_ -cnotmatch $explicitSymbolPattern -or
+             $_ -match $genericSymbolTokenPattern
+           })
+           if ($invalidSymbolTokens.Count -gt 0) {
+             $errors.Add("Discovery $concern Inspected Symbols must contain only explicit symbol tokens")
+           }
+         }
+         if ($row.'Comparable Reason' -match '^(?i:not comparable|non-comparable|generic|same technology|uses?\s+\S+)$') {
+           $errors.Add("Discovery $concern Comparable Reason must explain comparability")
+         }
+-        if ($row.Status -ceq 'unknown') {
++        if ($row.'Inspection Status' -ceq 'unknown') {
+           $errors.Add("Discovery $concern unknown status blocks discovery")
+         }
+-        elseif ($row.Status -cnotin @('verified', 'no-equivalent')) {
+-          $errors.Add("Discovery $concern has invalid exemplar status: $($row.Status)")
++        elseif ($row.'Inspection Status' -cnotin @('verified', 'no-equivalent')) {
++          $errors.Add("Discovery $concern has invalid exemplar status: $($row.'Inspection Status')")
+         }
+       }
+ 
+-      $noEquivalentRows = @($discoveryTable.Rows | Where-Object { $_.Status -ceq 'no-equivalent' })
++      $noEquivalentRows = @($discoveryTable.Rows | Where-Object { $_.'Inspection Status' -ceq 'no-equivalent' })
+       if ($noEquivalentRows.Count -gt 0) {
+         $gapTable = & $getTable $discoveryText 'No-equivalent Gaps'
+         $gapColumns = @('Concern', 'Gap Reference', 'Conflict Reference', 'Resolved Decision', 'Approval Reference')
+         if ($null -eq $gapTable -or ($gapTable.Columns -join '|') -cne ($gapColumns -join '|')) {
+           $errors.Add("Discovery No-equivalent Gaps table columns must be exactly: $($gapColumns -join ' | ')")
+         }
+         else {
+           foreach ($noEquivalentRow in $noEquivalentRows) {
+             $gapRows = @($gapTable.Rows | Where-Object { $_.Concern -ceq $noEquivalentRow.Concern })
+             $resolvedGap = if ($gapRows.Count -eq 1) { $gapRows[0] } else { $null }
+@@ -403,21 +422,21 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+ 
+     $gapTable = & $getTable $discoveryText 'No-equivalent Gaps'
+     $gapColumns = @('Concern', 'Gap Reference', 'Conflict Reference', 'Resolved Decision', 'Approval Reference')
+     if ($null -eq $gapTable) {
+       $errors.Add('Discovery missing No-equivalent Gaps')
+     }
+     elseif (($gapTable.Columns -join '|') -cne ($gapColumns -join '|')) {
+       $errors.Add("Discovery No-equivalent Gaps table columns must be exactly: $($gapColumns -join ' | ')")
+     }
+     else {
+-      $noEquivalentConcerns = @($discoveryTable.Rows | Where-Object { $_.Status -ceq 'no-equivalent' } | ForEach-Object { $_.Concern })
++      $noEquivalentConcerns = @($discoveryTable.Rows | Where-Object { $_.'Inspection Status' -ceq 'no-equivalent' } | ForEach-Object { $_.Concern })
+       $realGapRows = @($gapTable.Rows | Where-Object { $_.Concern -cne 'none' })
+       $sentinelRows = @($gapTable.Rows | Where-Object { $_.Concern -ceq 'none' })
+       $gapConcernSet = @($realGapRows | ForEach-Object { $_.Concern } | Sort-Object)
+       $statusConcernSet = @($noEquivalentConcerns | Sort-Object)
+       $gapSetsMatch = (($gapConcernSet -join '|') -ceq ($statusConcernSet -join '|'))
+       if (
+         $realGapRows.Count -ne $noEquivalentConcerns.Count -or
+         -not $gapSetsMatch -or
+         ($noEquivalentConcerns.Count -eq 0 -and $sentinelRows.Count -ne 1) -or
+         ($noEquivalentConcerns.Count -gt 0 -and $sentinelRows.Count -ne 0)

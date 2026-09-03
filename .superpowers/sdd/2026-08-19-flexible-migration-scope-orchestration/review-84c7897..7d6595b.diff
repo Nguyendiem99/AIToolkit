@@ -1,0 +1,277 @@
+# Review package: 84c7897..7d6595b
+
+## Commits
+7d6595b feat: add migration master artifacts
+
+## Files changed
+ .../tests/scenarios/scope-artifacts.Tests.ps1      | 38 ++++++++-
+ .../validation/scope-artifacts.validation.ps1      | 90 +++++++++++++++++++---
+ 2 files changed, 113 insertions(+), 15 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1
+index 2f51b08..ac970dd 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-artifacts.Tests.ps1
+@@ -48,59 +48,89 @@ function New-RenderedArtifactFixture {
+   $fixtureRoot = Join-Path ([IO.Path]::GetTempPath()) ("aitoolkit-scope-artifacts-" + [guid]::NewGuid().ToString('N'))
+   $templateRoot = Join-Path $fixtureRoot 'templates/migration'
+   New-Item -ItemType Directory -Path $templateRoot -Force | Out-Null
+   Copy-Item -LiteralPath (Join-Path $toolkitRoot 'contracts') -Destination (Join-Path $fixtureRoot 'contracts') -Recurse
+   foreach ($name in @('master-spec.md', 'master-plan.md')) {
+     $text = Get-Content -Raw -Encoding utf8 (Join-Path $toolkitRoot "templates/migration/$name")
+     $text = [regex]::Replace($text, '<[^>\r\n]+>', 'sample-value')
+     $text = $text.Replace('SPEC-sample-value-sample-value', 'SPEC-ADMIN-001')
+     $text = $text.Replace('PLAN-sample-value-sample-value', 'PLAN-ADMIN-001')
+     $text = $text.Replace('WORK-sample-value-sample-value', 'WORK-ADMIN-LOCKS')
+-    $text = $text.Replace('REQ-sample-value', 'REQ-001')
+-    $text = $text.Replace('SC-sample-value', 'SC-001')
+-    $text = $text.Replace('TRACE-sample-value', 'TRACE-001')
+-    $text = $text.Replace('ATTEMPT-WORK-ADMIN-LOCKS-sample-value', 'none')
++    $text = $text.Replace('REQ-###', 'REQ-001')
++    $text = $text.Replace('SC-###', 'SC-001')
++    $text = $text.Replace('TRACE-###', 'TRACE-001')
++    $text = $text.Replace('UNK-###', 'UNK-001')
++    $text = $text.Replace('ATTEMPT-sample-value-sample-value', 'ATTEMPT-WORK-ADMIN-LOCKS-01')
+     $text = $text.Replace('revision: sample-value', 'revision: 1')
+     $text = $text.Replace('master_spec_revision: sample-value', 'master_spec_revision: 1')
+     $text = $text.Replace('requested_scope_kind: sample-value', 'requested_scope_kind: module')
++    $text = $text.Replace('requested_scope_id: sample-value', 'requested_scope_id: ADMIN')
++    $text = $text.Replace('status: sample-value', 'status: approved')
++    $text = $text.Replace('result: sample-value', 'result: complete')
++    $text = $text.Replace('approval_source: sample-value', 'approval_source: human')
++    $text = $text.Replace('produced_at: sample-value', 'produced_at: 2026-08-19')
+     $text = $text.Replace('max_concurrency: sample-value', 'max_concurrency: 1')
+     $text = $text.Replace('plan_order: sample-value', 'plan_order: 1')
+     $text = $text.Replace('| WORK-ADMIN-LOCKS | sample-value | sample-value | none | sample-value | sample-value | sample-value | none | pending | none | none | pending |', '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |')
+     $text = $text.Replace('| sample-value | pending | sample-value |', '| sample-value | approved | 2026-08-19 |')
++    $text = $text.Replace('| REQ-001 | sample-value | sample-value | sample-value |', '| REQ-001 | Stable requirement | source:ticket | measurable acceptance |')
++    $text = $text.Replace('| SC-001 | REQ-001 | sample-value |', '| SC-001 | REQ-001 | measurable outcome |')
++    $text = $text.Replace('| UNK-001 | sample-value | sample-value | sample-value |', '| UNK-001 | none identified | none | resolved |')
++    $text = $text.Replace('| TRACE-001 | sample-value | sample-value | sample-value |', '| TRACE-001 | requirement | source:ticket | trace note |')
++    $text = $text.Replace('| sample-value | sample-value | sample-value | user | sample-value |', '| module | ADMIN | Complete Admin module | user | conversation:scope-admin |')
++    $text = $text.Replace('| WORK-ADMIN-LOCKS | none | no-dependency | sample-value |', '| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |')
++    $text = $text.Replace('| ATTEMPT-WORK-ADMIN-LOCKS-01 | WORK-ADMIN-LOCKS | sample-value | in-progress | sample-value |', '| ATTEMPT-WORK-ADMIN-LOCKS-01 | WORK-ADMIN-LOCKS | 1 | in-progress | artifact:attempt-01 |')
++    $text = $text.Replace('| WORK-ADMIN-LOCKS | pending | ready | sample-value | sample-value |', '| WORK-ADMIN-LOCKS | pending | ready | approval:work-admin | 1 |')
++    $text = $text.Replace('| SPEC-ADMIN-001 | sample-value | not-applicable | sample-value | none | pending |', '| SPEC-ADMIN-001 | 1 | not-applicable | initial approved scope | none | approval:scope-admin |')
++    $text = $text.Replace('| PLAN-ADMIN-001 | sample-value | not-applicable | sample-value | none | pending |', '| PLAN-ADMIN-001 | 1 | not-applicable | initial approved plan | none | approval:plan-admin |')
+     [IO.File]::WriteAllText((Join-Path $templateRoot $name), $text, [Text.UTF8Encoding]::new($false))
+   }
+   return $fixtureRoot
+ }
+ 
+ try {
+   if (-not (Test-Path -LiteralPath (Join-Path $toolkitRoot 'templates/migration/master-spec.md'))) {
+     $redErrors = Invoke-ScopeArtifactsValidation $toolkitRoot
+     Assert-True ($redErrors -contains 'Missing master spec template') 'RED: missing master spec template must be rejected'
+     if ($testFailures.Count -eq 0) { throw 'RED: master artifact templates are not implemented' }
+   }
+ 
+   $fixtureRoot = New-RenderedArtifactFixture
+   try {
+     $validErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+     Assert-True ($validErrors.Count -eq 0) ("Rendered master artifacts must validate: " + ($validErrors -join '; '))
+ 
+     $cases = @(
+       [pscustomobject]@{ Name = 'missing front matter'; File = 'master-spec.md'; From = 'artifact_type: migration-master-spec'; To = 'artifact_type_removed: migration-master-spec'; Expected = 'master spec missing front matter field: artifact_type' },
+       [pscustomobject]@{ Name = 'duplicate front matter'; File = 'master-plan.md'; From = 'revision: 1'; To = "revision: 1`nrevision: 1"; Expected = 'master plan duplicate front matter field: revision' },
++      [pscustomobject]@{ Name = 'extra front matter'; File = 'master-spec.md'; From = 'supersedes: not-applicable'; To = "supersedes: not-applicable`nunexpected: value"; Expected = 'master spec front matter fields must be exact' },
+       [pscustomobject]@{ Name = 'invalid stable master spec id'; File = 'master-spec.md'; From = 'master_spec_id: SPEC-ADMIN-001'; To = 'master_spec_id: SPEC-ADMIN'; Expected = 'master spec invalid master_spec_id: SPEC-ADMIN' },
+       [pscustomobject]@{ Name = 'invalid requested scope enum'; File = 'master-spec.md'; From = 'requested_scope_kind: module'; To = 'requested_scope_kind: invalid-scope'; Expected = 'master spec requested_scope_kind is invalid' },
++      [pscustomobject]@{ Name = 'approved spec blocked result'; File = 'master-spec.md'; From = 'result: complete'; To = 'result: blocked'; Expected = 'master spec approved status must use result complete' },
+       [pscustomobject]@{ Name = 'missing section'; File = 'master-spec.md'; From = '## Approval Record'; To = '## Approval Record Removed'; Expected = 'master spec missing required section: Approval Record' },
++      [pscustomobject]@{ Name = 'extra section'; File = 'master-spec.md'; From = '## Revision History'; To = "## Extra Section`n`nKhông thuộc canonical shape.`n`n## Revision History"; Expected = 'master spec sections must be exact' },
+       [pscustomobject]@{ Name = 'revision chain'; File = 'master-spec.md'; From = 'supersedes: not-applicable'; To = 'supersedes: SPEC-ADMIN-001@1'; Expected = 'master spec revision 1 must supersede not-applicable' },
+       [pscustomobject]@{ Name = 'spec reference mismatch'; File = 'master-plan.md'; From = 'master_spec_id: SPEC-ADMIN-001'; To = 'master_spec_id: SPEC-OTHER-001'; Expected = 'master plan master_spec_id must match master spec' },
+       [pscustomobject]@{ Name = 'duplicate work item id'; File = 'master-plan.md'; From = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |'; To = "| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |`n| WORK-ADMIN-LOCKS | Complete other | no | none | 2 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |"; Expected = 'master plan duplicate Work Item ID: WORK-ADMIN-LOCKS' },
+       [pscustomobject]@{ Name = 'duplicate plan order'; File = 'master-plan.md'; From = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |'; To = "| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |`n| WORK-ADMIN-OTHER | Complete other | no | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |"; Expected = 'master plan duplicate Plan Order: 1' },
+       [pscustomobject]@{ Name = 'missing dependency reference'; File = 'master-plan.md'; From = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |'; To = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | WORK-ADMIN-MISSING | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | pending | none | none | pending |'; Expected = 'master plan dependency does not reference a Work Item ID: WORK-ADMIN-MISSING' },
++      [pscustomobject]@{ Name = 'duplicate requirement id'; File = 'master-spec.md'; From = '| REQ-001 | Stable requirement | source:ticket | measurable acceptance |'; To = "| REQ-001 | Stable requirement | source:ticket | measurable acceptance |`n| REQ-001 | Duplicate requirement | source:ticket | measurable acceptance |"; Expected = 'master spec duplicate Requirement ID: REQ-001' },
++      [pscustomobject]@{ Name = 'duplicate success criterion id'; File = 'master-spec.md'; From = '| SC-001 | REQ-001 | measurable outcome |'; To = "| SC-001 | REQ-001 | measurable outcome |`n| SC-001 | REQ-001 | another measurable outcome |"; Expected = 'master spec duplicate Success Criterion ID: SC-001' },
++      [pscustomobject]@{ Name = 'unresolved success criterion requirement'; File = 'master-spec.md'; From = '| SC-001 | REQ-001 | measurable outcome |'; To = '| SC-001 | REQ-404 | measurable outcome |'; Expected = 'master spec success criterion SC-001 references unknown Requirement ID: REQ-404' },
++      [pscustomobject]@{ Name = 'scope affecting unknown approved'; File = 'master-spec.md'; From = '| UNK-001 | none identified | none | resolved |'; To = '| UNK-001 | unresolved boundary | scope | blocked |'; Expected = 'master spec scope/architecture/acceptance unknown requires status draft or blocked' },
++      [pscustomobject]@{ Name = 'plan unknown blocks approved plan'; File = 'master-plan.md'; From = '| UNK-001 | none identified | none | resolved |'; To = '| UNK-001 | unresolved target pattern | architecture | blocked |'; Expected = 'master plan scope/architecture/acceptance unknown requires status draft or blocked' },
++      [pscustomobject]@{ Name = 'requested scope plan mismatch'; File = 'master-plan.md'; From = '| module | ADMIN | Complete Admin module | user | conversation:scope-admin |'; To = '| module | OTHER | Complete Admin module | user | conversation:scope-admin |'; Expected = 'master plan Requested Scope ID must match master spec requested_scope_id' },
++      [pscustomobject]@{ Name = 'dependency graph unknown work item'; File = 'master-plan.md'; From = '| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |'; To = '| WORK-ADMIN-MISSING | none | no-dependency | decision:graph-admin |'; Expected = 'master plan Dependency Graph references unknown Work Item ID: WORK-ADMIN-MISSING' },
++      [pscustomobject]@{ Name = 'dependency graph inconsistent with work item'; File = 'master-plan.md'; From = '| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |'; To = '| WORK-ADMIN-LOCKS | WORK-ADMIN-LOCKS | dependency | decision:graph-admin |'; Expected = 'master plan Dependency Graph must match Work Items dependencies for WORK-ADMIN-LOCKS' },
++      [pscustomobject]@{ Name = 'attempt history revision mismatch'; File = 'master-plan.md'; From = '| ATTEMPT-WORK-ADMIN-LOCKS-01 | WORK-ADMIN-LOCKS | 1 | in-progress | artifact:attempt-01 |'; To = '| ATTEMPT-WORK-ADMIN-LOCKS-01 | WORK-ADMIN-LOCKS | 2 | in-progress | artifact:attempt-01 |'; Expected = 'master plan Attempt History Plan Revision must match master plan revision' },
++      [pscustomobject]@{ Name = 'transition history unknown work item'; File = 'master-plan.md'; From = '| WORK-ADMIN-LOCKS | pending | ready | approval:work-admin | 1 |'; To = '| WORK-ADMIN-MISSING | pending | ready | approval:work-admin | 1 |'; Expected = 'master plan State Transition Log references unknown Work Item ID: WORK-ADMIN-MISSING' },
++      [pscustomobject]@{ Name = 'revision history artifact mismatch'; File = 'master-plan.md'; From = '| PLAN-ADMIN-001 | 1 | not-applicable | initial approved plan | none | approval:plan-admin |'; To = '| PLAN-OTHER-001 | 1 | not-applicable | initial approved plan | none | approval:plan-admin |'; Expected = 'master plan Revision History Artifact ID must match master_plan_id' },
+       [pscustomobject]@{ Name = 'blank acceptance'; File = 'master-plan.md'; From = 'REQ-001; SC-001; measurable outcome'; To = ''; Expected = 'master plan Work Items row 1 has blank cell: Acceptance' },
+       [pscustomobject]@{ Name = 'blank approval reference'; File = 'master-plan.md'; From = '| sample-value | approved | 2026-08-19 |'; To = '|  | approved | 2026-08-19 |'; Expected = 'master plan Approval Record row 1 has blank cell: Approval Reference' }
+     )
+     foreach ($case in $cases) {
+       $path = Join-Path $fixtureRoot "templates/migration/$($case.File)"
+       $original = Get-Content -Raw -Encoding utf8 $path
+       try {
+         [IO.File]::WriteAllText($path, $original.Replace($case.From, $case.To), [Text.UTF8Encoding]::new($false))
+         $caseErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+         Assert-True ($caseErrors -contains $case.Expected) ("$($case.Name) must be rejected; got: " + ($caseErrors -join '; '))
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1
+index 06b9f9f..150a1b8 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-artifacts.validation.ps1
+@@ -59,84 +59,152 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
+       $rows.Add([pscustomobject]@{ Cells = $cells })
+     }
+     if ($rows.Count -eq 0) { & $addError "$script:scopeArtifactLabel $Section must contain at least one row" }
+     return @($rows)
+   }
+   $validateArtifact = {
+     param([string]$Text, [string]$Label, [string]$ArtifactType, [string[]]$Fields, [string[]]$Sections)
+     $script:scopeArtifactLabel = $Label; $frontMatter = & $getFrontMatter $Text $Label
+     if ($null -eq $frontMatter) { return $null }
+     foreach ($field in $Fields) { if (-not $frontMatter.Contains($field)) { & $addError "$Label missing front matter field: $field" } }
++    if ((@($frontMatter.Keys) -join '|') -cne ($Fields -join '|')) { & $addError "$Label front matter fields must be exact" }
+     if ($frontMatter.Contains('artifact_type') -and $frontMatter['artifact_type'] -cne $ArtifactType) { & $addError "$Label artifact_type must be $ArtifactType" }
+     foreach ($section in $Sections) {
+       [void](& $getSection $Text $section)
+       if (@([regex]::Matches($Text, "(?m)^## $([regex]::Escape($section))[ \t]*$")).Count -eq 0) { & $addError "$Label missing required section: $section" }
+     }
++    $actualSections = @([regex]::Matches($Text, '(?m)^## (?<name>.+?)[ \t]*$') | ForEach-Object { $_.Groups['name'].Value.Trim() })
++    if (($actualSections -join '|') -cne ($Sections -join '|')) { & $addError "$Label sections must be exact" }
+     return $frontMatter
+   }
+ 
+   $specPath = Join-Path $Root 'templates/migration/master-spec.md'; $planPath = Join-Path $Root 'templates/migration/master-plan.md'
+   if (-not (Test-Path -LiteralPath $specPath -PathType Leaf)) { & $addError 'Missing master spec template' }
+   if (-not (Test-Path -LiteralPath $planPath -PathType Leaf)) { & $addError 'Missing master plan template' }
+   if (-not (Test-Path -LiteralPath $specPath -PathType Leaf) -or -not (Test-Path -LiteralPath $planPath -PathType Leaf)) { return }
+   $specText = Get-Content -Raw -Encoding utf8 $specPath; $planText = Get-Content -Raw -Encoding utf8 $planPath
+   $specFields = @('artifact_type', 'master_spec_id', 'revision', 'status', 'result', 'approval_source', 'requested_scope_kind', 'requested_scope_id', 'produced_at', 'supersedes')
+   $planFields = @('artifact_type', 'master_plan_id', 'master_spec_id', 'master_spec_revision', 'revision', 'status', 'scope_status', 'execution_policy', 'max_concurrency', 'produced_at', 'supersedes')
+   $specSections = @('Problem and Intended Outcome', 'Requested Scope Boundary', 'Actors and Journeys', 'Behaviors, States and Failure Paths', 'Constraints and Project Rules', 'Architecture and Conformance Applicability', 'Measurable Success Criteria', 'Explicitly Out-of-Scope Items', 'Assumptions and Unknowns', 'Trace/Evidence Index', 'Approval Record', 'Revision History')
+   $planSections = @('Requested Scope', 'Work Items', 'Dependency Graph', 'Attempt History', 'State Transition Log', 'Scope Completion Calculation', 'Evidence', 'Unknowns', 'Approval Record', 'Revision History')
+   $spec = & $validateArtifact $specText 'master spec' 'migration-master-spec' $specFields $specSections
+   $plan = & $validateArtifact $planText 'master plan' 'migration-master-plan' $planFields $planSections
+   if ($null -eq $spec -or $null -eq $plan) { return }
+ 
+-  $placeholder = { param([string]$Value) $Value -match '<[^>]+>' }
++  $placeholder = { param([string]$Value) $Value -match '<[^>]+>' -or $Value -match '^(REQ|SC|TRACE|UNK)-###$' }
+   if (-not (& $placeholder $spec['master_spec_id']) -and $spec['master_spec_id'] -notmatch '^SPEC-[A-Z0-9]+-[0-9]{3}$') { & $addError "master spec invalid master_spec_id: $($spec['master_spec_id'])" }
+   if (-not (& $placeholder $plan['master_plan_id']) -and $plan['master_plan_id'] -notmatch '^PLAN-[A-Z0-9]+-[0-9]{3}$') { & $addError "master plan invalid master_plan_id: $($plan['master_plan_id'])" }
+   if ($spec['requested_scope_kind'] -notin @('project', 'module', 'feature', 'task', 'explicit-item', 'unresolved') -and -not (& $placeholder $spec['requested_scope_kind'])) { & $addError 'master spec requested_scope_kind is invalid' }
++  foreach ($artifact in @([pscustomobject]@{ Value = $spec; Label = 'master spec'; HasResult = $true; HasApproval = $true }, [pscustomobject]@{ Value = $plan; Label = 'master plan'; HasResult = $false; HasApproval = $false })) {
++    if ($artifact.Value['status'] -notin @('draft', 'approved', 'blocked') -and -not (& $placeholder $artifact.Value['status'])) { & $addError "$($artifact.Label) status is invalid" }
++    if ($artifact.Value['produced_at'] -notmatch '^\d{4}-\d{2}-\d{2}$' -and -not (& $placeholder $artifact.Value['produced_at'])) { & $addError "$($artifact.Label) produced_at must be yyyy-mm-dd" }
++    if ($artifact.HasResult -and $artifact.Value['result'] -notin @('complete', 'blocked') -and -not (& $placeholder $artifact.Value['result'])) { & $addError 'master spec result is invalid' }
++    if ($artifact.HasApproval -and $artifact.Value['approval_source'] -ne 'human' -and -not (& $placeholder $artifact.Value['approval_source'])) { & $addError 'master spec approval_source must be human' }
++  }
++  if ($spec['status'] -eq 'approved' -and $spec['result'] -ne 'complete') { & $addError 'master spec approved status must use result complete' }
+   $validateRevision = {
+     param($FrontMatter, [string]$IdField, [string]$Label)
+     $revision = $FrontMatter['revision']
+     if (-not (& $placeholder $revision) -and $revision -notmatch '^[1-9][0-9]*$') { & $addError "$Label revision must be a positive integer"; return }
+     if ($revision -eq '1' -and $FrontMatter['supersedes'] -cne 'not-applicable') { & $addError "$Label revision 1 must supersede not-applicable" }
+     if ($revision -match '^[2-9][0-9]*$') { $expected = "$($FrontMatter[$IdField])@$([int]$revision - 1)"; if ($FrontMatter['supersedes'] -cne $expected) { & $addError "$Label supersedes must be $expected" } }
+   }
+   & $validateRevision $spec 'master_spec_id' 'master spec'; & $validateRevision $plan 'master_plan_id' 'master plan'
+   if ($plan['master_spec_id'] -cne $spec['master_spec_id']) { & $addError 'master plan master_spec_id must match master spec' }
+   if ($plan['master_spec_revision'] -cne $spec['revision']) { & $addError 'master plan master_spec_revision must match master spec revision' }
+   if ($plan['execution_policy'] -cne 'dependency-ready') { & $addError 'master plan execution_policy must be dependency-ready' }
+   if ($plan['max_concurrency'] -notmatch '^[1-9][0-9]*$' -or [int]$plan['max_concurrency'] -ne 1) { & $addError 'master plan max_concurrency must be 1' }
+   if ($plan['scope_status'] -notin @('planned', 'scope-in-progress', 'scope-blocked', 'scope-complete', 'scope-cancelled-approved')) { & $addError 'master plan scope_status is invalid' }
+ 
+   $script:scopeArtifactLabel = 'master spec'
+-  [void](& $getRows $specText 'Requested Scope Boundary' @('Kind', 'ID', 'Statement', 'Source', 'Resolution Evidence'))
+-  [void](& $getRows $specText 'Measurable Success Criteria' @('Success Criterion ID', 'Requirement IDs', 'Measurable Outcome'))
+-  [void](& $getRows $specText 'Problem and Intended Outcome' @('Requirement ID', 'Statement', 'Source', 'Acceptance'))
++  $specScopeRows = @(& $getRows $specText 'Requested Scope Boundary' @('Kind', 'ID', 'Statement', 'Source', 'Resolution Evidence'))
++  $successRows = @(& $getRows $specText 'Measurable Success Criteria' @('Success Criterion ID', 'Requirement IDs', 'Measurable Outcome'))
++  $requirementRows = @(& $getRows $specText 'Problem and Intended Outcome' @('Requirement ID', 'Statement', 'Source', 'Acceptance'))
+   [void](& $getRows $specText 'Trace/Evidence Index' @('Trace ID', 'Type', 'Reference', 'Notes'))
+   [void](& $getRows $specText 'Approval Record' @('Approval Source', 'Approval Reference', 'Status', 'Approved At'))
+-  [void](& $getRows $specText 'Revision History' @('Artifact ID', 'Revision', 'Supersedes', 'Change Summary', 'Affected Work Items', 'Approval Reference'))
++  $specRevisionRows = @(& $getRows $specText 'Revision History' @('Artifact ID', 'Revision', 'Supersedes', 'Change Summary', 'Affected Work Items', 'Approval Reference'))
+   $script:scopeArtifactLabel = 'master plan'
+-  [void](& $getRows $planText 'Requested Scope' @('Kind', 'ID', 'Statement', 'Source', 'Resolution Evidence'))
++  $planScopeRows = @(& $getRows $planText 'Requested Scope' @('Kind', 'ID', 'Statement', 'Source', 'Resolution Evidence'))
+   $workRows = @(& $getRows $planText 'Work Items' @('Work Item ID', 'Title', 'Required', 'Dependencies', 'Plan Order', 'Acceptance', 'Trace IDs', 'Delivery Adapter', 'Status', 'Latest Attempt', 'Terminal Evidence', 'Approval Reference'))
+-  [void](& $getRows $planText 'Dependency Graph' @('Work Item ID', 'Dependency Work Item ID', 'Relationship', 'Evidence'))
+-  [void](& $getRows $planText 'Attempt History' @('Attempt ID', 'Work Item ID', 'Plan Revision', 'Status', 'Artifact Reference'))
+-  [void](& $getRows $planText 'State Transition Log' @('Work Item ID', 'From State', 'To State', 'Evidence or Decision', 'Plan Revision'))
++  $dependencyRows = @(& $getRows $planText 'Dependency Graph' @('Work Item ID', 'Dependency Work Item ID', 'Relationship', 'Evidence'))
++  $attemptRows = @(& $getRows $planText 'Attempt History' @('Attempt ID', 'Work Item ID', 'Plan Revision', 'Status', 'Artifact Reference'))
++  $transitionRows = @(& $getRows $planText 'State Transition Log' @('Work Item ID', 'From State', 'To State', 'Evidence or Decision', 'Plan Revision'))
+   [void](& $getRows $planText 'Scope Completion Calculation' @('Required Work Items', 'Terminal-Success Items', 'Blockers', 'Dependency Graph', 'Architecture Conformance', 'Selector/Schema', 'Scope Status'))
+   [void](& $getRows $planText 'Evidence' @('Evidence', 'Location', 'Notes'))
+-  [void](& $getRows $planText 'Unknowns' @('ID', 'Unknown', 'Impact', 'Disposition'))
++  $planUnknownRows = @(& $getRows $planText 'Unknowns' @('ID', 'Unknown', 'Impact', 'Disposition'))
+   [void](& $getRows $planText 'Approval Record' @('Approval Reference', 'Status', 'Approved At'))
+-  [void](& $getRows $planText 'Revision History' @('Artifact ID', 'Revision', 'Supersedes', 'Change Summary', 'Affected Work Items', 'Approval Reference'))
++  $planRevisionRows = @(& $getRows $planText 'Revision History' @('Artifact ID', 'Revision', 'Supersedes', 'Change Summary', 'Affected Work Items', 'Approval Reference'))
+   $workIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal); $planOrders = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+   foreach ($row in $workRows) {
+     $cells = $row.Cells; $workItemId = $cells[0]; $planOrder = $cells[4]
+     if (-not (& $placeholder $workItemId) -and $workItemId -notmatch '^WORK-[A-Z0-9]+-[A-Z0-9-]+$') { & $addError "master plan invalid Work Item ID: $workItemId" }
+     if (-not $workIds.Add($workItemId)) { & $addError "master plan duplicate Work Item ID: $workItemId" }
+     if ($cells[2] -notin @('yes', 'no') -and -not (& $placeholder $cells[2])) { & $addError "master plan invalid Required value: $($cells[2])" }
+     if ($cells[8] -notin @('proposed', 'pending', 'ready', 'in-progress', 'blocked', 'complete', 'cancelled-approved', 'not-applicable-approved') -and -not (& $placeholder $cells[8])) { & $addError "master plan invalid Work Item Status: $($cells[8])" }
+     if (-not (& $placeholder $planOrder) -and $planOrder -notmatch '^[1-9][0-9]*$') { & $addError "master plan Plan Order must be a positive integer: $planOrder" }
+     if (-not $planOrders.Add($planOrder)) { & $addError "master plan duplicate Plan Order: $planOrder" }
+     foreach ($dependency in @($cells[3].Split(',') | ForEach-Object { $_.Trim() })) { if ($dependency -ne 'none' -and $dependency -notmatch '^WORK-[A-Z0-9]+-[A-Z0-9-]+$') { & $addError "master plan invalid dependency reference: $dependency" } }
+   }
+   foreach ($row in $workRows) {
+     foreach ($dependency in @($row.Cells[3].Split(',') | ForEach-Object { $_.Trim() })) {
+       if ($dependency -ne 'none' -and -not $workIds.Contains($dependency)) { & $addError "master plan dependency does not reference a Work Item ID: $dependency" }
+     }
+   }
++  $requirementIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++  foreach ($row in $requirementRows) {
++    $requirementId = $row.Cells[0]
++    if ($requirementId -notmatch '^REQ-[0-9]{3}$' -and -not (& $placeholder $requirementId)) { & $addError "master spec invalid Requirement ID: $requirementId" }
++    if (-not $requirementIds.Add($requirementId)) { & $addError "master spec duplicate Requirement ID: $requirementId" }
++  }
++  $successIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++  foreach ($row in $successRows) {
++    $successId = $row.Cells[0]
++    if ($successId -notmatch '^SC-[0-9]{3}$' -and -not (& $placeholder $successId)) { & $addError "master spec invalid Success Criterion ID: $successId" }
++    if (-not $successIds.Add($successId)) { & $addError "master spec duplicate Success Criterion ID: $successId" }
++    foreach ($requirementId in @($row.Cells[1].Split('[,;]') | ForEach-Object { $_.Trim() })) {
++      if (-not $requirementIds.Contains($requirementId)) { & $addError "master spec success criterion $successId references unknown Requirement ID: $requirementId" }
++    }
++  }
++  foreach ($scopeRow in @($specScopeRows)) {
++    if (-not (& $placeholder $scopeRow.Cells[0]) -and -not (& $placeholder $spec['requested_scope_kind']) -and $scopeRow.Cells[0] -cne $spec['requested_scope_kind']) { & $addError 'master spec Requested Scope Boundary Kind must match requested_scope_kind' }
++    if (-not (& $placeholder $scopeRow.Cells[1]) -and -not (& $placeholder $spec['requested_scope_id']) -and $scopeRow.Cells[1] -cne $spec['requested_scope_id']) { & $addError 'master spec Requested Scope Boundary ID must match requested_scope_id' }
++  }
++  foreach ($scopeRow in @($planScopeRows)) {
++    if (-not (& $placeholder $scopeRow.Cells[0]) -and -not (& $placeholder $spec['requested_scope_kind']) -and $scopeRow.Cells[0] -cne $spec['requested_scope_kind']) { & $addError 'master plan Requested Scope Kind must match master spec requested_scope_kind' }
++    if (-not (& $placeholder $scopeRow.Cells[1]) -and -not (& $placeholder $spec['requested_scope_id']) -and $scopeRow.Cells[1] -cne $spec['requested_scope_id']) { & $addError 'master plan Requested Scope ID must match master spec requested_scope_id' }
++  }
++  foreach ($row in $dependencyRows) {
++    if (-not $workIds.Contains($row.Cells[0])) { & $addError "master plan Dependency Graph references unknown Work Item ID: $($row.Cells[0])" }
++    if ($row.Cells[1] -ne 'none' -and -not $workIds.Contains($row.Cells[1])) { & $addError "master plan Dependency Graph references unknown dependency Work Item ID: $($row.Cells[1])" }
++  }
++  foreach ($workRow in $workRows) {
++    $workItemId = $workRow.Cells[0]
++    $expectedDependencies = @($workRow.Cells[3].Split(',') | ForEach-Object { $_.Trim() } | Sort-Object)
++    $graphDependencies = @($dependencyRows | Where-Object { $_.Cells[0] -ceq $workItemId } | ForEach-Object { $_.Cells[1] } | Sort-Object)
++    if (($expectedDependencies -join '|') -cne ($graphDependencies -join '|')) { & $addError "master plan Dependency Graph must match Work Items dependencies for $workItemId" }
++  }
++  foreach ($row in $attemptRows) {
++    if (-not $workIds.Contains($row.Cells[1])) { & $addError "master plan Attempt History references unknown Work Item ID: $($row.Cells[1])" }
++    if ($row.Cells[2] -cne $plan['revision']) { & $addError 'master plan Attempt History Plan Revision must match master plan revision' }
++  }
++  foreach ($row in $transitionRows) {
++    if (-not $workIds.Contains($row.Cells[0])) { & $addError "master plan State Transition Log references unknown Work Item ID: $($row.Cells[0])" }
++    if ($row.Cells[4] -cne $plan['revision']) { & $addError 'master plan State Transition Log Plan Revision must match master plan revision' }
++  }
++  foreach ($row in $specRevisionRows) {
++    if ($row.Cells[0] -cne $spec['master_spec_id']) { & $addError 'master spec Revision History Artifact ID must match master_spec_id' }
++    if ($row.Cells[1] -cne $spec['revision']) { & $addError 'master spec Revision History Revision must match revision' }
++    if ($row.Cells[2] -cne $spec['supersedes']) { & $addError 'master spec Revision History Supersedes must match supersedes' }
++  }
++  foreach ($row in $planRevisionRows) {
++    if ($row.Cells[0] -cne $plan['master_plan_id']) { & $addError 'master plan Revision History Artifact ID must match master_plan_id' }
++    if ($row.Cells[1] -cne $plan['revision']) { & $addError 'master plan Revision History Revision must match revision' }
++    if ($row.Cells[2] -cne $plan['supersedes']) { & $addError 'master plan Revision History Supersedes must match supersedes' }
++  }
++  $unknownRows = @(& $getRows $specText 'Assumptions and Unknowns' @('ID', 'Assumption or Unknown', 'Impact', 'Disposition'))
++  foreach ($row in $unknownRows) {
++    if (-not (& $placeholder $row.Cells[2]) -and $row.Cells[2] -match '(?i)(scope|architecture|acceptance)' -and $spec['status'] -notin @('draft', 'blocked')) { & $addError 'master spec scope/architecture/acceptance unknown requires status draft or blocked' }
++  }
++  foreach ($row in $planUnknownRows) {
++    if (-not (& $placeholder $row.Cells[2]) -and $row.Cells[2] -match '(?i)(scope|architecture|acceptance)' -and $plan['status'] -notin @('draft', 'blocked')) { & $addError 'master plan scope/architecture/acceptance unknown requires status draft or blocked' }
++  }
+ }

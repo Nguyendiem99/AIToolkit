@@ -1,0 +1,345 @@
+# Review package: 49a8904f67b982a9370d0c43f9f35ba8797d42de..8e245079aeb41525d48b433eb959e0d7a4f6b2a0
+
+## Commits
+8e24507 test: cover responsibility conformance workflow
+
+## Files changed
+ .../scenarios/responsibility-conformance.Tests.ps1 | 43 ++++++++++++++++++
+ .../tests/scenarios/target-conformance.Tests.ps1   | 53 +++++++++++++++++++++-
+ .../responsibility-conformance.validation.ps1      | 15 +++++-
+ .../validation/target-conformance.validation.ps1   | 29 +++++++++++-
+ 4 files changed, 136 insertions(+), 4 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+index 4ba3cc8..d9e6c97 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+@@ -553,20 +553,32 @@ function Assert-PlanAccepted([string]$Name, [string]$PlanText, [string]$DesignTe
+     throw "$Name should pass but got: $($diagnostics -join '; ')"
+   }
+   Write-Output "PASS: $Name"
+ }
+ 
+ $validPlan = New-ResponsibilityPlanFixture
+ Assert-PlanAccepted 'plan preserves the exact ordered responsibility owner set' $validPlan
+ Assert-PlanAccepted 'generic adapter keeps owner binding without migration unit taxonomy' (New-ResponsibilityPlanFixture -MigrationUnitId 'not-applicable')
+ $approvedPlan = $validPlan.Replace('status: draft', "status: approved`napproval_source: human`nrevision: 2")
+ Assert-PlanAccepted 'approved plan binds every adapter to its immutable front-matter revision' $approvedPlan
++$mutableNotApplicableMasterReference = $approvedPlan.Replace(
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |',
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md@latest | 2 | not-applicable | DESIGN-ADMIN@2 |'
++)
++$orphanNotApplicableParent = $approvedPlan.Replace(
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |',
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | WORK-ORPHAN | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |'
++)
++$invalidNotApplicableParent = $approvedPlan.Replace(
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |',
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not_applicable | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |'
++)
+ Assert-PlanRejected 'approved plan rejects a non-decomposition adapter revision mismatch' ($approvedPlan.Replace('master-plan.md | 2 | not-applicable', 'master-plan.md | 3 | not-applicable')) 'responsibility-owner-extra'
+ $wrongStagePlan = $validPlan.Replace('step_id: 08-plan-waves', 'step_id: 07-technical-design')
+ Assert-PlanRejected 'plan rejects wrong artifact stage' $wrongStagePlan 'responsibility-owner-extra'
+ $unapprovedPlanDesign = (New-ResponsibilityPlanDesignFixture).Replace('status: approved', 'status: draft')
+ $unapprovedPlanDiagnostics = @(Test-ResponsibilityPlan -DesignText $unapprovedPlanDesign -PlanText $validPlan -WorkItemId 'WORK-ADMIN-LOCK' -ContractText $contract)
+ if ($unapprovedPlanDiagnostics -notcontains 'responsibility-owner-extra') {
+   throw "plan rejects unapproved design evidence expected responsibility-owner-extra but got: $($unapprovedPlanDiagnostics -join '; ')"
+ }
+ Write-Output 'PASS: plan rejects unapproved design evidence'
+ Assert-PlanRejected 'plan rejects missing selected responsibility owner' (New-ResponsibilityPlanFixture -ResponsibilityIds 'RESP-WIFI') 'responsibility-owner-missing'
+@@ -658,20 +670,51 @@ $orphanDecisionDesign = $unusedDecisionDesign.Replace(
+   "| DEC-ORPHAN-DECOMPOSITION | WORK-ORPHAN-PARENT | WORK-ORPHAN-CHILD | master-plan.md | 2 | DESIGN-ADMIN@2 | approval:TECH-LEAD-ORPHAN-DECOMPOSITION | master-plan.md@revision=2:DEC-ORPHAN-DECOMPOSITION |`n| DEC-SIBLING-DECOMPOSITION | WORK-SIBLING-PARENT |"
+ )
+ Assert-PlanRejected 'orphan decomposition decision cannot remain in an approved plan' $unusedDecisionPlan 'responsibility-owner-extra' $orphanDecisionDesign
+ $duplicateDecisionDesign = $unusedDecisionDesign.Replace(
+   '| DEC-SIBLING-DECOMPOSITION | WORK-SIBLING-PARENT |',
+   "| DEC-SIBLING-DECOMPOSITION | WORK-ORPHAN-PARENT | WORK-ORPHAN-CHILD | master-plan.md | 2 | DESIGN-ADMIN@2 | approval:TECH-LEAD-ORPHAN-DECOMPOSITION | master-plan.md@revision=2:DEC-SIBLING-DECOMPOSITION |`n| DEC-SIBLING-DECOMPOSITION | WORK-SIBLING-PARENT |"
+ )
+ Assert-PlanRejected 'duplicate decomposition decision IDs cannot remain in an approved plan' $unusedDecisionPlan 'responsibility-owner-extra' $duplicateDecisionDesign
+ Assert-PlanRejected 'foreign adapter decision cannot remain in an approved plan' ($unusedDecisionPlan.Replace('DEC-SIBLING-DECOMPOSITION', 'DEC-FOREIGN-DECOMPOSITION')) 'responsibility-owner-extra' $unusedDecisionDesign
+ 
++$foreignNotApplicableParent = $unusedDecisionPlan.Replace(
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | not-applicable | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |',
++  '| UNIT-ADMIN-LOCK | WORK-ADMIN-LOCK | WORK-SIBLING-PARENT | master-plan.md | 2 | not-applicable | DESIGN-ADMIN@2 |'
++)
++$notApplicableAdapterAuthorityFailures = [Collections.Generic.List[string]]::new()
++$canonicalNotApplicableDiagnostics = @(Test-ResponsibilityPlan -DesignText (New-ResponsibilityPlanDesignFixture) -PlanText $approvedPlan -WorkItemId 'WORK-ADMIN-LOCK' -ContractText $contract)
++if ($canonicalNotApplicableDiagnostics.Count -ne 0) {
++  $notApplicableAdapterAuthorityFailures.Add("canonical not-applicable adapter should pass but got: $($canonicalNotApplicableDiagnostics -join '; ')")
++}
++else {
++  Write-Output 'PASS: canonical not-applicable adapter keeps exact current master and parent authority'
++}
++$notApplicableAdapterAuthorityCases = @(
++  [pscustomobject]@{ Name = 'not-applicable adapter rejects mutable master-plan.md@latest reference'; Plan = $mutableNotApplicableMasterReference; Design = (New-ResponsibilityPlanDesignFixture) },
++  [pscustomobject]@{ Name = 'not-applicable adapter rejects an existing foreign parent'; Plan = $foreignNotApplicableParent; Design = $unusedDecisionDesign },
++  [pscustomobject]@{ Name = 'not-applicable adapter rejects an orphan parent'; Plan = $orphanNotApplicableParent; Design = (New-ResponsibilityPlanDesignFixture) },
++  [pscustomobject]@{ Name = 'not-applicable adapter rejects an invalid parent sentinel'; Plan = $invalidNotApplicableParent; Design = (New-ResponsibilityPlanDesignFixture) }
++)
++foreach ($authorityCase in $notApplicableAdapterAuthorityCases) {
++  $diagnostics = @(Test-ResponsibilityPlan -DesignText $authorityCase.Design -PlanText $authorityCase.Plan -WorkItemId 'WORK-ADMIN-LOCK' -ContractText $contract)
++  if ($diagnostics -notcontains 'responsibility-owner-extra') {
++    $notApplicableAdapterAuthorityFailures.Add("$($authorityCase.Name) expected responsibility-owner-extra but got: $($diagnostics -join '; ')")
++  }
++  else {
++    Write-Output "PASS: $($authorityCase.Name)"
++  }
++}
++if ($notApplicableAdapterAuthorityFailures.Count -gt 0) {
++  throw ($notApplicableAdapterAuthorityFailures -join "`n")
++}
++
+ function New-ResponsibilityImplementationFixture {
+   param(
+     [string]$OwnerSymbol = 'AdminWifi',
+     [string]$CapabilityId = 'CAP-ADMIN-WIFI',
+     [string]$Effect = 'none',
+     [string]$ArchitectureState = 'PASS',
+     [string]$TaskBaseSha = '0000000000000000000000000000000000000000',
+     [string]$FinalTreeSha = '0000000000000000000000000000000000000000'
+   )
+ 
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+index 3586ff3..4581a96 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/target-conformance.Tests.ps1
+@@ -1374,29 +1374,80 @@ Invoke-ConformanceCase `
+   (New-DesignArtifact) `
+   $false `
+   'Invalid approved migration mode authority' `
+   -ModeAuthorityMutation {
+     param($root)
+     $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+     $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+     Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', 'review_focus:')
+     Refresh-ApprovedModeAuthorityProfileRevision $root
+   }
++Invoke-ConformanceCase `
++  'target conformance rejects scalar YAML alias for review_focus' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', 'review_focus: *focus')
++    Refresh-ApprovedModeAuthorityProfileRevision $root
++  }
++Invoke-ConformanceCase `
++  'target conformance accepts documented non-empty review_focus block list' `
++  '' `
++  (New-DesignArtifact) `
++  $true `
++  '' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', "review_focus:`n  - `"Riverpod: do not retain ref after dispose`"")
++    Refresh-ApprovedModeAuthorityProfileRevision $root
++  }
++Invoke-ConformanceCase `
++  'target conformance rejects nested YAML alias in review_focus block list' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', "review_focus:`n  - *focus")
++    Refresh-ApprovedModeAuthorityProfileRevision $root
++  }
++Invoke-ConformanceCase `
++  'target conformance rejects unknown nested alias key in review_focus block list' `
++  '' `
++  (New-DesignArtifact) `
++  $false `
++  'Invalid approved migration mode authority' `
++  -ModeAuthorityMutation {
++    param($root)
++    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
++    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
++    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', "review_focus:`n  - `"Riverpod lifecycle`"`n    focus_alias: *focus")
++    Refresh-ApprovedModeAuthorityProfileRevision $root
++  }
+ 
+ $profileScalarLines = [ordered]@{
+   schema_version = 'schema_version: 1'
+   base_branch = 'base_branch: null'
+   test_cmd = 'test_cmd: null'
+   lint_cmd = 'lint_cmd: null'
+   build_cmd = 'build_cmd: null'
+   coverage_cmd = 'coverage_cmd: null'
+-  review_focus = 'review_focus: []'
+ }
+ $nestedScalarShapes = [ordered]@{
+   scalar = '  unexpected_scalar: value'
+   list = '  - unexpected-list-value'
+   map = "  unexpected_map:`n    key: value"
+ }
+ foreach ($scalarKey in $profileScalarLines.Keys) {
+   foreach ($nestedShape in $nestedScalarShapes.Keys) {
+     $originalScalarLine = $profileScalarLines[$scalarKey]
+     $nestedContent = $nestedScalarShapes[$nestedShape]
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+index 6e9276e..dfa24d5 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+@@ -714,21 +714,34 @@ function Test-ResponsibilityPlan {
+       $_['Master Plan Reference'] -ceq $decision['Master Plan Reference'] -and
+       $_['Master Plan Revision'] -ceq $planRevision -and
+       $_['Design Revision'] -ceq $designRevision
+     })
+     if ($matchingParentAdapters.Count -ne 1 -or $matchingChildAdapters.Count -ne 1) {
+       $errors.Add('responsibility-owner-extra')
+     }
+   }
+   foreach ($adapterRow in $adapterRows) {
+     $adapterDecisionId = $adapterRow['Decomposition Decision Reference']
+-    if ($adapterDecisionId -ceq 'not-applicable') { continue }
++    $adapterMasterAuthorityValid = (
++      $adapterRow['Master Plan Reference'] -ceq 'master-plan.md' -and
++      $adapterRow['Master Plan Revision'] -cmatch '^[1-9][0-9]*$' -and
++      (-not $planIsApproved -or $adapterRow['Master Plan Revision'] -ceq $planRevision)
++    )
++    if (-not $adapterMasterAuthorityValid) {
++      $errors.Add('responsibility-owner-extra')
++    }
++    if ($adapterDecisionId -ceq 'not-applicable') {
++      if ($adapterRow['Parent Work Item ID'] -cne 'not-applicable') {
++        $errors.Add('responsibility-owner-extra')
++      }
++      continue
++    }
+     if ($adapterDecisionId -cnotmatch '^DEC-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or -not $decisionById.ContainsKey($adapterDecisionId)) {
+       $errors.Add('responsibility-owner-extra')
+       continue
+     }
+     $adapterDecision = $decisionById[$adapterDecisionId]
+     $adapterBindsDecision = (
+       ($adapterRow['Work Item ID'] -ceq $adapterDecision['Parent Work Item ID'] -and $adapterRow['Parent Work Item ID'] -ceq 'not-applicable') -or
+       ($adapterRow['Work Item ID'] -ceq $adapterDecision['Child Work Item ID'] -and $adapterRow['Parent Work Item ID'] -ceq $adapterDecision['Parent Work Item ID'])
+     )
+     if (-not $adapterBindsDecision) { $errors.Add('responsibility-owner-extra') }
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+index 4196365..beb20a7 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/target-conformance.validation.ps1
+@@ -286,85 +286,110 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
+       project = 'id'
+       migration = 'architecture_policy|mode|unit'
+       automation = 'mode'
+       output = 'artifact_language'
+       legacy = 'framework|language|path'
+       target = 'framework|language|path'
+       documents = 'architecture|migration|requirements|uiux'
+       verification = 'behavior_parity|regression|visual_fidelity'
+       project_pack = 'path|review_evidence|reviewed_at'
+     }
+-    $scalarTopLevelKeys = @('schema_version', 'base_branch', 'test_cmd', 'lint_cmd', 'build_cmd', 'coverage_cmd', 'review_focus')
++    $scalarTopLevelKeys = @('schema_version', 'base_branch', 'test_cmd', 'lint_cmd', 'build_cmd', 'coverage_cmd')
+     $canonicalProfileShapeValid = $true
+     $seenTopLevelKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+     $currentProfileSection = ''
++    $reviewFocusUsesBlockList = $false
++    $reviewFocusItemCount = 0
+     foreach ($profileLine in @($profileText -split "`n" | ForEach-Object { $_.TrimEnd("`r") })) {
+       if ([string]::IsNullOrWhiteSpace($profileLine)) { continue }
+       if ($profileLine -cnotmatch '^[ \t]') {
+         $topLevelLine = [regex]::Match($profileLine, '^(?<key>[a-z_][a-z0-9_]*):(?<value>[^\r\n]*)$')
+         if (-not $topLevelLine.Success) {
+           $canonicalProfileShapeValid = $false
+           $currentProfileSection = ''
+           continue
+         }
+         $topLevelKey = $topLevelLine.Groups['key'].Value
+         $topLevelValue = $topLevelLine.Groups['value'].Value.Trim()
+         if ($expectedTopLevelKeys -cnotcontains $topLevelKey -or -not $seenTopLevelKeys.Add($topLevelKey)) {
+           $canonicalProfileShapeValid = $false
+         }
+         if ($profileSectionNames -ccontains $topLevelKey) {
+           if ($topLevelValue -cne '') { $canonicalProfileShapeValid = $false }
+           $currentProfileSection = $topLevelKey
+         }
++        elseif ($topLevelKey -ceq 'review_focus') {
++          if ($topLevelValue -ceq '') {
++            $reviewFocusUsesBlockList = $true
++            $currentProfileSection = 'review_focus'
++          }
++          elseif ($topLevelValue -ceq '[]') {
++            $currentProfileSection = ''
++          }
++          else {
++            $canonicalProfileShapeValid = $false
++            $currentProfileSection = ''
++          }
++        }
+         elseif ($scalarTopLevelKeys -ccontains $topLevelKey) {
+           if ($topLevelValue -ceq '' -or ($topLevelKey -ceq 'schema_version' -and $topLevelValue -cne '1')) {
+             $canonicalProfileShapeValid = $false
+           }
+           $currentProfileSection = ''
+         }
+         else {
+           $canonicalProfileShapeValid = $false
+           $currentProfileSection = ''
+         }
+         continue
+       }
+ 
+       if ($currentProfileSection -ceq '') {
+         $canonicalProfileShapeValid = $false
+         continue
+       }
++      if ($currentProfileSection -ceq 'review_focus') {
++        if ($profileLine -cmatch '^  - (?:(?:"[^"\r\n]+")|(?:''[^''\r\n]+'')|(?:[A-Za-z0-9][A-Za-z0-9 ._/-]*))$') {
++          $reviewFocusItemCount++
++        }
++        else {
++          $canonicalProfileShapeValid = $false
++        }
++        continue
++      }
+       if ($currentProfileSection -ceq 'documents') {
+         if (
+           $profileLine -cnotmatch '^  (?:requirements|uiux|migration|architecture):(?: \[\])?$' -and
+           $profileLine -cnotmatch '^    - path: [^\r\n]+$' -and
+           $profileLine -cnotmatch '^      (?:input_source|format|readability|evidence_id): [^\r\n]+$'
+         ) { $canonicalProfileShapeValid = $false }
+         continue
+       }
+       $allowedNestedKeys = @($sectionKeyShapes[$currentProfileSection] -split '\|')
+       $nestedLine = [regex]::Match($profileLine, '^  (?<key>[a-z_][a-z0-9_]*):[ \t]*(?<value>[^\r\n]+)[ \t]*$')
+       if (-not $nestedLine.Success -or $allowedNestedKeys -cnotcontains $nestedLine.Groups['key'].Value) {
+         $canonicalProfileShapeValid = $false
+       }
+     }
++    if ($reviewFocusUsesBlockList -and $reviewFocusItemCount -eq 0) { $canonicalProfileShapeValid = $false }
+     if ($seenTopLevelKeys.Count -ne $expectedTopLevelKeys.Count) { $canonicalProfileShapeValid = $false }
+     $authorityInvalid = (
+       -not $canonicalProfileShapeValid -or
+       @([regex]::Matches($profileText, '(?m)^schema_version:[ \t]*1[ \t]*\r?$')).Count -ne 1 -or
+       ($topLevelKeys -join '|') -cne ($expectedTopLevelKeys -join '|') -or
+       @([regex]::Matches($profileText, '(?m)^(?:mode|migration_mode|architecture_policy):')).Count -ne 0 -or
+       @([regex]::Matches($profileText, '(?m)^base_branch:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+       @([regex]::Matches($profileText, '(?m)^test_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+       @([regex]::Matches($profileText, '(?m)^lint_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+       @([regex]::Matches($profileText, '(?m)^build_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+       @([regex]::Matches($profileText, '(?m)^coverage_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+-      @([regex]::Matches($profileText, '(?m)^review_focus:[ \t]*(?:\[\]|[^\r\n]+)[ \t]*\r?$')).Count -ne 1
++      @([regex]::Matches($profileText, '(?m)^review_focus:[ \t]*(?:\[\])?[ \t]*\r?$')).Count -ne 1
+     )
+     foreach ($sectionName in $sectionKeyShapes.Keys) {
+       $sectionKeys = @(& $getSectionKeys $profileSections[$sectionName])
+       $sectionLines = @($profileSections[$sectionName] -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+       if (
+         $null -eq $profileSections[$sectionName] -or
+         ($sectionKeys -join '|') -cne $sectionKeyShapes[$sectionName] -or
+         (
+           $sectionName -cne 'documents' -and
+           (

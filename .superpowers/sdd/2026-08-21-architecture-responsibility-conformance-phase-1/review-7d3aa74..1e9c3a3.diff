@@ -1,0 +1,161 @@
+# Review package: 7d3aa74377845b3a4d0b48c691df7c00d88c89b3..1e9c3a3f031079eeb1fdb4c3d2483cf5750f5ac6
+
+## Commits
+1e9c3a3 fix: harden responsibility conformance validation
+
+## Files changed
+ .../scenarios/responsibility-conformance.Tests.ps1 | 37 ++++++++++++++++++++++
+ .../tests/validate-migration-framework.Tests.ps1   | 12 +++++++
+ .../responsibility-conformance.validation.ps1      | 23 ++++++++++----
+ 3 files changed, 66 insertions(+), 6 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+index 0400d45..be8e66b 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/responsibility-conformance.Tests.ps1
+@@ -17,11 +17,48 @@ foreach ($entry in @(
+   'Test-ResponsibilityPlan',
+   'Test-ResponsibilityImplementation',
+   'Test-ResponsibilityReview',
+   'Test-ResponsibilityHandoff'
+ )) {
+   if (-not (Get-Command $entry -ErrorAction SilentlyContinue)) {
+     throw "Missing responsibility validator entry point: $entry"
+   }
+ }
+ 
++$verificationRow = '| VER-### | RESP-### | CAP-### | evidence path | scenario | unit | required | binding evidence | decision reference | PASS | not-applicable |'
++$invalidVerificationRows = @(
++  [pscustomobject]@{
++    Name = 'verification evidence kind cannot use required before not-applicable-approved disposition'
++    Row = '| VER-### | RESP-### | CAP-### | evidence path | scenario | required | not-applicable-approved | binding evidence | decision reference | PASS | not-applicable |'
++  }
++  [pscustomobject]@{
++    Name = 'verification evidence kind cannot use not-applicable-approved before required disposition'
++    Row = '| VER-### | RESP-### | CAP-### | evidence path | scenario | not-applicable-approved | required | binding evidence | decision reference | PASS | not-applicable |'
++  }
++)
++foreach ($invalidVerificationRow in $invalidVerificationRows) {
++  $invalidContract = $contract.Replace($verificationRow, $invalidVerificationRow.Row)
++  if ($invalidContract -ceq $contract) { throw "Fixture replacement failed: $($invalidVerificationRow.Name)" }
++  $invalidErrors = @(Test-ResponsibilityContractSchema -ContractText $invalidContract)
++  if ($invalidErrors -notcontains 'ARC-CONTRACT-VERIFICATION-EVIDENCE-KIND: Evidence Kind must be canonical') {
++    throw "Expected evidence-kind diagnostic for $($invalidVerificationRow.Name): $($invalidErrors -join '; ')"
++  }
++}
++
++$rawVersionBody = "version: 1`napplicability: required"
++$stageCases = @(
++  [pscustomobject]@{ Name = 'DISCOVERY'; Invoke = { param($text) Test-ResponsibilityDiscovery -DiscoveryText '' -Mode incremental -ContractText $text } }
++  [pscustomobject]@{ Name = 'DESIGN'; Invoke = { param($text) Test-ResponsibilityDesign -DiscoveryText '' -DesignText '' -Mode greenfield -ContractText $text } }
++  [pscustomobject]@{ Name = 'PLAN'; Invoke = { param($text) Test-ResponsibilityPlan -DesignText '' -PlanText '' -WorkItemId 'WORK-001' -ContractText $text } }
++  [pscustomobject]@{ Name = 'IMPLEMENTATION'; Invoke = { param($text) Test-ResponsibilityImplementation -DesignText '' -ImplementationText '' -ContractText $text } }
++  [pscustomobject]@{ Name = 'REVIEW'; Invoke = { param($text) Test-ResponsibilityReview -ImplementationText '' -ReviewText '' -ContractText $text } }
++  [pscustomobject]@{ Name = 'HANDOFF'; Invoke = { param($text) Test-ResponsibilityHandoff -SourceText '' -TargetText '' -ContractText $text } }
++)
++foreach ($stageCase in $stageCases) {
++  $stageErrors = @(& $stageCase.Invoke $rawVersionBody)
++  $expected = "ARC-$($stageCase.Name)-CONTRACT-VERSION: responsibility contract requires version 1 and applicability required"
++  if ($stageErrors -notcontains $expected) {
++    throw "Expected bounded-front-matter diagnostic for $($stageCase.Name): $($stageErrors -join '; ')"
++  }
++}
++
+ Write-Output 'PASS: responsibility conformance contract'
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1
+index 2587374..fccf2b3 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validate-migration-framework.Tests.ps1
+@@ -565,20 +565,32 @@ $responsibilityContractMutations = @(
+     From = '| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |'
+     To = '| Owner Path | Responsibility ID | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |'
+     Expected = 'FAIL: ARC-CONTRACT-TABLE-COLUMNS: File Responsibility Matrix'
+   }
+   [pscustomobject]@{
+     Name = 'verification evidence disposition separation'
+     From = 'Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification'
+     To = 'Evidence Kind = required | not-applicable-approved'
+     Expected = 'FAIL: ARC-CONTRACT-ENUM: Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification'
+   }
++  [pscustomobject]@{
++    Name = 'verification evidence kind required before not-applicable-approved disposition'
++    From = '| VER-### | RESP-### | CAP-### | evidence path | scenario | unit | required | binding evidence | decision reference | PASS | not-applicable |'
++    To = '| VER-### | RESP-### | CAP-### | evidence path | scenario | required | not-applicable-approved | binding evidence | decision reference | PASS | not-applicable |'
++    Expected = 'FAIL: ARC-CONTRACT-VERIFICATION-EVIDENCE-KIND: Evidence Kind must be canonical'
++  }
++  [pscustomobject]@{
++    Name = 'verification evidence kind not-applicable-approved before required disposition'
++    From = '| VER-### | RESP-### | CAP-### | evidence path | scenario | unit | required | binding evidence | decision reference | PASS | not-applicable |'
++    To = '| VER-### | RESP-### | CAP-### | evidence path | scenario | not-applicable-approved | required | binding evidence | decision reference | PASS | not-applicable |'
++    Expected = 'FAIL: ARC-CONTRACT-VERIFICATION-EVIDENCE-KIND: Evidence Kind must be canonical'
++  }
+ )
+ foreach ($responsibilityContractMutation in $responsibilityContractMutations) {
+   try {
+     $mutatedContract = $responsibilityContractOriginal.Replace($responsibilityContractMutation.From, $responsibilityContractMutation.To)
+     Assert-True ($mutatedContract -cne $responsibilityContractOriginal) "Responsibility mutation must alter: $($responsibilityContractMutation.Name)"
+     [IO.File]::WriteAllText($responsibilityContractFixture, $mutatedContract, [Text.UTF8Encoding]::new($false))
+     $contracts = Invoke-Validator 'Contracts'
+     Assert-True ($contracts.ExitCode -eq 1) "Responsibility contract mutation should fail: $($responsibilityContractMutation.Name). Output: $($contracts.Output)"
+     Assert-Contains $contracts.Output $responsibilityContractMutation.Expected "Responsibility contract mutation: $($responsibilityContractMutation.Name)"
+   }
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+index c6c7e48..e205b52 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/responsibility-conformance.validation.ps1
+@@ -133,37 +133,48 @@ function Test-ResponsibilityContractSchema {
+   }
+ 
+   Get-ArcStrictMarkdownTable -Text $ContractText -Heading 'File Responsibility Matrix' -Columns @(
+     'Responsibility ID', 'Owner Path', 'Owner Symbol', 'Boundary Kind',
+     'Primary Responsibility', 'Owned Capability IDs', 'Trace IDs', 'Atomic Boundary ID',
+     'Public Symbols', 'External Effects', 'Target Exemplar', 'Exemplar Classification',
+     'Classification Authority', 'Classification Evidence', 'Architecture Authority',
+     'Co-location Policy', 'Co-location Evidence', 'Verification Owner References',
+     'Conformance', 'Deviation Reference'
+   ) -Errors $errors | Out-Null
+-  Get-ArcStrictMarkdownTable -Text $ContractText -Heading 'Verification Ownership Matrix' -Columns @(
++  $verificationRows = @(Get-ArcStrictMarkdownTable -Text $ContractText -Heading 'Verification Ownership Matrix' -Columns @(
+     'Verification Owner ID', 'Production Responsibility ID', 'Capability ID',
+     'Evidence Path', 'Evidence Symbol or Scenario', 'Evidence Kind',
+     'Verification Disposition', 'Production Binding Evidence', 'Decision Reference',
+     'Verdict', 'Deviation Reference'
+-  ) -Errors $errors | Out-Null
+-
+-  if ($ContractText -match '(?m)^\|[^\r\n]*\bnot-applicable\b[^\r\n]*\brequired\b[^\r\n]*\|') {
+-    $errors.Add('ARC-CONTRACT-MIXED-SENTINEL: a row mixes not-applicable with required')
++  ) -Errors $errors)
++  $evidenceKinds = @('unit', 'integration', 'contract', 'production-composition', 'static-structure', 'generator-verification')
++  $verificationDispositions = @('required', 'not-applicable-approved')
++  for ($rowIndex = 2; $rowIndex -lt $verificationRows.Count; $rowIndex++) {
++    if ($evidenceKinds -cnotcontains $verificationRows[$rowIndex][5]) {
++      $errors.Add('ARC-CONTRACT-VERIFICATION-EVIDENCE-KIND: Evidence Kind must be canonical')
++    }
++    if ($verificationDispositions -cnotcontains $verificationRows[$rowIndex][6]) {
++      $errors.Add('ARC-CONTRACT-VERIFICATION-DISPOSITION: Verification Disposition must be canonical')
++    }
+   }
+   return $errors.ToArray()
+ }
+ 
+ function Test-ArcResponsibilityStageVersion {
+   param([string]$ContractText, [string]$Stage)
+   $errors = [Collections.Generic.List[string]]::new()
+-  if ($ContractText -notmatch '(?m)^version:\s*1\s*$' -or $ContractText -notmatch '(?m)^applicability:\s*required\s*$') {
++  $frontMatter = Get-ArcBoundedFrontMatter -Text $ContractText
++  if (
++    $null -eq $frontMatter -or
++    @([regex]::Matches($frontMatter, '(?m)^version:\s*1\s*$')).Count -ne 1 -or
++    @([regex]::Matches($frontMatter, '(?m)^applicability:\s*required\s*$')).Count -ne 1
++  ) {
+     $errors.Add("ARC-$Stage-CONTRACT-VERSION: responsibility contract requires version 1 and applicability required")
+   }
+   return $errors.ToArray()
+ }
+ 
+ function Test-ResponsibilityDiscovery {
+   [CmdletBinding()]
+   param([string]$DiscoveryText, [ValidateSet('incremental','greenfield')][string]$Mode, [string]$ContractText)
+   return Test-ArcResponsibilityStageVersion $ContractText 'DISCOVERY'
+ }

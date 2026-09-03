@@ -1,0 +1,163 @@
+# Review package: fd35456..d2b9299
+
+## Commits
+d2b9299 feat: canonicalize migration delivery adapters
+
+## Files changed
+ .../aitoolkit/skills/migration/plan-waves/SKILL.md |  2 +-
+ .../tests/scenarios/delivery-adapters.Tests.ps1    | 41 ++++++++++++++++++++++
+ .../validation/delivery-adapters.validation.ps1    | 12 -------
+ 3 files changed, 42 insertions(+), 13 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/plan-waves/SKILL.md b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/plan-waves/SKILL.md
+index 8f2414e..2129dcb 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/plan-waves/SKILL.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/skills/migration/plan-waves/SKILL.md
+@@ -23,21 +23,21 @@ Use only stable IDs and decisions forwarded by that artifact; do not load a cumu
+ ## Work item and decomposition trace
+ 
+ Nhận orchestrator-provided `work_item_id`, `master_plan_ref`, `master_plan_revision` và validate đúng một `Work Item Trace` row liên tục từ steps 04, 05, 06 và 07. Preserve `Work Item ID`, `Parent Work Item ID`, `Master Plan Reference`, `Master Plan Revision`, `Acceptance`, `Mode Constraint`, full append-only Trace IDs, approved `Design Revision` và `Decomposition Decision Reference`.
+ 
+ Child không được xuất hiện lần đầu tại plan-waves. Với child, từng step 04–07 phải chứa cùng Parent Work Item ID và Decomposition Decision Reference; missing/bypass/mismatch làm `result: blocked`. Parent selector chỉ được gắn sau khi row step 08 của child được duyệt.
+ 
+ Current master plan phải có `status: approved`. `work_item_id` phải resolve đúng một canonical `Work Items` row trong revision đó; child còn phải resolve đúng một parent row và đúng một approved decomposition record có cùng parent, child, decision và master-plan revision. Mọi canonical step 04–08 được dùng để cấp selector phải có `status: approved` và `result: complete`.
+ 
+ Mỗi canonical Work Item trong scope, kể cả kind `none`, có đúng một `Delivery Adapter Selection`; zero-selection và duplicate-selection đều block. Mỗi cặp adapter kind/external selector chỉ thuộc một Work Item. Adapter `migration-unit` còn yêu cầu external ID đúng `UNIT-*` format, resolve đúng một ordered unit row và một `Work Item Adapter Trace` row, đồng thời giữ exact Dependencies equivalence giữa canonical master Work Item và unit plan cùng mode, acceptance, trace và design equivalence.
+ 
+-Với generic child, `Parent Selector` phải bằng exact external selector trong chính adapter selection của canonical parent Work Item đã nêu trong approved decomposition. Nếu parent adapter là `none`, canonical parent-selector semantics là `not-applicable`; không được phát minh external parent ID.
++Với generic child có adapter kind khác `none`, `Parent Selector` phải bằng exact external selector trong chính adapter selection của canonical parent Work Item đã nêu trong approved decomposition. Nếu parent adapter là `none`, canonical parent-selector semantics là `not-applicable`; không được phát minh external parent ID. Với child adapter kind `none`, mọi selector field gồm `Parent Selector` luôn là `not-applicable` dù parent dùng adapter nào; quan hệ cha-con được ràng buộc bằng `Parent Work Item ID`, current master Work Item row và exact approved decomposition record, không bằng external selector của parent.
+ 
+ `UNIT-* is the canonical migration-unit adapter ID, not a generic work-item taxonomy`. Project dùng adapter `none`, `task`, `story`, `package`, `phase` hoặc `milestone` giữ nguyên generic `WORK-*`; plan-waves không tạo `UNIT-*` cho chúng.
+ 
+ Generic adapters preserve Work Item Trace through steps 04-08. `none` giữ toàn bộ selector fields là `not-applicable`; `task`, `story`, `package`, `phase` và `milestone` giữ external ID, authority, authority revision, approval reference và parent-selector semantics của adapter thay vì đi qua migration-unit plan.
+ 
+ ## Activation Slice responsibilities
+ 
+ Read `aitoolkit/contracts/activation-slice.md` as the sole definition source. Preserve the same stable Activation Slice ID, all seam rows, and trace IDs from the immediate predecessor without reproducing the canonical schema. Order units by seam dependencies so upstream activation evidence and ownership decisions precede dependent construction, rendering, consumer, and test work.
+ 
+ A unit may implement only part of a slice when every remaining required seam is `deferred-approved` with its Decision Reference and destination Deferred Unit ID. Acceptance must not declare the module `activatable` while any required seam is `deferred-approved`. A missing dependency, decision, destination unit, seam row, or trace that can prevent activation keeps `status: draft` and `result: blocked`, never partial.
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/delivery-adapters.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/delivery-adapters.Tests.ps1
+index a57a777..35c502e 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/delivery-adapters.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/delivery-adapters.Tests.ps1
+@@ -153,20 +153,31 @@ function Get-GenericChildWorkItemRows {
+   )
+ }
+ 
+ function Get-NoneChildWorkItemRows {
+   return @(
+     '| WORK-ADMIN-LOCKS | Parent lock behavior | yes | none | 1 | REQ-101: lock mode persists | REQ-101, ITEM-201, MAP-301, DESIGN-401 | none | complete | ATTEMPT-041 | evidence:parent | approval:WORK-ADMIN-LOCKS |',
+     '| WORK-ADMIN-SIMPLE-LOCKS | Simple lock behavior | yes | none | 2 | REQ-101: lock mode persists | REQ-101, ITEM-201, MAP-301, DESIGN-401 | none | ready | none | none | approval:WORK-ADMIN-SIMPLE-LOCKS |'
+   )
+ }
+ 
++function Get-NoneChildUnderTaskParentWorkItemRows {
++  return @(
++    '| WORK-ADMIN-LOCKS | Parent lock behavior | yes | none | 1 | REQ-101: lock mode persists | REQ-101, ITEM-201, MAP-301, DESIGN-401 | task:TASK-41 | complete | ATTEMPT-041 | evidence:parent | approval:WORK-ADMIN-LOCKS |',
++    '| WORK-ADMIN-SIMPLE-LOCKS | Simple lock behavior | yes | none | 2 | REQ-101: lock mode persists | REQ-101, ITEM-201, MAP-301, DESIGN-401 | none | ready | none | none | approval:WORK-ADMIN-SIMPLE-LOCKS |'
++  )
++}
++
++function Get-TaskParentSelectionRow {
++  return '| WORK-ADMIN-LOCKS | task | TASK-41 | jira:ADMIN | 12 | approval:TASK-41 | not-applicable | REQ-101: lock mode persists | REQ-101, ITEM-201, MAP-301, DESIGN-401 | incremental/preserve-existing | DESIGN-401@4 | not-applicable | not-applicable |'
++}
++
+ function Write-MigrationPlan(
+   [string]$Root,
+   [string[]]$Rows,
+   [string]$Status = 'approved',
+   [string]$Result = 'complete'
+ ) {
+   $orderedUnitsHeading = [Text.Encoding]::UTF8.GetString(
+     [Convert]::FromBase64String('Q8OhYyDEkcahbiB24buLIG1pZ3JhdGlvbiB0aGVvIHRo4bupIHThu7E=')
+   )
+   $orderedRows = [Collections.Generic.List[string]]::new()
+@@ -346,20 +357,50 @@ try {
+     -DecisionReference 'DEC-ARCH-014' `
+     -WorkItemRows @(Get-NoneChildWorkItemRows) `
+     -DecompositionRows @(Get-ApprovedDecompositionRows)
+   Write-FrontHalf $root `
+     -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
+     -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
+     -DecisionReference 'DEC-ARCH-014' `
+     -Steps @(4, 5, 6, 7, 8)
+   Assert-Accepted 'valid child with none adapter' $root
+ 
++  $root = New-Case 'valid-none-child-under-task-parent'
++  Write-MasterPlan $root 'none' 'not-applicable' 'not-applicable' 'not-applicable' 'not-applicable' `
++    -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
++    -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
++    -DecisionReference 'DEC-ARCH-014' `
++    -WorkItemRows @(Get-NoneChildUnderTaskParentWorkItemRows) `
++    -DecompositionRows @(Get-ApprovedDecompositionRows) `
++    -AdditionalSelectionRows @(Get-TaskParentSelectionRow)
++  Write-FrontHalf $root `
++    -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
++    -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
++    -DecisionReference 'DEC-ARCH-014' `
++    -Steps @(4, 5, 6, 7, 8)
++  Assert-Accepted 'none child under task parent keeps not-applicable selector' $root
++
++  $root = New-Case 'none-child-wrong-decomposition-parent'
++  Write-MasterPlan $root 'none' 'not-applicable' 'not-applicable' 'not-applicable' 'not-applicable' `
++    -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
++    -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
++    -DecisionReference 'DEC-ARCH-014' `
++    -WorkItemRows @(Get-NoneChildUnderTaskParentWorkItemRows) `
++    -DecompositionRows @('| WORK-ADMIN-OTHER | WORK-ADMIN-SIMPLE-LOCKS | DEC-ARCH-014 | 7 | approval:DEC-ARCH-014 | approved |') `
++    -AdditionalSelectionRows @(Get-TaskParentSelectionRow)
++  Write-FrontHalf $root `
++    -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
++    -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
++    -DecisionReference 'DEC-ARCH-014' `
++    -Steps @(4, 5, 6, 7, 8)
++  Assert-Rejected 'none child decomposition names wrong parent' $root 'none:not-applicable must resolve exactly one approved decomposition record; found 0'
++
+   $root = New-Case 'none-child-decomposition-missing'
+   Write-MasterPlan $root 'none' 'not-applicable' 'not-applicable' 'not-applicable' 'not-applicable' `
+     -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
+     -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
+     -DecisionReference 'DEC-ARCH-014' `
+     -WorkItemRows @(Get-NoneChildWorkItemRows)
+   Write-FrontHalf $root `
+     -WorkItemId 'WORK-ADMIN-SIMPLE-LOCKS' `
+     -ParentWorkItemId 'WORK-ADMIN-LOCKS' `
+     -DecisionReference 'DEC-ARCH-014' `
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/delivery-adapters.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/delivery-adapters.validation.ps1
+index 4c3b400..700b606 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/delivery-adapters.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/delivery-adapters.validation.ps1
+@@ -301,32 +301,20 @@ function Test-DeliveryAdapters([string]$Root, [string]$ContractText) {
+           $errors.Add("Delivery adapter none:not-applicable must resolve exactly one approved decomposition record; found $($noneDecompositionMatches.Count)")
+         }
+         $noneParentWorkItems = @($workItemRows | Where-Object { [string]($_.'Work Item ID') -ceq $noneParentWorkItemId })
+         if ($noneParentWorkItems.Count -ne 1) {
+           $errors.Add("Delivery adapter none:not-applicable must resolve exactly one canonical parent Work Item row; found $($noneParentWorkItems.Count)")
+         }
+         $noneParentSelections = @($selectionRows | Where-Object { [string]($_.'Work Item ID') -ceq $noneParentWorkItemId })
+         if ($noneParentSelections.Count -ne 1) {
+           $errors.Add("Delivery adapter none:not-applicable must resolve exactly one canonical parent adapter selection; found $($noneParentSelections.Count)")
+         }
+-        else {
+-          $noneParentSelection = $noneParentSelections[0]
+-          $noneExpectedParentSelector = if ([string]($noneParentSelection.'Adapter Kind') -ceq 'none') {
+-            'not-applicable'
+-          }
+-          else {
+-            [string]($noneParentSelection.'External ID')
+-          }
+-          if ([string]($selection.'Parent Selector') -cne $noneExpectedParentSelector) {
+-            $errors.Add("Delivery adapter none:not-applicable Parent Selector must match canonical parent selector $noneExpectedParentSelector")
+-          }
+-        }
+       }
+       & $validateGenericTraceChain $selection $workItem $masterRevision
+       continue
+     }
+     foreach ($field in @('External ID', 'Authority', 'Authority Revision', 'Approval Reference')) {
+       $value = [string]$selection.$field
+       if ([string]::IsNullOrWhiteSpace($value) -or $value -ceq 'not-applicable') {
+         $errors.Add("Delivery adapter $kind requires $field for $workItemId")
+       }
+     }

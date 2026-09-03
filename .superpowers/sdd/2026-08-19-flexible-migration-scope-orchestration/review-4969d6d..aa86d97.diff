@@ -1,0 +1,1083 @@
+# Review package: 4969d6d..aa86d97
+
+## Commits
+aa86d97 feat: orchestrate migration master scope
+
+## Files changed
+ .../aitoolkit/skills/aitoolkit/migrate/SKILL.md    |  10 +
+ .../tests/scenarios/scope-engine.Tests.ps1         | 249 ++++++++++++++++++++-
+ .../tests/validation/scope-engine.validation.ps1   | 200 +++++++++++++++--
+ 3 files changed, 433 insertions(+), 26 deletions(-)
+
+## Diff
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit/migrate/SKILL.md b/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit/migrate/SKILL.md
+index 45ed712..2f9c370 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit/migrate/SKILL.md
++++ b/AIToolkit/AIToolkit-main/aitoolkit/skills/aitoolkit/migrate/SKILL.md
+@@ -30,52 +30,62 @@ Bạn là orchestrator chạy inline cùng context người dùng. Điều phố
+ Nhận explicit orchestration context gồm user request và stable conversation/evidence reference. Ghi canonical `requested_scope` trước khi tạo executable work item. Tên folder, menu, package hoặc file chỉ là evidence: do not scan directories to infer requested scope or revision state.
+ 
+ Dùng requested-scope kinds từ canonical contract. `unresolved` asks exactly one scope question and blocks before step 01; không tạo work item, master execution attempt hoặc todo 15 bước. Request `explicit-item` chỉ mở minimum scope và dependency context cần cho item đó, không tự mở rộng thành module/project. Project không dùng migration-unit taxonomy vẫn tạo generic work items.
+ 
+ `unresolved` emits exactly one question block with a stable ID and concrete prompt. Question phải nêu concrete ambiguous scope ID và các boundary choice được contract cho phép; không chỉ ghi counter/flag, không emit câu thứ hai trong cùng resolution attempt.
+ 
+ ### Master artifacts và revision gate
+ 
+ Tạo hoặc resolve `<RUN_DIR>/master-spec.md` và `<RUN_DIR>/master-plan.md`. Trước mọi production mutation, require exactly one latest approved linear revision của master spec và exactly one latest approved linear revision của master plan liên kết đúng spec revision; cả hai phải fresh, không missing, forked, cyclic, stale hoặc blocked. Resolve bằng explicit artifact references từ orchestration context; không quét artifact directory để đoán latest revision.
+ 
++Executable input requires explicit `master_spec_ref` and `master_plan_ref` that resolve exact immutable current artifact type, ID and revision; blank, `pending`, `none` and `not-applicable` references or evidence are invalid. `status: approved` không đủ nếu approval/freshness reference là placeholder; resolved master plan phải bind exact master-spec reference, ID và revision.
++
+ Approved revision là immutable: do not edit an approved master artifact in place. Scope, requirement, success criterion, required disposition, work-item set, dependency, order, acceptance, adapter, selector hoặc structural decision thay đổi phải tạo revision kế tiếp đúng `+1`, giữ stable master ID, trỏ `supersedes` tới immediate predecessor, ghi change summary/affected items, giữ valid completed evidence của item không bị ảnh hưởng và đưa approval của item bị ảnh hưởng về `pending`. Chỉ revision mới đã duyệt được phép tiếp tục mutation.
+ 
+ Every work-item structural change must be declared in `affected_work_items`, including added or removed items, and every affected item in the new revision has `approval_reference: pending`. Structural comparison bao gồm title, required disposition, dependencies, Plan Order, acceptance, trace, adapter và toàn bộ selector fields; revision chain giữ nguyên master-spec/master-plan artifact ID.
+ 
++Revision comparison includes requested boundary, requirements, success criteria, required disposition and structural decisions, and rejects duplicate current or proposed work-item IDs before map construction. Bất kỳ master-level change nào cũng phải khai affected work items và invalidate approval tương ứng.
++
+ ### Queue, eligibility và deterministic selection
+ 
+ Validate graph trước selection; missing dependency hoặc cycle làm plan invalid và `scope-blocked`. Version đầu giữ `max_concurrency: 1`; nhiều hơn một item `in-progress` là invalid. Công thức eligibility bắt buộc là: required-or-approved-optional AND pending-or-ready AND dependencies-terminal-success AND current approval AND no blocker AND adapter-valid AND assurance-pass. Không có eligible item nhưng còn required blocker thì kết luận `scope-blocked`.
+ 
+ Executable operations validate requested scope, then current approved master spec, then current approved linked master plan before queue or transition logic. Gate dùng canonical artifact rows, approval/freshness evidence và executable linear-chain validation; không nhận boolean “approved/current” thay artifact evidence.
+ 
+ Với cùng approved plan revision và evidence state, chọn đúng một item theo dependency depth ascending, then `Plan Order` ascending, then ordinal `Work Item ID` ascending. Không chọn theo folder order, discovery order hoặc lần xuất hiện trong hội thoại.
+ 
++Queue operations consume exactly the work-item rows bound to the current approved master-plan artifact, never a caller subset or forged queue. Exact bound copy/hash phải gồm toàn bộ required/optional rows và metadata; caller không được thêm, bỏ hoặc thay row cho select, transition hay completion.
++
+ Trước selection mới, reconcile an `in-progress` attempt before selecting a new work item. Nếu immutable attempt artifact có terminal evidence hợp lệ, áp dụng missing terminal transition atomically rồi mới select; nếu attempt chưa terminal, resume chính attempt đó. Không brainstorm lại approved scope trừ khi user explicit yêu cầu scope change.
+ 
+ ### Adapter, attempt và atomic transition
+ 
+ Mọi invocation truyền `master_spec_ref`, `master_plan_ref`, `master_plan_revision` và `work_item_id`. Resolve adapter sau khi chọn work item. Với generic work item, adapter `none` keeps `migration_unit_id: not-applicable`; không phát minh external ID. Với adapter `migration-unit`, selector phải resolve đúng một canonical approved row và tiếp tục giữ one-unit-one-change. Adapter draft, duplicate, stale, mismatch hoặc external-only block trước execution.
+ 
+ Ngay trước execution, atomically đổi selected item `ready -> in-progress`, tạo immutable attempt ID và bind current plan revision; không overwrite attempt artifact. Sau execution, áp dụng đúng một transition từ canonical contract, cập nhật latest terminal evidence và giữ toàn bộ attempt history. Chỉ scope plane được sửa master-plan state; execution step-skill chỉ trả immutable attempt evidence/work-item verdict.
+ 
+ Selection starts atomically as `pending -> ready -> in-progress` or `ready -> in-progress`. Validate immutable `attempt_history` globally by unique attempt ID, exact `work_item_id`, exact current `plan_revision`, status and artifact reference. Trước start, chặn ID đã xuất hiện ở bất kỳ item history nào và chặn mọi item khác đang `in-progress`; resume/terminal transition phải bind đúng latest attempt record.
+ 
++Attempt and terminal artifacts resolve from the explicit artifact registry by exact reference and bind immutable status, attempt ID, work-item ID and plan revision. Single-in-progress validation counts both work-item states and every immutable attempt record; native blocker transition targets exactly `latest_attempt`.
++
+ Successful completion cần immutable terminal artifact khớp attempt/work item/plan revision. Blocker, cancellation and non-applicability transitions require exact immutable terminal or approval evidence. Không chuyển state chỉ từ boolean, label hoặc caller assertion.
+ 
+ ### Queue continuation và completion
+ 
+ Step 15 completes only the current execution attempt and work item; nó không kết luận module, project hoặc requested scope hoàn tất. Sau atomic work-item transition, tính lại queue trên current approved master-plan revision. Khi còn required item non-terminal, verdict là `scope-in-progress` và tiếp tục deterministic selection mà không hỏi lại soft-scope question.
+ 
+ Only the approved master plan may conclude `scope-complete`, và chỉ sau khi canonical completion formula đạt đủ: mọi required item terminal-success, graph hợp lệ, không blocker, completed-item architecture/selector-schema đều `PASS`, và terminal scope report liệt kê toàn bộ evidence. Attempt completion, work-item completion và requested-scope completion luôn là ba quyết định riêng.
+ 
+ Scope completion calculates the dependency graph and validates every required terminal-report row; it never trusts caller-provided graph-valid or report-complete booleans. Terminal report phải immutable, có exact work-item status, terminal evidence và assurance fields khớp master-plan rows.
+ 
++Terminal scope report resolves from the artifact registry, binds the current master-plan reference/revision and enumerates the exact approved plan rows. Caller-provided report object hoặc subset không có exact registry binding không được dùng để kết luận scope.
++
+ ## Chuẩn bị run
+ 
+ 1. Hoàn tất scope resolution và đặt `<slug>` từ resolved requested scope; không hỏi thêm câu scope nếu record đã resolved. Dùng ngày hiện tại theo `YYYY-MM-DD`.
+ 2. Đặt `RUN_DIR = <project>/docs/aitoolkit/<date>-migration-<slug>/` và tạo thư mục khi cần.
+ 3. Tạo/resolve master spec và master plan, validate approved revision chain rồi select/resume đúng một work item theo scope plane.
+ 4. Đặt per-run `workflow_type: migration`. Giá trị orchestrator-provided này là authoritative; không đọc workflow hiện tại từ persistent profile.
+ 5. Đọc `<project>/docs/aitoolkit/project.yaml`, project pack tại path trong profile, source/target và tài liệu được profile trỏ tới. Không tự suy ra giá trị còn thiếu.
+ 6. Resolve automation mode, artifact language và optional delivery adapter trước step 01.
+ 7. Chỉ sau khi selected work item đã atomically `in-progress`, tạo TodoWrite gồm đúng 15 mục execution plane theo Bảng bước. Chỉ một mục `in_progress` tại một thời điểm.
+ 
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-engine.Tests.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-engine.Tests.ps1
+index db1e1b0..530a58b 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-engine.Tests.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/scenarios/scope-engine.Tests.ps1
+@@ -19,56 +19,88 @@ function Assert-Equal([object]$Actual, [object]$Expected, [string]$Message) {
+   if ([string]$Actual -cne [string]$Expected) {
+     $failures.Add("$Message (expected='$Expected', actual='$Actual')")
+   }
+ }
+ 
+ function Assert-True([bool]$Condition, [string]$Message) {
+   if (-not $Condition) { $failures.Add($Message) }
+ }
+ 
+ function Invoke-ScopeScenario([hashtable]$Fixture) {
++  $generatedContext = $false
+   if (
+     @('select', 'transition', 'complete-scope') -ccontains [string]$Fixture.operation -and
+     -not $Fixture.ContainsKey('orchestration_context')
+   ) {
+     $Fixture.orchestration_context = New-ApprovedOrchestrationContext
++    $generatedContext = $true
+   }
+   if (
+     @('select', 'transition', 'complete-scope') -ccontains [string]$Fixture.operation -and
+     -not $Fixture.ContainsKey('current_plan_revision')
+   ) {
+     $Fixture.current_plan_revision = [int]$Fixture.orchestration_context.current_plan_revision
+   }
++  if ($generatedContext) {
++    $currentPlan = @($Fixture.orchestration_context.plan_revisions | Where-Object {
++      [int]$_.revision -eq [int]$Fixture.orchestration_context.current_plan_revision
++    })[0]
++    $currentPlan.work_items = @($Fixture.work_items)
++    $resolvedArtifacts = [Collections.Generic.List[object]]::new()
++    foreach ($item in @($Fixture.work_items)) {
++      foreach ($attempt in @($item.attempt_history)) {
++        $resolvedArtifacts.Add(@{
++          artifact_reference = [string]$attempt.artifact_reference
++          attempt_id = [string]$attempt.attempt_id
++          work_item_id = [string]$attempt.work_item_id
++          plan_revision = [int]$attempt.plan_revision
++          status = [string]$attempt.status
++          immutable = $true
++        })
++      }
++    }
++    foreach ($artifactField in @('terminal_artifact', 'blocker_artifact', 'decision_artifact')) {
++      if ($Fixture.ContainsKey($artifactField)) { $resolvedArtifacts.Add($Fixture[$artifactField]) }
++    }
++    if ($Fixture.ContainsKey('terminal_scope_report')) {
++      $Fixture.terminal_scope_report_ref = [string]$Fixture.terminal_scope_report.artifact_reference
++      $resolvedArtifacts.Add($Fixture.terminal_scope_report)
++    }
++    $Fixture.orchestration_context.resolved_artifacts = @($resolvedArtifacts)
++  }
+   $json = $Fixture | ConvertTo-Json -Depth 20 -Compress
+   return Test-ScopeEngine $toolkitRoot $json
+ }
+ 
+ function New-ApprovedOrchestrationContext {
+   return @{
+     requested_scope = @{
+       kind = 'module'
+       id = 'ADMIN'
+       statement = 'Migrate the complete Admin module'
+       source = 'user'
+       resolution_evidence = 'conversation:scope-approved'
+     }
+     master_spec_id = 'SPEC-ADMIN-001'
++    master_plan_id = 'PLAN-ADMIN-001'
++    master_spec_ref = 'runs/master-spec@2.md'
++    master_plan_ref = 'runs/master-plan@3.md'
+     latest_spec_revision = 2
+     spec_revisions = @(
+       @{ artifact_id = 'SPEC-ADMIN-001'; revision = 1; supersedes = 'not-applicable'; status = 'approved'; result = 'complete'; approval_reference = 'approval:spec@1'; freshness_evidence = 'review:spec@1'; stale = $false },
+-      @{ artifact_id = 'SPEC-ADMIN-001'; revision = 2; supersedes = 'SPEC-ADMIN-001@1'; status = 'approved'; result = 'complete'; approval_reference = 'approval:spec@2'; freshness_evidence = 'review:spec@2'; stale = $false }
++      @{ artifact_reference = 'runs/master-spec@2.md'; artifact_type = 'migration-master-spec'; artifact_id = 'SPEC-ADMIN-001'; revision = 2; supersedes = 'SPEC-ADMIN-001@1'; immutable = $true; status = 'approved'; result = 'complete'; approval_reference = 'approval:spec@2'; freshness_evidence = 'review:spec@2'; stale = $false }
+     )
+     current_plan_revision = 3
+     plan_revisions = @(
+       @{ artifact_id = 'PLAN-ADMIN-001'; revision = 1; supersedes = 'not-applicable'; status = 'approved'; result = 'complete'; approval_reference = 'approval:plan@1'; freshness_evidence = 'review:plan@1'; master_spec_id = 'SPEC-ADMIN-001'; master_spec_revision = 1; stale = $false },
+       @{ artifact_id = 'PLAN-ADMIN-001'; revision = 2; supersedes = 'PLAN-ADMIN-001@1'; status = 'approved'; result = 'complete'; approval_reference = 'approval:plan@2'; freshness_evidence = 'review:plan@2'; master_spec_id = 'SPEC-ADMIN-001'; master_spec_revision = 2; stale = $false },
+-      @{ artifact_id = 'PLAN-ADMIN-001'; revision = 3; supersedes = 'PLAN-ADMIN-001@2'; status = 'approved'; result = 'complete'; approval_reference = 'approval:plan@3'; freshness_evidence = 'review:plan@3'; master_spec_id = 'SPEC-ADMIN-001'; master_spec_revision = 2; stale = $false }
++      @{ artifact_reference = 'runs/master-plan@3.md'; artifact_type = 'migration-master-plan'; artifact_id = 'PLAN-ADMIN-001'; revision = 3; supersedes = 'PLAN-ADMIN-001@2'; immutable = $true; status = 'approved'; result = 'complete'; approval_reference = 'approval:plan@3'; freshness_evidence = 'review:plan@3'; master_spec_ref = 'runs/master-spec@2.md'; master_spec_id = 'SPEC-ADMIN-001'; master_spec_revision = 2; stale = $false; work_items = @() }
+     )
+   }
+ }
+ 
+ function New-WorkItem(
+   [string]$Id,
+   [int]$PlanOrder,
+   [string[]]$Dependencies = @(),
+   [string]$Status = 'ready',
+   [bool]$Required = $true
+@@ -187,20 +219,58 @@ $stalePlanGate.plan_revisions[2].stale = $true
+ $planGateResult = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'select'
+   current_plan_revision = 3
+   orchestration_context = $stalePlanGate
+   work_items = @($gateItem)
+ }
+ Assert-Equal $planGateResult.result 'orchestration-blocked' 'Queue selection must require a fresh current master plan revision'
+ Assert-Equal $planGateResult.reason 'stale-revision-chain' 'Stale master plan must block before selection'
+ 
++$pendingReferenceGate = New-ApprovedOrchestrationContext
++$pendingReferenceGate.master_spec_ref = 'pending'
++$pendingReferenceResult = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'select'; current_plan_revision = 3
++  orchestration_context = $pendingReferenceGate; work_items = @($gateItem)
++}
++Assert-Equal $pendingReferenceResult.result 'orchestration-blocked' 'Executable operation must require an explicit resolved master-spec reference'
++Assert-Equal $pendingReferenceResult.reason 'master-artifact-reference-invalid' 'Pending master reference must be rejected as a placeholder'
++
++$placeholderApprovalGate = New-ApprovedOrchestrationContext
++$placeholderApprovalGate.spec_revisions[1].approval_reference = 'none'
++$placeholderApprovalResult = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'select'; current_plan_revision = 3
++  orchestration_context = $placeholderApprovalGate; work_items = @($gateItem)
++}
++Assert-Equal $placeholderApprovalResult.result 'orchestration-blocked' 'Approved status must have real non-placeholder approval evidence'
++Assert-Equal $placeholderApprovalResult.reason 'master-spec-evidence-invalid' 'Placeholder approval evidence must be rejected'
++
++$blankEvidenceGate = New-ApprovedOrchestrationContext
++$blankEvidenceGate.plan_revisions[2].freshness_evidence = '   '
++$blankEvidenceResult = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'select'; current_plan_revision = 3
++  orchestration_context = $blankEvidenceGate; work_items = @($gateItem)
++}
++Assert-Equal $blankEvidenceResult.result 'orchestration-blocked' 'Whitespace-only freshness evidence must not satisfy approved master-plan binding'
++Assert-Equal $blankEvidenceResult.reason 'master-plan-evidence-invalid' 'Blank master-plan evidence must be rejected as placeholder'
++
++$canonicalPlanItem = New-WorkItem 'WORK-ADMIN-CANONICAL' 1
++$forgedQueueItem = New-WorkItem 'WORK-ADMIN-FORGED' 1
++$forgedQueueGate = New-ApprovedOrchestrationContext
++$forgedQueueGate.plan_revisions[2].work_items = @($canonicalPlanItem)
++$forgedQueueResult = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'select'; current_plan_revision = 3
++  orchestration_context = $forgedQueueGate; work_items = @($forgedQueueItem)
++}
++Assert-Equal $forgedQueueResult.result 'orchestration-blocked' 'Queue input must be the exact current approved master-plan rows'
++Assert-Equal $forgedQueueResult.reason 'work-items-not-bound-to-master-plan' 'Arbitrary caller queue must be rejected before selection'
++
+ # Generic projects: a valid `none` adapter must remain generic and selectable.
+ $genericItem = New-WorkItem 'WORK-GENERIC-SHELL' 1
+ $generic = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'select'
+   current_plan_revision = 3
+   work_items = @($genericItem)
+ }
+ Assert-Equal $generic.result 'selected' 'Generic work item must be selectable without a migration unit'
+ Assert-Equal $generic.work_item_id 'WORK-GENERIC-SHELL' 'Generic selector must return the work item ID'
+@@ -317,21 +387,21 @@ $secondRunning.attempt_status = 'in-progress'
+ $secondRunning.attempt_history = @(
+   @{ attempt_id = 'ATTEMPT-WORK-ADMIN-SECOND-RUNNING-01'; work_item_id = 'WORK-ADMIN-SECOND-RUNNING'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/second-running-01.md' }
+ )
+ $multipleRunning = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'select'
+   current_plan_revision = 3
+   work_items = @($running, $secondRunning)
+ }
+ Assert-Equal $multipleRunning.result 'plan-invalid' 'More than one in-progress item must invalidate max-concurrency 1'
+-Assert-Equal $multipleRunning.reason 'multiple-in-progress' 'Concurrency violation must report its exact reason'
++Assert-Equal $multipleRunning.reason 'multiple-in-progress-attempts' 'Concurrency violation must report active immutable attempts before forged item states'
+ 
+ $mismatchedAttemptItem = New-WorkItem 'WORK-ADMIN-MISMATCH' 1 @() 'in-progress'
+ $mismatchedAttemptItem.latest_attempt = 'ATTEMPT-WORK-ADMIN-MISMATCH-01'
+ $mismatchedAttemptItem.attempt_status = 'in-progress'
+ $mismatchedAttemptItem.attempt_history = @(
+   @{ attempt_id = 'ATTEMPT-WORK-ADMIN-MISMATCH-01'; work_item_id = 'WORK-ADMIN-OTHER'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/mismatch-01.md' }
+ )
+ $mismatchedAttempt = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'select'
+@@ -349,20 +419,55 @@ $staleAttemptItem.attempt_history = @(
+ )
+ $staleAttempt = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'select'
+   current_plan_revision = 3
+   work_items = @($staleAttemptItem)
+ }
+ Assert-Equal $staleAttempt.result 'plan-invalid' 'Resume must reject an attempt bound to a stale plan revision'
+ Assert-Equal $staleAttempt.reason 'attempt-plan-revision-mismatch' 'Resume must report exact plan-revision mismatch'
+ 
++$artifactMismatchItem = New-WorkItem 'WORK-ADMIN-ARTIFACT-MISMATCH' 1 @() 'in-progress'
++$artifactMismatchItem.latest_attempt = 'ATTEMPT-WORK-ADMIN-ARTIFACT-MISMATCH-01'
++$artifactMismatchItem.attempt_history = @(
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-ARTIFACT-MISMATCH-01'; work_item_id = 'WORK-ADMIN-ARTIFACT-MISMATCH'; plan_revision = 3; status = 'complete'; artifact_reference = 'runs/artifact-mismatch-terminal.md' }
++)
++$artifactMismatchItem.terminal_evidence = 'runs/artifact-mismatch-terminal.md'
++$artifactMismatchContext = New-ApprovedOrchestrationContext
++$artifactMismatchContext.plan_revisions[2].work_items = @($artifactMismatchItem)
++$artifactMismatchContext.resolved_artifacts = @(
++  @{ artifact_reference = 'runs/artifact-mismatch-terminal.md'; attempt_id = 'ATTEMPT-WORK-ADMIN-OTHER-01'; work_item_id = 'WORK-ADMIN-ARTIFACT-MISMATCH'; plan_revision = 3; status = 'complete'; immutable = $true }
++)
++$artifactMismatchResume = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'select'; current_plan_revision = 3
++  orchestration_context = $artifactMismatchContext; work_items = @($artifactMismatchItem)
++}
++Assert-Equal $artifactMismatchResume.result 'plan-invalid' 'Resume must resolve and validate the immutable attempt artifact object'
++Assert-Equal $artifactMismatchResume.reason 'attempt-artifact-binding-invalid' 'Attempt artifact identity mismatch must block reconciliation'
++
++$activeRecordA = New-WorkItem 'WORK-ADMIN-ACTIVE-RECORD-A' 1 @() 'ready'
++$activeRecordA.latest_attempt = 'ATTEMPT-WORK-ADMIN-ACTIVE-RECORD-A-01'
++$activeRecordA.attempt_history = @(
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-ACTIVE-RECORD-A-01'; work_item_id = 'WORK-ADMIN-ACTIVE-RECORD-A'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/active-record-a.md' }
++)
++$activeRecordB = New-WorkItem 'WORK-ADMIN-ACTIVE-RECORD-B' 2 @() 'ready'
++$activeRecordB.latest_attempt = 'ATTEMPT-WORK-ADMIN-ACTIVE-RECORD-B-01'
++$activeRecordB.attempt_history = @(
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-ACTIVE-RECORD-B-01'; work_item_id = 'WORK-ADMIN-ACTIVE-RECORD-B'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/active-record-b.md' }
++)
++$multipleActiveRecords = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'select'; current_plan_revision = 3
++  work_items = @($activeRecordA, $activeRecordB)
++}
++Assert-Equal $multipleActiveRecords.result 'plan-invalid' 'Single-in-progress gate must count active attempt records even when item states are forged ready'
++Assert-Equal $multipleActiveRecords.reason 'multiple-in-progress-attempts' 'Two active immutable attempts must be reported explicitly'
++
+ # Attempt, work-item, and scope completion are independent outcomes.
+ $completeItem = New-WorkItem 'WORK-ADMIN-COMPLETE' 1 @() 'complete'
+ $completeItem.terminal_evidence = 'runs/complete.md'
+ $pendingItem = New-WorkItem 'WORK-ADMIN-PENDING' 2
+ $partialCompletion = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'complete-scope'
+   work_items = @($completeItem, $pendingItem)
+ }
+ Assert-Equal $partialCompletion.scope_status 'scope-in-progress' 'One complete item cannot complete a scope with required work pending'
+@@ -370,20 +475,23 @@ Assert-Equal $partialCompletion.scope_status 'scope-in-progress' 'One complete i
+ $cancelled = New-WorkItem 'WORK-ADMIN-CANCELLED' 2 @() 'cancelled-approved'
+ $cancelled.terminal_evidence = 'decisions/cancelled.md'
+ $notApplicable = New-WorkItem 'WORK-ADMIN-NA' 3 @() 'not-applicable-approved'
+ $notApplicable.terminal_evidence = 'decisions/not-applicable.md'
+ $allComplete = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'complete-scope'
+   work_items = @($completeItem, $cancelled, $notApplicable)
+   terminal_scope_report = @{
+     artifact_reference = 'runs/scope-terminal.md'
++    artifact_type = 'migration-scope-terminal-report'
++    master_plan_ref = 'runs/master-plan@3.md'
++    master_plan_revision = 3
+     immutable = $true
+     items = @(
+       @{ work_item_id = 'WORK-ADMIN-COMPLETE'; status = 'complete'; terminal_evidence = 'runs/complete.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' },
+       @{ work_item_id = 'WORK-ADMIN-CANCELLED'; status = 'cancelled-approved'; terminal_evidence = 'decisions/cancelled.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' },
+       @{ work_item_id = 'WORK-ADMIN-NA'; status = 'not-applicable-approved'; terminal_evidence = 'decisions/not-applicable.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' }
+     )
+   }
+ }
+ Assert-Equal $allComplete.scope_status 'scope-complete' 'All required terminal-success items with scope evidence must complete the scope'
+ 
+@@ -429,29 +537,84 @@ $cycleCompletion = Invoke-ScopeScenario @{
+ Assert-Equal $cycleCompletion.scope_status 'scope-blocked' 'Completion must calculate and reject dependency cycles regardless caller flags'
+ Assert-Equal $cycleCompletion.reason 'dependency-cycle' 'Completion must report dependency-cycle evidence failure'
+ 
+ $incompleteReport = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'complete-scope'
+   graph_valid = $true
+   terminal_scope_report_complete = $true
+   work_items = @($completeItem, $cancelled)
+   terminal_scope_report = @{
+-    artifact_reference = 'runs/incomplete-scope-report.md'; immutable = $true
++    artifact_reference = 'runs/incomplete-scope-report.md'; artifact_type = 'migration-scope-terminal-report'; master_plan_ref = 'runs/master-plan@3.md'; master_plan_revision = 3; immutable = $true
+     items = @(
+       @{ work_item_id = 'WORK-ADMIN-COMPLETE'; status = 'complete'; terminal_evidence = 'runs/complete.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' }
+     )
+   }
+ }
+ Assert-Equal $incompleteReport.scope_status 'scope-blocked' 'Terminal scope report must enumerate every required item and evidence'
+ Assert-Equal $incompleteReport.reason 'terminal-scope-report-incomplete' 'Missing report row must block scope completion'
+ 
++$optionalTerminal = New-WorkItem 'WORK-ADMIN-OPTIONAL-TERMINAL' 2 @() 'complete' $false
++$optionalTerminal.optional_execution_approved = $true
++$optionalTerminal.terminal_evidence = 'runs/optional-terminal.md'
++$missingOptionalReportRow = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'complete-scope'
++  work_items = @($completeItem, $optionalTerminal)
++  terminal_scope_report = @{
++    artifact_reference = 'runs/missing-optional-report.md'; artifact_type = 'migration-scope-terminal-report'; master_plan_ref = 'runs/master-plan@3.md'; master_plan_revision = 3; immutable = $true
++    items = @(
++      @{ work_item_id = 'WORK-ADMIN-COMPLETE'; status = 'complete'; terminal_evidence = 'runs/complete.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' }
++    )
++  }
++}
++Assert-Equal $missingOptionalReportRow.scope_status 'scope-blocked' 'Terminal scope report must enumerate exact approved plan rows, including approved optional execution'
++Assert-Equal $missingOptionalReportRow.reason 'terminal-scope-report-incomplete' 'Omitted optional approved row must block exact report binding'
++
++$planCompleteA = New-WorkItem 'WORK-ADMIN-PLAN-A' 1 @() 'complete'
++$planCompleteA.terminal_evidence = 'runs/plan-a.md'
++$planCompleteB = New-WorkItem 'WORK-ADMIN-PLAN-B' 2 @() 'complete'
++$planCompleteB.terminal_evidence = 'runs/plan-b.md'
++$subsetCompletionContext = New-ApprovedOrchestrationContext
++$subsetCompletionContext.plan_revisions[2].work_items = @($planCompleteA, $planCompleteB)
++$subsetCompletionContext.resolved_artifacts = @(
++  @{ artifact_reference = 'runs/subset-report.md'; immutable = $true; artifact_type = 'migration-scope-terminal-report'; master_plan_ref = 'runs/master-plan@3.md'; master_plan_revision = 3; items = @(
++    @{ work_item_id = 'WORK-ADMIN-PLAN-A'; status = 'complete'; terminal_evidence = 'runs/plan-a.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' }
++  ) }
++)
++$subsetCompletion = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'complete-scope'; current_plan_revision = 3
++  orchestration_context = $subsetCompletionContext
++  work_items = @($planCompleteA)
++  terminal_scope_report_ref = 'runs/subset-report.md'
++  terminal_scope_report_complete = $true
++}
++Assert-Equal $subsetCompletion.result 'orchestration-blocked' 'Completion must reject a caller subset that omits a required approved plan row'
++Assert-Equal $subsetCompletion.reason 'work-items-not-bound-to-master-plan' 'Omitted required item must fail at plan-row binding gate'
++
++$reportBoundContext = New-ApprovedOrchestrationContext
++$reportBoundContext.plan_revisions[2].work_items = @($planCompleteA)
++$reportBoundContext.resolved_artifacts = @()
++$forgedTerminalReport = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'complete-scope'; current_plan_revision = 3
++  orchestration_context = $reportBoundContext
++  work_items = @($planCompleteA)
++  terminal_scope_report_ref = 'runs/forged-report.md'
++  terminal_scope_report = @{
++    artifact_reference = 'runs/forged-report.md'; immutable = $true
++    items = @(
++      @{ work_item_id = 'WORK-ADMIN-PLAN-A'; status = 'complete'; terminal_evidence = 'runs/plan-a.md'; architecture_state = 'PASS'; selector_schema_state = 'PASS' }
++    )
++  }
++}
++Assert-Equal $forgedTerminalReport.scope_status 'scope-blocked' 'Completion must resolve terminal report by exact registry reference'
++Assert-Equal $forgedTerminalReport.reason 'terminal-scope-report-resolution-invalid' 'Caller-injected terminal report object must not be trusted'
++
+ $retryItem = New-WorkItem 'WORK-ADMIN-RETRY' 1
+ $retryItem.latest_attempt = 'ATTEMPT-WORK-ADMIN-RETRY-02'
+ $retryItem.attempt_history = @(
+   @{ attempt_id = 'ATTEMPT-WORK-ADMIN-RETRY-01'; work_item_id = 'WORK-ADMIN-RETRY'; plan_revision = 2; status = 'blocked'; artifact_reference = 'runs/retry-01.md' },
+   @{ attempt_id = 'ATTEMPT-WORK-ADMIN-RETRY-02'; work_item_id = 'WORK-ADMIN-RETRY'; plan_revision = 3; status = 'blocked'; artifact_reference = 'runs/retry-02.md' }
+ )
+ $retryStart = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'transition'
+   current_plan_revision = 3
+@@ -499,24 +662,37 @@ $concurrentStart = Invoke-ScopeScenario @{
+   operation = 'transition'
+   current_plan_revision = 3
+   transition = 'start-attempt'
+   work_item_id = 'WORK-ADMIN-CONCURRENT'
+   attempt_id = 'ATTEMPT-WORK-ADMIN-CONCURRENT-01'
+   work_items = @($concurrentStartItem, $otherRunning)
+ }
+ Assert-Equal $concurrentStart.result 'transition-invalid' 'Attempt start must reject a second globally in-progress item'
+ Assert-Equal $concurrentStart.reason 'another-attempt-in-progress' 'Concurrent attempt start must report max-concurrency violation'
+ 
++$forgedReadyActive = New-WorkItem 'WORK-ADMIN-FORGED-READY-ACTIVE' 1 @() 'ready'
++$forgedReadyActive.latest_attempt = 'ATTEMPT-WORK-ADMIN-FORGED-READY-ACTIVE-01'
++$forgedReadyActive.attempt_history = @(
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-FORGED-READY-ACTIVE-01'; work_item_id = 'WORK-ADMIN-FORGED-READY-ACTIVE'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/forged-ready-active-01.md' }
++)
++$sameItemSecondStart = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'transition'; current_plan_revision = 3
++  transition = 'start-attempt'; work_item_id = 'WORK-ADMIN-FORGED-READY-ACTIVE'; attempt_id = 'ATTEMPT-WORK-ADMIN-FORGED-READY-ACTIVE-02'
++  work_items = @($forgedReadyActive)
++}
++Assert-Equal $sameItemSecondStart.result 'transition-invalid' 'Attempt start must count active history even when the same item state is forged ready'
++Assert-Equal $sameItemSecondStart.reason 'another-attempt-in-progress' 'Same-item second active attempt must be rejected explicitly'
++
+ $transitionCurrent = New-WorkItem 'WORK-ADMIN-CURRENT' 1 @() 'in-progress'
+ $transitionCurrent.latest_attempt = 'ATTEMPT-WORK-ADMIN-CURRENT-01'
+ $transitionCurrent.attempt_history = @(
+-  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-CURRENT-01'; work_item_id = 'WORK-ADMIN-CURRENT'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/current-01.md' }
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-CURRENT-01'; work_item_id = 'WORK-ADMIN-CURRENT'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/current-01-in-progress.md' }
+ )
+ $transitionNext = New-WorkItem 'WORK-ADMIN-NEXT' 2
+ $transition = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'transition'
+   current_plan_revision = 3
+   transition = 'successful-terminal-artifact'
+   work_item_id = 'WORK-ADMIN-CURRENT'
+   attempt_id = 'ATTEMPT-WORK-ADMIN-CURRENT-01'
+   terminal_evidence = 'runs/current-01.md'
+@@ -578,20 +754,36 @@ $blockerWithoutArtifact = Invoke-ScopeScenario @{
+   current_plan_revision = 3
+   transition = 'native-blocker'
+   work_item_id = 'WORK-ADMIN-CURRENT'
+   attempt_id = 'ATTEMPT-WORK-ADMIN-CURRENT-01'
+   terminal_evidence = 'runs/current-blocked.md'
+   work_items = @($transitionCurrent)
+ }
+ Assert-Equal $blockerWithoutArtifact.result 'transition-invalid' 'Native blocker reference alone must not replace a bound immutable artifact'
+ Assert-Equal $blockerWithoutArtifact.reason 'blocker-artifact-binding-invalid' 'Native blocker must report artifact binding failure'
+ 
++$nonLatestBlockerItem = New-WorkItem 'WORK-ADMIN-NONLATEST-BLOCKER' 1 @() 'in-progress'
++$nonLatestBlockerItem.latest_attempt = 'ATTEMPT-WORK-ADMIN-NONLATEST-BLOCKER-02'
++$nonLatestBlockerItem.attempt_history = @(
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-NONLATEST-BLOCKER-01'; work_item_id = 'WORK-ADMIN-NONLATEST-BLOCKER'; plan_revision = 3; status = 'blocked'; artifact_reference = 'runs/nonlatest-01.md' },
++  @{ attempt_id = 'ATTEMPT-WORK-ADMIN-NONLATEST-BLOCKER-02'; work_item_id = 'WORK-ADMIN-NONLATEST-BLOCKER'; plan_revision = 3; status = 'in-progress'; artifact_reference = 'runs/nonlatest-02.md' }
++)
++$nonLatestBlocker = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'transition'; current_plan_revision = 3
++  transition = 'native-blocker'; work_item_id = 'WORK-ADMIN-NONLATEST-BLOCKER'
++  attempt_id = 'ATTEMPT-WORK-ADMIN-NONLATEST-BLOCKER-01'; terminal_evidence = 'runs/nonlatest-blocker.md'
++  blocker_artifact = @{ artifact_reference = 'runs/nonlatest-blocker.md'; attempt_id = 'ATTEMPT-WORK-ADMIN-NONLATEST-BLOCKER-01'; work_item_id = 'WORK-ADMIN-NONLATEST-BLOCKER'; plan_revision = 3; result = 'blocked'; immutable = $true }
++  work_items = @($nonLatestBlockerItem)
++}
++Assert-Equal $nonLatestBlocker.result 'transition-invalid' 'Native blocker must target exactly the latest attempt'
++Assert-Equal $nonLatestBlocker.reason 'attempt-not-latest' 'Non-latest blocker transition must report exact binding failure'
++
+ $cancelItem = New-WorkItem 'WORK-ADMIN-CANCEL' 1
+ $cancelWithoutApproval = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'transition'
+   current_plan_revision = 3
+   transition = 'approved-cancellation'
+   work_item_id = 'WORK-ADMIN-CANCEL'
+   terminal_evidence = 'decision:cancel'
+   approval_reference = 'pending'
+   work_items = @($cancelItem)
+@@ -662,20 +854,67 @@ $revision = Invoke-ScopeScenario @{
+     work_items = @(
+       @{ work_item_id = 'WORK-ADMIN-STABLE'; required = $true; dependencies = @(); plan_order = 1; acceptance = @('REQ-001'); trace_ids = @('REQ-001'); delivery_adapter = @{ kind = 'none'; external_id = 'not-applicable' }; status = 'complete'; approval_reference = 'approval:stable@3'; terminal_evidence = 'runs/stable.md' },
+       @{ work_item_id = 'WORK-ADMIN-CHANGED'; required = $true; dependencies = @('WORK-ADMIN-STABLE'); plan_order = 2; acceptance = @('REQ-002-REVISED'); trace_ids = @('REQ-002'); delivery_adapter = @{ kind = 'none'; external_id = 'not-applicable' }; status = 'pending'; approval_reference = 'pending'; terminal_evidence = 'none' }
+     )
+   }
+ }
+ Assert-Equal $revision.result 'revision-valid' 'Scope change must create the next immutable revision'
+ Assert-True ([bool]$revision.unaffected_evidence_preserved) 'Revision must preserve unaffected completed evidence'
+ Assert-True ([bool]$revision.affected_approval_invalidated) 'Revision must invalidate approval for affected items'
+ 
++$undeclaredMasterChange = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'
++  operation = 'revise'
++  current = @{
++    artifact_id = 'PLAN-ADMIN-001'; revision = 3; status = 'approved'
++    requested_scope = @{ kind = 'module'; id = 'ADMIN'; boundary = 'complete-admin' }
++    requirements = @('REQ-001: existing behavior')
++    success_criteria = @('SC-001: existing outcome')
++    required_disposition = @('WORK-ADMIN-STABLE:required')
++    structural_decisions = @('DEC-001: existing architecture')
++    work_items = @()
++  }
++  proposed = @{
++    artifact_id = 'PLAN-ADMIN-001'; revision = 4; supersedes = 'PLAN-ADMIN-001@3'; change_summary = 'Change master requirement'; affected_work_items = @()
++    requested_scope = @{ kind = 'module'; id = 'ADMIN'; boundary = 'complete-admin' }
++    requirements = @('REQ-001: revised behavior')
++    success_criteria = @('SC-001: existing outcome')
++    required_disposition = @('WORK-ADMIN-STABLE:required')
++    structural_decisions = @('DEC-001: existing architecture')
++    work_items = @()
++  }
++}
++Assert-Equal $undeclaredMasterChange.result 'revision-invalid' 'Requested boundary/requirements/success/disposition/structural decisions must participate in revision comparison'
++Assert-Equal $undeclaredMasterChange.reason 'master-structural-change-requires-affected-items' 'Undeclared master-level change must require affected approval invalidation'
++
++$duplicateCurrentRows = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'revise'
++  current = @{ artifact_id = 'PLAN-ADMIN-001'; revision = 3; status = 'approved'; work_items = @(
++    @{ work_item_id = 'WORK-ADMIN-DUPLICATE'; approval_reference = 'approval:one' },
++    @{ work_item_id = 'WORK-ADMIN-DUPLICATE'; approval_reference = 'approval:two' }
++  ) }
++  proposed = @{ artifact_id = 'PLAN-ADMIN-001'; revision = 4; supersedes = 'PLAN-ADMIN-001@3'; change_summary = 'No-op'; affected_work_items = @(); work_items = @() }
++}
++Assert-Equal $duplicateCurrentRows.result 'revision-invalid' 'Revision must reject duplicate current work-item IDs before dictionary construction'
++Assert-Equal $duplicateCurrentRows.reason 'duplicate-current-work-item-id' 'Duplicate current ID must report exact source side'
++
++$duplicateProposedRows = Invoke-ScopeScenario @{
++  scenario_type = 'scope-engine'; operation = 'revise'
++  current = @{ artifact_id = 'PLAN-ADMIN-001'; revision = 3; status = 'approved'; work_items = @() }
++  proposed = @{ artifact_id = 'PLAN-ADMIN-001'; revision = 4; supersedes = 'PLAN-ADMIN-001@3'; change_summary = 'Duplicate rows'; affected_work_items = @('WORK-ADMIN-DUPLICATE'); work_items = @(
++    @{ work_item_id = 'WORK-ADMIN-DUPLICATE'; approval_reference = 'pending' },
++    @{ work_item_id = 'WORK-ADMIN-DUPLICATE'; approval_reference = 'pending' }
++  ) }
++}
++Assert-Equal $duplicateProposedRows.result 'revision-invalid' 'Revision must reject duplicate proposed work-item IDs before dictionary construction'
++Assert-Equal $duplicateProposedRows.reason 'duplicate-proposed-work-item-id' 'Duplicate proposed ID must report exact target side'
++
+ $undeclaredStructuralChange = Invoke-ScopeScenario @{
+   scenario_type = 'scope-engine'
+   operation = 'revise'
+   current = @{
+     artifact_id = 'PLAN-ADMIN-001'; revision = 3; status = 'approved'
+     work_items = @(
+       @{ work_item_id = 'WORK-ADMIN-STABLE'; required = $true; dependencies = @(); plan_order = 1; acceptance = @('REQ-001'); trace_ids = @('REQ-001'); delivery_adapter = @{ kind = 'none'; external_id = 'not-applicable' }; status = 'complete'; approval_reference = 'approval:stable@3'; terminal_evidence = 'runs/stable.md' }
+     )
+   }
+   proposed = @{
+diff --git a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-engine.validation.ps1 b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-engine.validation.ps1
+index 325094c..062397c 100644
+--- a/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-engine.validation.ps1
++++ b/AIToolkit/AIToolkit-main/aitoolkit/tests/validation/scope-engine.validation.ps1
+@@ -77,43 +77,86 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         $null -eq $context -or
+         $null -eq $scope -or
+         $allowedKinds -cnotcontains [string]$scope.kind -or
+         [string]::IsNullOrWhiteSpace([string]$scope.id) -or
+         [string]::IsNullOrWhiteSpace([string]$scope.statement) -or
+         [string]::IsNullOrWhiteSpace([string]$scope.resolution_evidence)
+       ) {
+         return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'requested-scope-unresolved'; gate = 'requested-scope' }
+       }
+ 
+-      $currentSpecs = @($context.spec_revisions | Where-Object { [int]$_.revision -eq [int]$context.latest_spec_revision })
++      $placeholderValues = @('', 'pending', 'none', 'not-applicable')
++      if (
++        [string]::IsNullOrWhiteSpace([string]$context.master_spec_ref) -or
++        [string]::IsNullOrWhiteSpace([string]$context.master_plan_ref) -or
++        $placeholderValues -ccontains ([string]$context.master_spec_ref).Trim() -or
++        $placeholderValues -ccontains ([string]$context.master_plan_ref).Trim()
++      ) {
++        return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'master-artifact-reference-invalid'; gate = 'master-artifacts' }
++      }
++
++      $currentSpecs = @($context.spec_revisions | Where-Object {
++        [string]$_.artifact_reference -ceq [string]$context.master_spec_ref -and
++        [string]$_.artifact_id -ceq [string]$context.master_spec_id -and
++        [int]$_.revision -eq [int]$context.latest_spec_revision
++      })
+       if (
+         $currentSpecs.Count -ne 1 -or
++        $currentSpecs[0].artifact_type -cne 'migration-master-spec' -or
++        -not [bool]$currentSpecs[0].immutable
++      ) {
++        return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'master-spec-artifact-resolution-invalid'; gate = 'master-spec' }
++      }
++      if (
+         $currentSpecs[0].status -cne 'approved' -or
+-        $currentSpecs[0].result -cne 'complete' -or
+-        [string]::IsNullOrWhiteSpace([string]$currentSpecs[0].approval_reference) -or
+-        [string]::IsNullOrWhiteSpace([string]$currentSpecs[0].freshness_evidence)
++        $currentSpecs[0].result -cne 'complete'
+       ) {
+         return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'approved-master-spec-revision-missing'; gate = 'master-spec' }
+       }
++      if (
++        [string]::IsNullOrWhiteSpace([string]$currentSpecs[0].approval_reference) -or
++        [string]::IsNullOrWhiteSpace([string]$currentSpecs[0].freshness_evidence) -or
++        $placeholderValues -ccontains ([string]$currentSpecs[0].approval_reference).Trim() -or
++        $placeholderValues -ccontains ([string]$currentSpecs[0].freshness_evidence).Trim()
++      ) {
++        return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'master-spec-evidence-invalid'; gate = 'master-spec' }
++      }
+ 
+-      $currentPlans = @($context.plan_revisions | Where-Object { [int]$_.revision -eq [int]$context.current_plan_revision })
++      $currentPlans = @($context.plan_revisions | Where-Object {
++        [string]$_.artifact_reference -ceq [string]$context.master_plan_ref -and
++        [string]$_.artifact_id -ceq [string]$context.master_plan_id -and
++        [int]$_.revision -eq [int]$context.current_plan_revision
++      })
+       if (
+         $currentPlans.Count -ne 1 -or
++        $currentPlans[0].artifact_type -cne 'migration-master-plan' -or
++        -not [bool]$currentPlans[0].immutable
++      ) {
++        return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'master-plan-artifact-resolution-invalid'; gate = 'master-plan' }
++      }
++      if (
+         $currentPlans[0].status -cne 'approved' -or
+-        $currentPlans[0].result -cne 'complete' -or
+-        [string]::IsNullOrWhiteSpace([string]$currentPlans[0].approval_reference) -or
+-        [string]::IsNullOrWhiteSpace([string]$currentPlans[0].freshness_evidence)
++        $currentPlans[0].result -cne 'complete'
+       ) {
+         return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'approved-master-plan-revision-missing'; gate = 'master-plan' }
+       }
++      if (
++        [string]::IsNullOrWhiteSpace([string]$currentPlans[0].approval_reference) -or
++        [string]::IsNullOrWhiteSpace([string]$currentPlans[0].freshness_evidence) -or
++        $placeholderValues -ccontains ([string]$currentPlans[0].approval_reference).Trim() -or
++        $placeholderValues -ccontains ([string]$currentPlans[0].freshness_evidence).Trim()
++      ) {
++        return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'master-plan-evidence-invalid'; gate = 'master-plan' }
++      }
+       if (
+         [int]$scenario.current_plan_revision -ne [int]$context.current_plan_revision -or
++        [string]$currentPlans[0].master_spec_ref -cne [string]$context.master_spec_ref -or
+         [string]$currentPlans[0].master_spec_id -cne [string]$context.master_spec_id -or
+         [int]$currentPlans[0].master_spec_revision -ne [int]$context.latest_spec_revision
+       ) {
+         return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'master-plan-current-link-mismatch'; gate = 'master-plan' }
+       }
+ 
+       $resumeFixture = @{
+         scenario_type = 'scope-engine'
+         operation = 'validate-resume'
+         master_spec_id = [string]$context.master_spec_id
+@@ -121,20 +164,25 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         spec_revisions = @($context.spec_revisions)
+         revisions = @($context.plan_revisions)
+       } | ConvertTo-Json -Depth 20 -Compress
+       $resumeGate = Test-ScopeEngine $Root $resumeFixture
+       if ($resumeGate.result -cne 'resume-ready') {
+         return [pscustomobject]@{ result = 'orchestration-blocked'; reason = [string]$resumeGate.reason; gate = 'revision-chain' }
+       }
+       if ([int]$resumeGate.latest_plan_revision -ne [int]$context.current_plan_revision) {
+         return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'latest-master-plan-revision-mismatch'; gate = 'revision-chain' }
+       }
++      $approvedPlanRows = @($currentPlans[0].work_items) | ConvertTo-Json -Depth 30 -Compress
++      $operationRows = @($scenario.work_items) | ConvertTo-Json -Depth 30 -Compress
++      if ($approvedPlanRows -cne $operationRows) {
++        return [pscustomobject]@{ result = 'orchestration-blocked'; reason = 'work-items-not-bound-to-master-plan'; gate = 'master-plan-work-items' }
++      }
+     }
+ 
+     if ($scenario.operation -ceq 'select') {
+       $items = @($scenario.work_items)
+       $itemById = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+       foreach ($item in $items) {
+         $itemId = [string]$item.work_item_id
+         if ([string]::IsNullOrWhiteSpace($itemId) -or $itemById.ContainsKey($itemId)) {
+           return [pscustomobject]@{ result = 'plan-invalid'; reason = 'duplicate-or-missing-work-item-id'; scope_status = 'scope-blocked' }
+         }
+@@ -181,57 +229,78 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+             [void]$remainingIds.Remove($itemId)
+             $madeProgress = $true
+           }
+         }
+       }
+       if ($remainingIds.Count -gt 0) {
+         return [pscustomobject]@{ result = 'plan-invalid'; reason = 'dependency-cycle'; scope_status = 'scope-blocked' }
+       }
+ 
+       $attemptById = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
++      $activeAttemptCount = 0
+       foreach ($item in $items) {
+         foreach ($attempt in @($item.attempt_history)) {
+           $attemptId = [string]$attempt.attempt_id
+           if ([string]::IsNullOrWhiteSpace($attemptId) -or $attemptById.ContainsKey($attemptId)) {
+             return [pscustomobject]@{ result = 'plan-invalid'; reason = 'duplicate-or-missing-attempt-id'; scope_status = 'scope-blocked' }
+           }
+           if ([string]$attempt.work_item_id -cne [string]$item.work_item_id) {
+             return [pscustomobject]@{ result = 'plan-invalid'; reason = 'attempt-work-item-mismatch'; scope_status = 'scope-blocked' }
+           }
+           if (
+             [int]$attempt.plan_revision -lt 1 -or
+             @('in-progress', 'complete', 'blocked') -cnotcontains [string]$attempt.status -or
+             [string]::IsNullOrWhiteSpace([string]$attempt.artifact_reference)
+           ) {
+             return [pscustomobject]@{ result = 'plan-invalid'; reason = 'attempt-record-invalid'; scope_status = 'scope-blocked' }
+           }
++          $resolvedAttemptArtifacts = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++            [string]$_.artifact_reference -ceq [string]$attempt.artifact_reference
++          })
++          if (
++            $resolvedAttemptArtifacts.Count -ne 1 -or
++            -not [bool]$resolvedAttemptArtifacts[0].immutable -or
++            [string]$resolvedAttemptArtifacts[0].attempt_id -cne [string]$attempt.attempt_id -or
++            [string]$resolvedAttemptArtifacts[0].work_item_id -cne [string]$attempt.work_item_id -or
++            [int]$resolvedAttemptArtifacts[0].plan_revision -ne [int]$attempt.plan_revision -or
++            [string]$resolvedAttemptArtifacts[0].status -cne [string]$attempt.status
++          ) {
++            return [pscustomobject]@{ result = 'plan-invalid'; reason = 'attempt-artifact-binding-invalid'; scope_status = 'scope-blocked' }
++          }
++          if ($attempt.status -ceq 'in-progress') { $activeAttemptCount++ }
+           $attemptById.Add($attemptId, $attempt)
+         }
+         $latestAttemptId = [string]$item.latest_attempt
+         if (-not [string]::IsNullOrWhiteSpace($latestAttemptId) -and $latestAttemptId -cne 'none') {
+           if (-not $attemptById.ContainsKey($latestAttemptId)) {
+             return [pscustomobject]@{ result = 'plan-invalid'; reason = 'latest-attempt-missing-from-history'; scope_status = 'scope-blocked' }
+           }
+           $latestAttemptRecord = $attemptById[$latestAttemptId]
+           if ([string]$latestAttemptRecord.work_item_id -cne [string]$item.work_item_id) {
+             return [pscustomobject]@{ result = 'plan-invalid'; reason = 'attempt-work-item-mismatch'; scope_status = 'scope-blocked' }
+           }
+           if ($item.status -ceq 'in-progress' -and [int]$latestAttemptRecord.plan_revision -ne [int]$scenario.current_plan_revision) {
+             return [pscustomobject]@{ result = 'plan-invalid'; reason = 'attempt-plan-revision-mismatch'; scope_status = 'scope-blocked' }
+           }
+         }
+       }
++      if ($activeAttemptCount -gt 1) {
++        return [pscustomobject]@{ result = 'plan-invalid'; reason = 'multiple-in-progress-attempts'; scope_status = 'scope-blocked' }
++      }
+ 
+       $inProgressItems = @($items | Where-Object { $_.status -ceq 'in-progress' })
+       if ($inProgressItems.Count -gt 1) {
+         return [pscustomobject]@{ result = 'plan-invalid'; reason = 'multiple-in-progress'; scope_status = 'scope-blocked' }
+       }
++      if ($activeAttemptCount -eq 1 -and $inProgressItems.Count -eq 0) {
++        return [pscustomobject]@{ result = 'plan-invalid'; reason = 'attempt-item-state-mismatch'; scope_status = 'scope-blocked' }
++      }
+ 
+       $reconciledWorkItemId = ''
+       if ($inProgressItems.Count -eq 1) {
+         $inProgressItem = $inProgressItems[0]
+         $latestAttemptRecord = $attemptById[[string]$inProgressItem.latest_attempt]
+         $hasValidTerminalEvidence =
+           $null -ne $latestAttemptRecord -and
+           @('complete', 'blocked') -ccontains [string]$latestAttemptRecord.status -and
+           -not [string]::IsNullOrWhiteSpace([string]$inProgressItem.terminal_evidence) -and
+           [string]$inProgressItem.terminal_evidence -cne 'none' -and
+@@ -405,36 +474,47 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         if ($item.status -cne 'complete') { continue }
+         if (
+           [string]::IsNullOrWhiteSpace([string]$item.terminal_evidence) -or
+           [string]$item.terminal_evidence -ceq 'none' -or
+           $item.architecture_state -cne 'PASS' -or
+           $item.selector_schema_state -cne 'PASS'
+         ) {
+           return [pscustomobject]@{ result = 'scope-not-complete'; reason = 'completed-item-evidence-or-assurance-invalid'; scope_status = 'scope-blocked' }
+         }
+       }
+-      $terminalReport = $scenario.terminal_scope_report
++      $terminalReportRef = [string]$scenario.terminal_scope_report_ref
++      $terminalReports = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++        [string]$_.artifact_reference -ceq $terminalReportRef
++      })
+       if (
+-        $null -eq $terminalReport -or
+-        -not [bool]$terminalReport.immutable -or
+-        [string]::IsNullOrWhiteSpace([string]$terminalReport.artifact_reference)
++        @('', 'pending', 'none', 'not-applicable') -ccontains $terminalReportRef -or
++        $terminalReports.Count -ne 1 -or
++        $terminalReports[0].artifact_type -cne 'migration-scope-terminal-report' -or
++        -not [bool]$terminalReports[0].immutable -or
++        [string]$terminalReports[0].master_plan_ref -cne [string]$scenario.orchestration_context.master_plan_ref -or
++        [int]$terminalReports[0].master_plan_revision -ne [int]$scenario.current_plan_revision
+       ) {
+-        return [pscustomobject]@{ result = 'scope-not-complete'; reason = 'terminal-scope-report-incomplete'; scope_status = 'scope-blocked' }
++        return [pscustomobject]@{ result = 'scope-not-complete'; reason = 'terminal-scope-report-resolution-invalid'; scope_status = 'scope-blocked' }
+       }
++      $terminalReport = $terminalReports[0]
+       $reportRows = @($terminalReport.items)
+       foreach ($item in $items) {
+-        if (-not [bool]$item.required) { continue }
+         $matchingRows = @($reportRows | Where-Object { $_.work_item_id -ceq [string]$item.work_item_id })
+         if (
+           $matchingRows.Count -ne 1 -or
+-          [string]::IsNullOrWhiteSpace([string]$item.terminal_evidence) -or
+-          [string]$item.terminal_evidence -ceq 'none'
++          (
++            $terminalSuccessStates -ccontains [string]$item.status -and
++            (
++              [string]::IsNullOrWhiteSpace([string]$item.terminal_evidence) -or
++              [string]$item.terminal_evidence -ceq 'none'
++            )
++          )
+         ) {
+           return [pscustomobject]@{ result = 'scope-not-complete'; reason = 'terminal-scope-report-incomplete'; scope_status = 'scope-blocked' }
+         }
+         $reportRow = $matchingRows[0]
+         if (
+           [string]$reportRow.status -cne [string]$item.status -or
+           [string]$reportRow.terminal_evidence -cne [string]$item.terminal_evidence -or
+           [string]$reportRow.architecture_state -cne [string]$item.architecture_state -or
+           [string]$reportRow.selector_schema_state -cne [string]$item.selector_schema_state
+         ) {
+@@ -445,47 +525,68 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+     }
+ 
+     if ($scenario.operation -ceq 'transition') {
+       $items = @($scenario.work_items)
+       $selected = @($items | Where-Object { $_.work_item_id -ceq [string]$scenario.work_item_id })
+       if ($selected.Count -ne 1) {
+         return [pscustomobject]@{ result = 'transition-invalid'; reason = 'work-item-not-unique' }
+       }
+       $item = $selected[0]
+       $attemptById = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
++      $activeAttemptCount = 0
+       foreach ($historyItem in $items) {
+         foreach ($attempt in @($historyItem.attempt_history)) {
+           $historyAttemptId = [string]$attempt.attempt_id
+           if ([string]::IsNullOrWhiteSpace($historyAttemptId) -or $attemptById.ContainsKey($historyAttemptId)) {
+             return [pscustomobject]@{ result = 'transition-invalid'; reason = 'duplicate-or-missing-attempt-id' }
+           }
+           if (
+             [string]$attempt.work_item_id -cne [string]$historyItem.work_item_id -or
+             [int]$attempt.plan_revision -lt 1 -or
+             @('in-progress', 'complete', 'blocked') -cnotcontains [string]$attempt.status -or
+             [string]::IsNullOrWhiteSpace([string]$attempt.artifact_reference)
+           ) {
+             return [pscustomobject]@{ result = 'transition-invalid'; reason = 'attempt-record-invalid' }
+           }
++          $resolvedAttemptArtifacts = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++            [string]$_.artifact_reference -ceq [string]$attempt.artifact_reference
++          })
++          if (
++            $resolvedAttemptArtifacts.Count -ne 1 -or
++            -not [bool]$resolvedAttemptArtifacts[0].immutable -or
++            [string]$resolvedAttemptArtifacts[0].attempt_id -cne [string]$attempt.attempt_id -or
++            [string]$resolvedAttemptArtifacts[0].work_item_id -cne [string]$attempt.work_item_id -or
++            [int]$resolvedAttemptArtifacts[0].plan_revision -ne [int]$attempt.plan_revision -or
++            [string]$resolvedAttemptArtifacts[0].status -cne [string]$attempt.status
++          ) {
++            return [pscustomobject]@{ result = 'transition-invalid'; reason = 'attempt-artifact-binding-invalid' }
++          }
++          if ($attempt.status -ceq 'in-progress') { $activeAttemptCount++ }
+           $attemptById.Add($historyAttemptId, $attempt)
+         }
+       }
++      if ($activeAttemptCount -gt 1) {
++        return [pscustomobject]@{ result = 'transition-invalid'; reason = 'multiple-in-progress-attempts' }
++      }
+       if ($scenario.transition -ceq 'start-attempt') {
+         if (
+           @('pending', 'ready') -cnotcontains [string]$item.status -or
+           [string]::IsNullOrWhiteSpace([string]$scenario.attempt_id)
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'attempt-start-precondition' }
+         }
+         if ($attemptById.ContainsKey([string]$scenario.attempt_id)) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'attempt-id-already-exists' }
+         }
++        if ($activeAttemptCount -gt 0) {
++          return [pscustomobject]@{ result = 'transition-invalid'; reason = 'another-attempt-in-progress' }
++        }
+         $otherInProgress = @($items | Where-Object {
+           $_.work_item_id -cne [string]$scenario.work_item_id -and $_.status -ceq 'in-progress'
+         })
+         if ($otherInProgress.Count -gt 0) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'another-attempt-in-progress' }
+         }
+         $readinessTransition = if ($item.status -ceq 'pending') { 'pending-to-ready' } else { 'already-ready' }
+         return [pscustomobject]@{
+           result = 'transitioned'
+           reason = 'ready-to-in-progress'
+@@ -505,21 +606,24 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+           [string]$item.latest_attempt -cne [string]$scenario.attempt_id -or
+           $null -eq $attemptRecord -or
+           [string]$attemptRecord.work_item_id -cne [string]$item.work_item_id -or
+           [int]$attemptRecord.plan_revision -ne [int]$scenario.current_plan_revision -or
+           [string]$attemptRecord.status -cne 'in-progress' -or
+           [string]::IsNullOrWhiteSpace([string]$scenario.terminal_evidence) -or
+           [string]$scenario.terminal_evidence -ceq 'none'
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'successful-transition-precondition' }
+         }
+-        $terminalArtifact = $scenario.terminal_artifact
++        $terminalArtifacts = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++          [string]$_.artifact_reference -ceq [string]$scenario.terminal_evidence
++        })
++        $terminalArtifact = if ($terminalArtifacts.Count -eq 1) { $terminalArtifacts[0] } else { $null }
+         if (
+           $null -eq $terminalArtifact -or
+           [string]$terminalArtifact.artifact_reference -cne [string]$scenario.terminal_evidence -or
+           [string]$terminalArtifact.attempt_id -cne [string]$scenario.attempt_id -or
+           [string]$terminalArtifact.work_item_id -cne [string]$item.work_item_id -or
+           [int]$terminalArtifact.plan_revision -ne [int]$scenario.current_plan_revision -or
+           [string]$terminalArtifact.result -cne 'complete' -or
+           -not [bool]$terminalArtifact.immutable
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'terminal-artifact-binding-invalid' }
+@@ -539,22 +643,28 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         $scenario.transition -ceq 'native-blocker' -and
+         $item.status -ceq 'in-progress' -and
+         (
+           [string]::IsNullOrWhiteSpace([string]$scenario.terminal_evidence) -or
+           [string]$scenario.terminal_evidence -ceq 'none'
+         )
+       ) {
+         return [pscustomobject]@{ result = 'transition-invalid'; reason = 'blocker-evidence-missing' }
+       }
+       if ($scenario.transition -ceq 'native-blocker' -and $item.status -ceq 'in-progress') {
++        if ([string]$item.latest_attempt -cne [string]$scenario.attempt_id) {
++          return [pscustomobject]@{ result = 'transition-invalid'; reason = 'attempt-not-latest' }
++        }
+         $attemptRecord = if ($attemptById.ContainsKey([string]$scenario.attempt_id)) { $attemptById[[string]$scenario.attempt_id] } else { $null }
+-        $blockerArtifact = $scenario.blocker_artifact
++        $blockerArtifacts = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++          [string]$_.artifact_reference -ceq [string]$scenario.terminal_evidence
++        })
++        $blockerArtifact = if ($blockerArtifacts.Count -eq 1) { $blockerArtifacts[0] } else { $null }
+         if (
+           $null -eq $attemptRecord -or
+           [string]$attemptRecord.work_item_id -cne [string]$item.work_item_id -or
+           [int]$attemptRecord.plan_revision -ne [int]$scenario.current_plan_revision -or
+           [string]$attemptRecord.status -cne 'in-progress' -or
+           $null -eq $blockerArtifact -or
+           [string]$blockerArtifact.artifact_reference -cne [string]$scenario.terminal_evidence -or
+           [string]$blockerArtifact.attempt_id -cne [string]$scenario.attempt_id -or
+           [string]$blockerArtifact.work_item_id -cne [string]$item.work_item_id -or
+           [int]$blockerArtifact.plan_revision -ne [int]$scenario.current_plan_revision -or
+@@ -579,21 +689,24 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         @('pending', 'ready', 'blocked') -ccontains [string]$item.status
+       ) {
+         if (
+           [string]::IsNullOrWhiteSpace([string]$scenario.approval_reference) -or
+           [string]$scenario.approval_reference -ceq 'pending' -or
+           [string]::IsNullOrWhiteSpace([string]$scenario.terminal_evidence) -or
+           [string]$scenario.terminal_evidence -ceq 'none'
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'approval-evidence-missing' }
+         }
+-        $decisionArtifact = $scenario.decision_artifact
++        $decisionArtifacts = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++          [string]$_.artifact_reference -ceq [string]$scenario.terminal_evidence
++        })
++        $decisionArtifact = if ($decisionArtifacts.Count -eq 1) { $decisionArtifacts[0] } else { $null }
+         if (
+           $null -eq $decisionArtifact -or
+           [string]$decisionArtifact.artifact_reference -cne [string]$scenario.terminal_evidence -or
+           [string]$decisionArtifact.work_item_id -cne [string]$item.work_item_id -or
+           [int]$decisionArtifact.plan_revision -ne [int]$scenario.current_plan_revision -or
+           [string]$decisionArtifact.decision -cne 'cancelled-approved' -or
+           [string]$decisionArtifact.approval_reference -cne [string]$scenario.approval_reference -or
+           -not [bool]$decisionArtifact.immutable
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'decision-artifact-binding-invalid' }
+@@ -605,21 +718,24 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         @('pending', 'ready') -ccontains [string]$item.status
+       ) {
+         if (
+           [string]::IsNullOrWhiteSpace([string]$scenario.approval_reference) -or
+           [string]$scenario.approval_reference -ceq 'pending' -or
+           [string]::IsNullOrWhiteSpace([string]$scenario.terminal_evidence) -or
+           [string]$scenario.terminal_evidence -ceq 'none'
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'approval-evidence-missing' }
+         }
+-        $decisionArtifact = $scenario.decision_artifact
++        $decisionArtifacts = @($scenario.orchestration_context.resolved_artifacts | Where-Object {
++          [string]$_.artifact_reference -ceq [string]$scenario.terminal_evidence
++        })
++        $decisionArtifact = if ($decisionArtifacts.Count -eq 1) { $decisionArtifacts[0] } else { $null }
+         if (
+           $null -eq $decisionArtifact -or
+           [string]$decisionArtifact.artifact_reference -cne [string]$scenario.terminal_evidence -or
+           [string]$decisionArtifact.work_item_id -cne [string]$item.work_item_id -or
+           [int]$decisionArtifact.plan_revision -ne [int]$scenario.current_plan_revision -or
+           [string]$decisionArtifact.decision -cne 'not-applicable-approved' -or
+           [string]$decisionArtifact.approval_reference -cne [string]$scenario.approval_reference -or
+           -not [bool]$decisionArtifact.immutable
+         ) {
+           return [pscustomobject]@{ result = 'transition-invalid'; reason = 'decision-artifact-binding-invalid' }
+@@ -639,20 +755,56 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+         return [pscustomobject]@{ result = 'revision-invalid'; reason = 'stable-master-id-changed'; unaffected_evidence_preserved = $false; affected_approval_invalidated = $false }
+       }
+       $expectedSupersedes = "$([string]$current.artifact_id)@$([int]$current.revision)"
+       if ([string]$proposed.supersedes -cne $expectedSupersedes) {
+         return [pscustomobject]@{ result = 'revision-invalid'; reason = 'supersedes-not-immediate-predecessor'; unaffected_evidence_preserved = $false; affected_approval_invalidated = $false }
+       }
+       if ([string]::IsNullOrWhiteSpace([string]$proposed.change_summary)) {
+         return [pscustomobject]@{ result = 'revision-invalid'; reason = 'change-summary-missing'; unaffected_evidence_preserved = $false; affected_approval_invalidated = $false }
+       }
+ 
++      $currentIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++      foreach ($item in @($current.work_items)) {
++        $itemId = [string]$item.work_item_id
++        if ([string]::IsNullOrWhiteSpace($itemId) -or -not $currentIds.Add($itemId)) {
++          return [pscustomobject]@{ result = 'revision-invalid'; reason = 'duplicate-current-work-item-id'; unaffected_evidence_preserved = $false; affected_approval_invalidated = $false }
++        }
++      }
++      $proposedIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
++      foreach ($item in @($proposed.work_items)) {
++        $itemId = [string]$item.work_item_id
++        if ([string]::IsNullOrWhiteSpace($itemId) -or -not $proposedIds.Add($itemId)) {
++          return [pscustomobject]@{ result = 'revision-invalid'; reason = 'duplicate-proposed-work-item-id'; unaffected_evidence_preserved = $false; affected_approval_invalidated = $false }
++        }
++      }
++
++      $currentMasterShape = [ordered]@{
++        requested_scope = $current.requested_scope
++        requirements = @($current.requirements)
++        success_criteria = @($current.success_criteria)
++        required_disposition = @($current.required_disposition)
++        structural_decisions = @($current.structural_decisions)
++      } | ConvertTo-Json -Depth 20 -Compress
++      $proposedMasterShape = [ordered]@{
++        requested_scope = $proposed.requested_scope
++        requirements = @($proposed.requirements)
++        success_criteria = @($proposed.success_criteria)
++        required_disposition = @($proposed.required_disposition)
++        structural_decisions = @($proposed.structural_decisions)
++      } | ConvertTo-Json -Depth 20 -Compress
++      if (
++        $currentMasterShape -cne $proposedMasterShape -and
++        @($proposed.affected_work_items).Count -eq 0
++      ) {
++        return [pscustomobject]@{ result = 'revision-invalid'; reason = 'master-structural-change-requires-affected-items'; unaffected_evidence_preserved = $false; affected_approval_invalidated = $false }
++      }
++
+       $affectedIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+       foreach ($affectedId in @($proposed.affected_work_items)) { [void]$affectedIds.Add([string]$affectedId) }
+       $currentById = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+       foreach ($item in @($current.work_items)) { $currentById[[string]$item.work_item_id] = $item }
+       $proposedById = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+       foreach ($item in @($proposed.work_items)) { $proposedById[[string]$item.work_item_id] = $item }
+       $unaffectedEvidencePreserved = $true
+       $affectedApprovalInvalidated = $true
+       foreach ($currentItem in @($current.work_items)) {
+         $currentItemId = [string]$currentItem.work_item_id
+@@ -871,15 +1023,21 @@ function Test-ScopeEngine([string]$Root, [string]$ContractText) {
+     'adapter `none` keeps `migration_unit_id: not-applicable`',
+     'reconcile an `in-progress` attempt before selecting a new work item',
+     'Step 15 completes only the current execution attempt and work item',
+     'Only the approved master plan may conclude `scope-complete`',
+     'Executable operations validate requested scope, then current approved master spec, then current approved linked master plan before queue or transition logic.',
+     'Selection starts atomically as `pending -> ready -> in-progress` or `ready -> in-progress`.',
+     'Validate immutable `attempt_history` globally by unique attempt ID, exact `work_item_id`, exact current `plan_revision`, status and artifact reference.',
+     'Blocker, cancellation and non-applicability transitions require exact immutable terminal or approval evidence.',
+     'Every work-item structural change must be declared in `affected_work_items`, including added or removed items, and every affected item in the new revision has `approval_reference: pending`.',
+     'Scope completion calculates the dependency graph and validates every required terminal-report row; it never trusts caller-provided graph-valid or report-complete booleans.',
+-    '`unresolved` emits exactly one question block with a stable ID and concrete prompt.'
++    '`unresolved` emits exactly one question block with a stable ID and concrete prompt.',
++    'Executable input requires explicit `master_spec_ref` and `master_plan_ref` that resolve exact immutable current artifact type, ID and revision; blank, `pending`, `none` and `not-applicable` references or evidence are invalid.',
++    'Queue operations consume exactly the work-item rows bound to the current approved master-plan artifact, never a caller subset or forged queue.',
++    'Attempt and terminal artifacts resolve from the explicit artifact registry by exact reference and bind immutable status, attempt ID, work-item ID and plan revision.',
++    'Single-in-progress validation counts both work-item states and every immutable attempt record; native blocker transition targets exactly `latest_attempt`.',
++    'Terminal scope report resolves from the artifact registry, binds the current master-plan reference/revision and enumerates the exact approved plan rows.',
++    'Revision comparison includes requested boundary, requirements, success criteria, required disposition and structural decisions, and rejects duplicate current or proposed work-item IDs before map construction.'
+   ) | ForEach-Object {
+     Require-Token $orchestratorText $_ 'Migration orchestrator scope engine policy'
+   }
+ }
