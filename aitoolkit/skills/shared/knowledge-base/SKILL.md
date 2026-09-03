@@ -35,19 +35,11 @@ For a migration run, inspect the bootstrap, implementation artifact, and termina
 
 This output is a proposal only. Knowledge Capture never edits the canonical project pack or `target-baseline.md`; applying the proposal requires the normal project-pack review gate. If the run did not create a foundation baseline, record `not-applicable` and do not manufacture a proposal.
 
-## Scope-aware migration capture
-
-For migration, record the work-item verdict, exact master-plan transition, required items remaining, next eligible item or blocker, and calculated scope status from the approved master plan. Calculate scope status with the canonical Scope-completion formula. Never infer `scope-complete` from one execution artifact, one completed work item, or a successful attempt. A completed work item with any required item remaining is `scope-in-progress`.
-
-Đối chiếu transition với đúng `Master Plan Reference` và `Master Plan Revision`; giữ terminal evidence của work item tách biệt với verdict của requested scope. Nếu không có item eligible nhưng còn required blocker, ghi `scope-blocked` cùng blocker/evidence. Chỉ ghi `scope-complete` khi master plan chứng minh toàn bộ điều kiện của công thức canonical, không dựa vào riêng terminal input artifact của lần chạy hiện tại.
-
-Concrete `scope-complete` requires: `Required Items Remaining = none`; `Next Eligible Item = none`; `Blocker = none`; `Dependency Graph State = valid`; `Required Items Terminal-success = all-terminal-success`; `Architecture Conformance State = PASS`; `Selector Schema State = PASS`; và `Terminal Scope Report` trỏ tới `scope-terminal-report.md#<evidence-index>` đã liệt kê đầy đủ evidence. `Calculation Evidence` phải chứa marker `all-required-terminal-evidence`. Thiếu một điều kiện phải reject phép tính complete. Khi work-item verdict là `complete`, còn required item và không có blocker, `Calculated Scope Status` bắt buộc là `scope-in-progress`.
-
 ## Việc cần làm
 1. Đọc `aitoolkit-schemas`, template `kb-entry.md`, terminal input artifact, và scan all `.md` artifacts in `RUN_DIR`.
-2. Tổng hợp **KB entry**: copy orchestrator-provided workflow/step ID, workflow-appropriate terminal verification, completion verdict, mọi migration automation waiver, bảng liên kết artifact theo bước, và bài học/vấn đề & cách xử lý. Với migration, bắt buộc ghi work-item verdict, master-plan transition và phép tính scope theo `Scope-aware migration capture`.
+2. Tổng hợp **KB entry**: copy orchestrator-provided workflow/step ID, workflow-appropriate terminal verification, completion verdict, mọi migration automation waiver, bảng liên kết artifact theo bước, và bài học/vấn đề & cách xử lý.
 3. (Tuỳ chọn) nếu có codebase-memory-mcp: gợi ý ingest artifact để truy vấn sau.
-4. Ghi `<run_dir>/kb-entry.md`. Preserve the terminal verification artifact's exact `Task Provenance` row (task/unit ID, task-base SHA, final-tree SHA, source artifact) so standalone migration Gerrit can validate lineage through the KB link. Missing or mismatched provenance blocks completion. Đây là bước cuối của execution attempt; chỉ báo requested scope hoàn tất khi `Calculated Scope Status` là `scope-complete` theo master plan.
+4. Ghi `<run_dir>/kb-entry.md`. Preserve the terminal verification artifact's exact `Task Provenance` row (task/unit ID, task-base SHA, final-tree SHA, source artifact) so standalone migration Gerrit can validate lineage through the KB link. Missing or mismatched provenance blocks completion. Đây là bước cuối — báo pipeline hoàn tất.
 
 ## Ranh giới
 - Chỉ tổng hợp & lưu; không thay đổi code hay artifact bước khác.

@@ -9,14 +9,6 @@ produced_at: <yyyy-mm-dd>
 
 # Báo cáo AI Review — <tên module>
 
-## Master Scope Context
-
-| Master Spec Reference | Master Plan Reference | Master Plan Revision | Work Item ID | Delivery Adapter Kind |
-|---|---|---|---|---|
-| <tham chiếu master spec> | <tham chiếu master plan> | <revision> | <WORK-*> | <migration-unit / task / story / package / phase / milestone / none> |
-
-Keep `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-unit`; otherwise omit it.
-
 ## Selected Migration Unit
 
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
@@ -31,34 +23,6 @@ Keep `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-u
 - **State:** `RESOLVED | BLOCKED`
 - **Mandatory rule gaps:** <không có hoặc khoảng trống blocking chính xác>
 - **Optional gaps/degraded coverage:** <không có hoặc độ phủ suy giảm đã ghi nhận>
-
-## Canonical Selector
-
-- Canonical Selector Verdict: <PASS | BLOCKED>
-- Evidence: <adapter kind, canonical selector/authority, work-item binding và approval evidence>
-
-## Architecture Conformance
-
-- Architecture Conformance Verdict: <PASS | BLOCKED>
-- Conformance Matrix Reference: <tham chiếu matrix đã duyệt>
-- Exemplars: <path/symbol exemplar đã đọc>
-- Actual File Tree vs Planned File Tree: <đối chiếu path/symbol và drift>
-- Approved Structural Deviations: <decision/approval hoặc not-applicable>
-
-## Production Activation Path
-
-- Production Activation-path Verdict: <PASS | BLOCKED | NOT_APPLICABLE>
-- Production Activation Path Evidence: <production route/render/registration evidence hoặc not-applicable>
-- Production Subscription Key: <key + owner + consumer evidence hoặc not-applicable>
-- Lifecycle Gate: <lifecycle owner/gate evidence hoặc not-applicable>
-
-## Behavior, Failure Modes, Security, Performance, and Tests
-
-- Behavior Analysis State: <NOT_RUN | COMPLETE>
-- Phân tích hành vi: <chỉ thực hiện sau khi các gate phía trên không BLOCKED>
-- Failure modes và edge cases: <bằng chứng>
-- Security/performance/concurrency: <bằng chứng>
-- Test coverage và production-boundary tests: <bằng chứng>
 
 ## Critical
 | File:line | Vấn đề | Fix đề xuất |
@@ -101,4 +65,4 @@ Chỉ giữ section này khi front matter là `result: blocked` và Activation S
 
 ## Kết luận
 - **Critical count:** <số nguyên dùng để gate>
-- Verdict: <Approve | Approve-with-fixes | Reject>
+- **Verdict:** `Approve` | `Approve-with-fixes` | `Reject`
