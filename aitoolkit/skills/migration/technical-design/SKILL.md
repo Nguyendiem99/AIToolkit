@@ -17,6 +17,8 @@ The orchestrator provides `RUN_DIR`, project profile, project pack, source/targe
 
 `Immediate predecessor artifact = exactly one orchestrator-provided path`.
 
+Đọc `aitoolkit/contracts/target-structure-conformance.md` như nguồn duy nhất cho concern, cột matrix và semantics deviation; không tái định nghĩa contract trong skill này.
+
 Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
 Use stable trace IDs forwarded by that artifact; do not discover or load a cumulative numbered artifact list.
 
@@ -44,6 +46,22 @@ An approval applies only to the cited design revision and trace IDs. A meeting, 
 4. For `preserve-existing`, cite target Evidence for each proposed extension and show conformance; route architecture changes to an approval conflict.
 5. Put unsupported assumptions in `Unknowns`. Any unknown that blocks architecture, scope, or acceptance makes the result blocked.
 6. Write the artifact and request the Tech Lead gate when approval is required.
+
+## Target structure conformance responsibilities
+
+Với `preserve-existing`, lập `Target Structure Conformance Matrix` với exact columns và exact set/cardinality tám concern do canonical target-structure contract định nghĩa; reject missing, duplicate và invented concern. Mỗi row phải dùng working exemplar thật dạng `<path>#<qualified-symbol>` và structured observed evidence `path=<same exemplar>; symbols=<explicit list>; boundary=<name>; mechanism=<name>`; presentation thêm `wrapper=<symbol>`. Phrase framework/MVVM/architecture/state-management dù đi cùng proposed path vẫn không thay thế structured evidence.
+
+Trước `Work Item Trace`, ghi đúng một `Approved Master Plan Evidence` snapshot: canonical plan ref/ID/revision, `status: approved`, exact Acceptance, Trace IDs, Delivery Adapter, decomposition, Tech Lead approval và evidence reference. Snapshot không phải authority: exact `master-plan.md#PLAN-*` phải resolve file `master-plan.md` bên dưới run root. File external phải có bounded first front matter đúng canonical `migration-master-plan`, exact ID/revision/status approved và linked master-spec scope; ID sau `#` là identity trong front matter, không phải heading riêng.
+
+Resolve đúng một cited row trong canonical `## Work Items` table với exact columns từ migration-scope contract. Row phải có current approved `Approval Reference` trong `Approval Record`, current `Revision History`, và exact-match snapshot/trace cho Acceptance, Trace IDs, Delivery Adapter. Missing/draft/stale artifact, wrong front matter, duplicate/missing work item, stale row, hoặc coherent local forgery đều block. Giữ canonical `WORK-<SCOPE>-*`, `master-plan.md#PLAN-<SCOPE>-*`, positive revision, unique `REQ-* | SC-* | AC-*`; scope phải bằng nhau.
+
+Decomposition dùng canonical YAML `decomposition:` record trong `Work Items`, với exact `parent_work_item_id`, `child_work_item_ids`, `decision_reference` của current approved revision; không tạo alternate table. Child trace phải resolve đúng một record, parent và tất cả child phải là canonical Work Items của revision và Revision History phải liệt kê parent/child bị ảnh hưởng. Nếu không decomposition, cả snapshot và trace dùng exact sentinel `not-applicable` và cited child không được có decomposition record.
+
+Mỗi `Conforms = no` phải dùng canonical `DEV-*` và trỏ đúng một row trong `Approved Structural Deviations` có `CONFLICT-*`, `resolved:DECISION-<ID>: <nội dung cụ thể>` và `approval:TECH-LEAD-<ID>`. Reject placeholder semantic ở bất kỳ vị trí nào (`pending`, `unknown`, `none`, `TBD`, `review`, ...). Presentation concern luôn cần cả observed/proposed wrapper token; wrapper nhận full qualified symbol và so ordinal toàn bộ segments, `yes` exact-match, `no` chỉ được khác qua approved deviation.
+
+`Planned File Tree` liệt kê mỗi file và qualified symbol sẽ tạo/sửa. Path grammar chấp nhận root file (`main.dart#App`), `/` hoặc `\`, optional drive/absolute root; reject blank, malformed và `..` traversal. So sánh matrix/planned bằng canonical path normalize separator nhưng giữ nguyên artifact text; unique path sets phải exact, không thiếu/unrelated/duplicate. `Provider/Router/Localization/Subscription Boundaries` ghi riêng provider, router, localization, subscription và lifecycle owner với input/output/policy/evidence end-to-end.
+
+Hợp đồng đầu ra giữ `Approved Master Plan Evidence`, `Work Item Trace`, `Target Structure Conformance Matrix`, `Approved Structural Deviations`, `Planned File Tree`, và `Provider/Router/Localization/Subscription Boundaries`; complete chỉ khi approved-plan binding, coverage/boundary/path relation đầy đủ và mọi non-conforming row có approved decision.
 
 ## Evidence and Unknowns
 

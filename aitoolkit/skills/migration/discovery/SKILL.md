@@ -17,6 +17,8 @@ Orchestrator truyền `RUN_DIR`, đường dẫn project profile, project pack, 
 
 `Immediate predecessor artifact = exactly one orchestrator-provided path`.
 
+Với incremental discovery, đọc `aitoolkit/contracts/target-structure-conformance.md` như nguồn duy nhất cho danh sách concern, cột bảng và trạng thái exemplar.
+
 Discovery is the Activation Slice origin when step 01 has no envelope: create the complete canonical envelope from validated evidence. If an immediate predecessor already carries an envelope, preserve it under the contract's no-loss and append-only rules; never reconstruct from cumulative artifacts.
 Chỉ khảo sát input được artifact trước xác nhận; không dựng lại tên hoặc tự tìm artifact cũ trong `RUN_DIR`.
 
@@ -57,6 +59,16 @@ Khảo sát cả upstream và downstream, gồm `requested-key`, `parse-model`, 
 | Fact có nguồn trực tiếp | Ghi record và Evidence |
 | Inference được pack cho phép | Ghi nguồn và mức tin cậy |
 | Marker không phân loại được | Ghi unknown; block nếu ảnh hưởng taxonomy |
+
+## Target exemplar responsibilities
+
+Với `incremental` / `preserve-existing`, dựng `Comparable Target Exemplars` từ đúng tám concern trong canonical target-structure contract; set và cardinality phải khớp chính xác, không thiếu, duplicate hay thêm invented concern. Mỗi concern phải có đúng một row với real target `Path`, toàn bộ `Inspected Symbols`, `Observed Pattern`, lý do nghiệp vụ/activation cụ thể trong `Comparable Reason`, exact `Evidence`, và `Status`. Một generic controller, tên framework, hoặc chỉ một file có cùng technology không chứng minh complete working exemplar.
+
+`Inspected Symbols`, `Target Data-flow Trace` và `No-equivalent Gaps` giữ exact columns của template và không được là table shell rỗng. Tokenize mọi danh sách symbol theo dấu phẩy/chấm phẩy; từng token phải là explicit identifier hoặc qualified symbol, không chứa `*`, `all`, `any`, `generic`, `symbol(s)`, `controller(s)`, `provider(s)`, `category/categories` hoặc generic controller/provider/category ở bất kỳ vị trí nào. `Target Data-flow Trace` phải cover đúng thứ tự `source -> subscription -> normalization -> state -> selection -> render -> test`, với output của mỗi stage exact-match input của stage kế tiếp; mỗi row có path/symbol endpoint, input, structured `operation=<identifier>; owner=<path#symbol>`, output/production consumer và exact trace evidence. Một provider row hoặc transformation prose không chứng minh end-to-end flow.
+
+`no-equivalent` không cho phép phát minh pattern. Set gap rows phải khớp chính xác set concern có status này; khi không có thì chỉ dùng sentinel `none` canonical. Mỗi gap thật gắn `GAP-*`, `CONFLICT-*`, quyết định dương `resolved:DECISION-<ID>: <nội dung cụ thể>` và approval thật `approval:TECH-LEAD-<ID>`; reject placeholder semantic ở bất kỳ vị trí nào như `none`, `unknown`, `pending`, `TBD`, `review`, `not-applicable`. `unknown`, concern applicable bị thiếu, path/symbol/evidence rỗng, lý do không chứng minh comparability, hoặc no-equivalent chưa resolve đều giữ `status: draft` và `result: blocked`.
+
+Hợp đồng đầu ra giữ đủ `Comparable Target Exemplars`, `Inspected Symbols`, `Target Data-flow Trace`, và `No-equivalent Gaps`. Với incremental output, complete chỉ khi đủ tám concern canonical, không có `unknown`, và mọi `no-equivalent` đã có resolved decision.
 
 ## Common mistakes
 

@@ -13,17 +13,7 @@ produced_at: <yyyy-mm-dd>
 
 | Order | Migration Unit ID | Bootstrap Scope | Foundation Baseline ID | Foundation Approval Reference | Dependencies | Acceptance | Mode Constraint | Trace IDs | Delivery Change Boundary | Approval Reference | Approval Status |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| 1 | <UNIT-001> | <required hoặc not-required> | <pending-bootstrap, FOUNDATION-* ID đã duyệt hoặc not-applicable> | <pending-step09-approval, tham chiếu foundation đã duyệt hoặc not-applicable> | <dependency> | <tiêu chí chấp nhận khớp work item> | <ràng buộc mode/policy> | <trace IDs> | one-unit-one-change | <tham chiếu duyệt đơn vị> | <approved hoặc pending> |
-
-`Migration Unit ID` là canonical selector chỉ cho delivery adapter `migration-unit`, không phải generic work-item taxonomy. Generic master plan vẫn dùng `WORK-*` và không bắt buộc các field adapter của template này.
-
-## Work Item Adapter Trace
-
-Mỗi ordered migration unit phải resolve đúng một row trong bảng này; row thừa, thiếu hoặc trùng đều block selector.
-
-| Migration Unit ID | Work Item ID | Parent Work Item ID | Master Plan Reference | Master Plan Revision | Decomposition Decision Reference | Design Revision |
-|---|---|---|---|---|---|---|
-| <UNIT-001> | <WORK-SCOPE-NAME> | <WORK-* parent hoặc not-applicable> | <master-plan.md> | <approved master-plan revision> | <approved decision reference hoặc not-applicable> | <approved design revision> |
+| 1 | <UNIT-001> | <required hoặc not-required> | <pending-bootstrap, FOUNDATION-* ID đã duyệt hoặc not-applicable> | <pending-step09-approval, tham chiếu foundation đã duyệt hoặc not-applicable> | <dependency> | <tiêu chí chấp nhận> | <ràng buộc mode/policy> | <trace IDs> | one-unit-one-change | <tham chiếu duyệt đơn vị> | <approved hoặc pending> |
 
 ## Baseline nền tảng đã duyệt
 

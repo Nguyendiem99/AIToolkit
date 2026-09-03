@@ -20,6 +20,51 @@ produced_at: <yyyy-mm-dd>
 | Service | <dịch vụ> | <tham chiếu nguồn> | <ghi chú> |
 | Dependency | <dependency> | <tham chiếu nguồn> | <ghi chú> |
 
+## Comparable Target Exemplars
+
+Giữ exact set/cardinality tám concern canonical: không thiếu, duplicate hoặc invented concern. Mỗi row applicable cần path thật, toàn bộ symbol explicit đã inspect (không wildcard/`all`), pattern quan sát được, lý do comparability cụ thể và evidence chính xác. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`.
+
+| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+|---|---|---|---|---|---|---|
+| module/container composition | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| main/child presentation boundaries | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| unit/component organization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| controller/provider/state pattern | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| routing and lifecycle | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| localization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| service/config subscription and normalization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| test harness and production-boundary tests | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+
+## Inspected Symbols
+
+Giữ exact columns và ít nhất một evidence row; tokenize danh sách bằng dấu phẩy/chấm phẩy, mỗi token là explicit/qualified symbol, không dùng `*`, `all`, `any`, `generic`, `symbol(s)`, `controller(s)`, `provider(s)`, `category/categories` hoặc generic controller/provider/category.
+
+| Concern | Path | Symbol | Inspection Scope | Evidence |
+|---|---|---|---|---|
+| <concern canonical> | <đường dẫn thật> | <symbol cụ thể> | <declaration, consumers và lifecycle đã đọc> | <path:line> |
+
+## Target Data-flow Trace
+
+Giữ exact columns và đúng thứ tự end-to-end dưới đây; output của mỗi stage exact-match input của stage kế tiếp. Mỗi transformation dùng `operation=<identifier>; owner=<path#qualified-symbol>`.
+
+| Stage | Path/Symbol | Input | Transformation | Output/Consumer | Evidence |
+|---|---|---|---|---|---|
+| source | <path#symbol nguồn> | <source event> | <operation=read; owner=path#symbol> | <raw input> | <path:line> |
+| subscription | <path#symbol subscription> | <raw input> | <operation=subscribe; owner=path#symbol> | <subscribed input> | <path:line> |
+| normalization | <path#symbol normalization> | <subscribed input> | <operation=normalize; owner=path#symbol> | <normalized input> | <path:line> |
+| state | <path#symbol state> | <normalized input> | <operation=store; owner=path#symbol> | <feature state> | <path:line> |
+| selection | <path#symbol selector> | <feature state> | <operation=select; owner=path#symbol> | <selected state> | <path:line> |
+| render | <path#symbol render> | <selected state> | <operation=render; owner=path#symbol> | <production view> | <path:line> |
+| test | <path#symbol test> | <production view> | <operation=verify; owner=path#symbol> | <verified boundary> | <path:line> |
+
+## No-equivalent Gaps
+
+Set gap rows phải khớp chính xác concern có `Status = no-equivalent`; dùng `resolved:DECISION-<ID>: <quyết định cụ thể>` và `approval:TECH-LEAD-<ID>`, không chứa placeholder semantic. Nếu không có gap thật, ghi đúng một sentinel `none` với các field còn lại là `not-applicable`.
+
+| Concern | Gap Reference | Conflict Reference | Resolved Decision | Approval Reference |
+|---|---|---|---|---|
+| <concern canonical hoặc none> | <GAP-* hoặc not-applicable> | <CONFLICT-* hoặc not-applicable> | <resolved: quyết định hoặc not-applicable> | <approval:* hoặc not-applicable> |
+
 ## Activation Slice
 
 Ghi `not-applicable-approved` với evidence và decision reference khi unit không có activation selector; không được bỏ section.

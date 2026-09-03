@@ -22,12 +22,6 @@ Orchestrator truyền `RUN_DIR`, đường dẫn project profile, project pack, 
 Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
 Truy vết requirements/discovery/input qua stable ID và source reference đã chuyển tiếp trong artifact trước; không dựng tên hoặc nạp danh sách artifact tích lũy.
 
-## Work item and decomposition trace
-
-Nhận và validate section `Work Item Trace` từ immediate predecessor cùng orchestrator-provided `work_item_id`, `master_plan_ref` và `master_plan_revision`. Copy nguyên vẹn `Work Item ID`, `Parent Work Item ID`, `Master Plan Reference`, `Master Plan Revision`, `Acceptance`, `Mode Constraint` và `Decomposition Decision Reference`; Trace IDs predecessor phải là tập con của successor và enrichment chỉ được append-only. `Design Revision` vẫn có thể là `pending-step07`.
-
-Child decomposition không có row hợp lệ từ step 04 phải block tại đây; không tạo child, sửa parent/decision hoặc gán `UNIT-*` để lấp trace thiếu. Delivery adapter là metadata tùy chọn của generic work item, không phải taxonomy inventory/mapping.
-
 ## Activation Slice responsibilities
 
 Đọc `aitoolkit/contracts/activation-slice.md` làm nguồn định nghĩa duy nhất; giữ nguyên stable Activation Slice ID, mọi seam row và trace IDs từ immediate predecessor. Gán strategy/disposition cho từng seam và map nó tới target reference hoặc migration unit cụ thể; không nhúng lại canonical schema trong skill.
@@ -59,7 +53,6 @@ Child decomposition không có row hợp lệ từ step 04 phải block tại đ
 - Giữ section `Activation Slice` với cùng ID và toàn bộ seam rows; chỉ bổ sung target mapping, disposition và decision/unit reference thuộc step này.
 - For a routed `result: blocked` artifact whose Activation Slice and immediate-predecessor handoff are otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference` values; omit that section for non-blocked output.
 - Mỗi row ghi `Mapping ID`, `Requirement IDs`, `Inventory IDs`, `Discovery IDs`, source/target references, một strategy, rationale dựa trên evidence và approval khi policy yêu cầu.
-- Giữ đúng một section `Work Item Trace`; preserve master revision, acceptance và decomposition trace từ bước 04, đồng thời chỉ append mapping Trace IDs.
 
 ## Quick reference
 
