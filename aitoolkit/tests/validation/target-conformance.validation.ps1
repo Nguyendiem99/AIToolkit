@@ -68,6 +68,16 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
     $body = & $getSection $Text $Heading
     if ($null -eq $body) { return $null }
     $lines = @($body -split '\n')
+    $parseStrictTableLine = {
+      param([string]$Line)
+      $frameMatch = [regex]::Match($Line, '^\|(?<body>.*)\|[ \t]*$')
+      if (-not $frameMatch.Success) { return $null }
+      $cells = @($frameMatch.Groups['body'].Value.Split('|') | ForEach-Object { $_.Trim() })
+      if ($cells.Count -eq 0 -or @($cells | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+        return $null
+      }
+      return [pscustomobject]@{ Cells = $cells }
+    }
     $headerIndex = -1
     for ($lineIndex = 0; $lineIndex -lt $lines.Count; $lineIndex++) {
       if ($lines[$lineIndex] -match '^\|.*\|[ \t]*$') {
@@ -78,11 +88,13 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
     if ($headerIndex -lt 0 -or $headerIndex + 1 -ge $lines.Count) {
       return $null
     }
-    $columns = @($lines[$headerIndex].Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
-    if ($lines[$headerIndex + 1] -notmatch '^\|.*\|[ \t]*$') {
+    $header = & $parseStrictTableLine $lines[$headerIndex]
+    $delimiter = & $parseStrictTableLine $lines[$headerIndex + 1]
+    if ($null -eq $header -or $null -eq $delimiter) {
       return $null
     }
-    $delimiterCells = @($lines[$headerIndex + 1].Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
+    $columns = @($header.Cells)
+    $delimiterCells = @($delimiter.Cells)
     if (
       $delimiterCells.Count -ne $columns.Count -or
       @($delimiterCells | Where-Object { $_ -cnotmatch '^:?-{3,}:?$' }).Count -gt 0
@@ -91,11 +103,12 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
     }
     $rows = [Collections.Generic.List[object]]::new()
     $nextLineIndex = $headerIndex + 2
-    while ($nextLineIndex -lt $lines.Count -and $lines[$nextLineIndex] -match '^\|.*\|[ \t]*$') {
-      $cells = @($lines[$nextLineIndex].Trim().Trim('|').Split('|') | ForEach-Object { $_.Trim() })
-      if ($cells.Count -ne $columns.Count -or @($cells | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) {
+    while ($nextLineIndex -lt $lines.Count -and -not [string]::IsNullOrWhiteSpace($lines[$nextLineIndex])) {
+      $dataRow = & $parseStrictTableLine $lines[$nextLineIndex]
+      if ($null -eq $dataRow -or $dataRow.Cells.Count -ne $columns.Count) {
         return $null
       }
+      $cells = @($dataRow.Cells)
       $row = [ordered]@{}
       for ($cellIndex = 0; $cellIndex -lt $columns.Count; $cellIndex++) {
         $row[$columns[$cellIndex]] = $cells[$cellIndex]
@@ -123,6 +136,10 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
   $decisionPattern = '^resolved:DECISION-[A-Z0-9]+(?:-[A-Z0-9]+)*:\s+[A-Za-z0-9][^<>]*$'
   $techLeadApprovalPattern = '^approval:TECH-LEAD-[A-Z0-9]+(?:-[A-Z0-9]+)*$'
   $semanticPlaceholderPattern = '(?i)(?:^|[^A-Za-z0-9])(?:pending|unknown|none|tbd|review|not-applicable|placeholder)(?:$|[^A-Za-z0-9])'
+  $canonicalAcceptanceTracePattern = '^(?:REQ|SC|AC)-[0-9]{3}$'
+  $idLikeAcceptancePrefixPattern = '^(?i:(?:REQ|SC|AC)(?=$|\s*[\p{P}\p{S}\p{N}_]))'
+  $measurableQuantifierPattern = '(?i)(?:^|[^\p{L}\p{N}_])(?:at\s+least|at\s+most|within|under|over|exactly|all|no|zero)(?=$|[^\p{L}\p{N}_])'
+  $numericMeasurePattern = '(?i)(?<![\p{L}\p{N}_])[0-9]+(?:[.,][0-9]+)?\s*(?:%|percent(?:age)?|milliseconds?|ms|seconds?|secs?|minutes?|mins?|hours?|days?|weeks?|months?|years?|items?|records?|requests?|responses?|errors?|failures?|cases?|tests?|users?|routes?|endpoints?|files?|rows?|events?|attempts?|occurrences?|times?|counts?|bytes?|kb|mb|gb|kib|mib|gib)(?=$|[^\p{L}\p{N}_])'
   $normalizePath = {
     param([string]$Value)
     return ($Value -replace '\\', '/')
@@ -133,8 +150,12 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
     $outcomeSegments = [Collections.Generic.List[string]]::new()
     $valid = -not [string]::IsNullOrWhiteSpace($Value)
     $inOutcome = $false
-    $segments = if ($valid) {
-      @($Value -split '[;,]' | ForEach-Object { $_.Trim() })
+    $usesSemicolonSegments = $valid -and $Value.Contains(';')
+    $segments = if ($valid -and $usesSemicolonSegments) {
+      @($Value -split ';' | ForEach-Object { $_.Trim() })
+    }
+    elseif ($valid) {
+      @($Value -split ',' | ForEach-Object { $_.Trim() })
     }
     else {
       @()
@@ -143,28 +164,44 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
       $valid = $false
     }
     foreach ($segment in $segments) {
-      if ($segment -cmatch '^(?:REQ|SC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$') {
+      if ($segment -cmatch $canonicalAcceptanceTracePattern) {
         if ($inOutcome) {
           $valid = $false
         }
         [void]$references.Add($segment)
       }
       else {
-        if ($segment -match '^(?i:(?:REQ|SC|AC)(?:$|[-_\s]))') {
+        if ($segment -match $idLikeAcceptancePrefixPattern) {
           $valid = $false
         }
         $inOutcome = $true
         [void]$outcomeSegments.Add($segment)
       }
     }
-    $outcome = ($outcomeSegments -join '; ').Trim()
+    $outcomeSeparator = if ($usesSemicolonSegments) { '; ' } else { ', ' }
+    $outcome = ($outcomeSegments -join $outcomeSeparator).Trim()
+    $placeholderComparableOutcome = $outcome -replace '\p{Pd}', '-'
+    $placeholderComparableOutcome = $placeholderComparableOutcome -replace '\s*/\s*', '/'
+    $placeholderComparableOutcome = (($placeholderComparableOutcome -replace '(?:\s|-)+', ' ').Trim()).ToLowerInvariant()
+    $isPlaceholderOutcome = $placeholderComparableOutcome -in @(
+      'tbd', 'to be determined', 'pending', 'unknown', 'none', 'n/a', 'not applicable'
+    )
+    $outcomeTokens = @([regex]::Matches($outcome, '[\p{L}\p{N}]+'))
+    $hasMeasurableCue = (
+      $outcome -match '(?:<=|>=|<|>|=)' -or
+      $outcome -match $measurableQuantifierPattern -or
+      $outcome -match $numericMeasurePattern
+    )
     if (
-      @($references | Where-Object { $_ -cmatch '^REQ-' }).Count -eq 0 -or
-      @($references | Where-Object { $_ -cmatch '^SC-' }).Count -eq 0 -or
+      @($references | Where-Object { $_ -cmatch '^REQ-[0-9]{3}$' }).Count -eq 0 -or
+      @($references | Where-Object { $_ -cmatch '^SC-[0-9]{3}$' }).Count -eq 0 -or
       @($references | Sort-Object -Unique).Count -ne $references.Count -or
       [string]::IsNullOrWhiteSpace($outcome) -or
       $outcome -match '^\s*<[^>]+>\s*$' -or
-      $outcome -notmatch '[\p{L}\p{N}]'
+      $isPlaceholderOutcome -or
+      $outcomeTokens.Count -lt 2 -or
+      $outcome -notmatch '\p{L}' -or
+      -not $hasMeasurableCue
     ) {
       $valid = $false
     }
@@ -500,7 +537,7 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
           ForEach-Object { $_.Trim() } |
           Where-Object { $_ -ne '' }
       )
-      $invalidAcceptanceIds = @($acceptanceTraceIds | Where-Object { $_ -cnotmatch '^(?:REQ|SC)-[A-Z0-9]+(?:-[A-Z0-9]+)*$' })
+      $invalidAcceptanceIds = @($acceptanceTraceIds | Where-Object { $_ -cnotmatch $canonicalAcceptanceTracePattern })
       if (
         $acceptanceTraceIds.Count -eq 0 -or
         $invalidAcceptanceIds.Count -gt 0 -or

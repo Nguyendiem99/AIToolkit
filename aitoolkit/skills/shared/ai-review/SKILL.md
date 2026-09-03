@@ -24,11 +24,31 @@ Nhận `artifact_language` do orchestrator truyền khi `workflow_type: migratio
 5. A feature/bugfix rule becomes blocking only when a readable profile or pack explicitly declares that applicable rule mandatory. Then resolve and enforce it exactly; a missing explicitly mandatory rule blocks with the existing non-migration schema and `Verdict: Reject`.
 6. `references/testing-rules.md`, `review_focus`, and convention supplements remain optional unless explicitly promoted. Missing optional coverage is recorded and never claimed as applied.
 
+## Architecture-first migration review gates
+
+Với `workflow_type: migration`, thực hiện đúng thứ tự gate sau; chỉ đi tiếp khi gate trước có đủ bằng chứng:
+
+1. Master scope and work-item alignment.
+2. Project rule resolution.
+3. Canonical selector validation.
+4. Architecture conformance against the approved matrix and exemplars.
+5. Production activation-path validation.
+6. Behavior, failure modes, security, performance, and tests.
+7. Change hygiene.
+
+Missing master context, canonical selector, conformance matrix, exemplar, actual/planned tree evidence, or applicable production activation evidence records the matching verdict as `BLOCKED`, sets the overall verdict to `Reject`, and stops before reviewer dispatch and before behavior analysis. Rule Resolution remains an independent first severity gate and cannot be weakened by architecture ordering.
+
+Require exactly one Architecture Conformance Verdict, exactly one Canonical Selector Verdict, and exactly one Production Activation-path Verdict. Any `BLOCKED` verdict makes the overall verdict `Reject`, independently of severity counts.
+
+## Mandatory architecture findings
+
+Review invented aggregate state; direct widget service/router calls; raw layout replacing the target wrapper; missing unit boundary; wrong localization mechanism; missing lifecycle gate; tests bypassing the production provider; missing production subscription key; planned/actual tree drift; and unapproved structural deviation. Classify a missing production subscription key as `Critical`. An unapproved structural deviation is at least `Major` and is `Critical` when activation, routing, or rendering fails.
+
 ## Việc cần làm (thứ tự)
 
-1. **Đọc hợp đồng & rule.** Đọc `aitoolkit-schemas`, `shared/change-hygiene.md`; `workflow_type: migration` đọc `templates/migration/review-report.md`, feature/bugfix đọc `templates/review-report.md`; sau đó đọc [severity-rubric.md](severity-rubric.md) và resolve profile/project pack theo `Project rule resolution` trước khi review. Áp dụng scope, existing-file formatting và final-diff requirements của shared contract như universal hard review rule. Nếu có `review_focus` → bơm vào danh sách quan tâm.
+1. **Nạp hợp đồng và nguồn rule, chưa đánh giá gate.** Đọc `aitoolkit-schemas`, `shared/change-hygiene.md`; `workflow_type: migration` đọc `templates/migration/review-report.md`, feature/bugfix đọc `templates/review-report.md`; sau đó đọc [severity-rubric.md](severity-rubric.md) và nạp profile/project-pack candidates. Ở bước này chỉ load resource, không evaluate `Rule Resolution` và không dispatch reviewer. Áp dụng scope, existing-file formatting và final-diff requirements của shared contract như universal hard review rule. Nếu có `review_focus` → bơm vào danh sách quan tâm.
 2. **Khoanh vùng review.** Artifact **bước ngay trước** (artifact code/fix) = đường dẫn orchestrator truyền vào. Require its recorded task-base SHA and final-tree SHA, validate both against the current task provenance, and review exactly `task-base..final-tree` plus necessary context. Never fall back to `HEAD~1`, because checkpoint commits may hide earlier task changes. Block missing or mismatched provenance before reviewer dispatch.
-3. **Dispatch reviewer.** Dùng superpowers:requesting-code-review để giao diff + intent cho reviewer subagent (không đưa lịch sử phiên). Yêu cầu nó soi theo **dimensions** dưới đây + project rules đã resolve.
+3. **Chạy architecture-first gates rồi dispatch reviewer.** Với migration, đầu tiên đọc và validate `Master Scope Context` cùng work-item alignment; chỉ sau khi master alignment đã được đánh giá mới evaluate `Rule Resolution` từ resources đã nạp ở bước 1. Tiếp theo validate canonical selector, `Conformance Matrix Reference`, exemplars, `Actual File Tree vs Planned File Tree` và `Production Activation Path Evidence`, đúng thứ tự trong `Architecture-first migration review gates`. Chỉ khi các gate cấu trúc cho phép mới dùng superpowers:requesting-code-review để giao diff + intent cho reviewer subagent (không đưa lịch sử phiên). Yêu cầu nó soi theo **dimensions** dưới đây + project rules đã resolve. Procedure ordering: load rule resources without evaluating Rule Resolution. Procedure ordering: validate Master Scope Context/work-item alignment before evaluating Rule Resolution.
 4. **Phân loại** mọi phát hiện theo rubric Critical/Major/Minor (xem [severity-rubric.md](severity-rubric.md)). Phân vân giữa 2 mức → **chọn mức cao hơn**.
 5. **Phán quyết** theo first gate trong rubric: evaluate `Rule Resolution` trước, chỉ khi `RESOLVED` mới xét severity counts. Ghi `<run_dir>/review-report.md` theo template (`status: draft`) and preserve the validated task-base SHA and final-tree SHA for downstream verification/delivery.
 
@@ -54,7 +74,9 @@ Nhận `artifact_language` do orchestrator truyền khi `workflow_type: migratio
 | **Major** | Thiếu xử lý lỗi, thiếu test cho hành vi mới, hồi quy hiệu năng, vi phạm project rule cứng | Sửa trước khi merge |
 | **Minor** | Style, naming, micro-opt, doc | Ghi nhận, không chặn |
 
-Blocking condition: `Rule Resolution: BLOCKED` or `Critical count > 0`. Mandatory rule-resolution gap là independent blocking condition, ghi riêng và không bịa một Critical finding. **Major KHÔNG tự lọt êm:** ghi vào report với verdict `Approve-with-fixes` và được **mang tới bước tạo code / gerrit** để xử lý trước merge; đừng coi `Approve-with-fixes` là "xong".
+Blocking condition: `Rule Resolution: BLOCKED`, bất kỳ architecture-first verdict nào là `BLOCKED`, hoặc `Critical count > 0`. Mandatory rule-resolution gap là independent blocking condition, ghi riêng và không bịa một Critical finding. **Major KHÔNG tự lọt êm:** ghi vào report với verdict `Approve-with-fixes` và được **mang tới bước tạo code / gerrit** để xử lý trước merge; đừng coi `Approve-with-fixes` là "xong".
+
+Giữ nguyên severity gate dùng chung: Blocking condition: `Rule Resolution: BLOCKED` or `Critical count > 0`. Migration áp dụng thêm ba architecture-first verdict như các gate độc lập phía trên.
 
 Rule Resolution is evaluated before severity counts. Vì vậy `Rule Resolution: BLOCKED` với 0 Critical và 0 Major vẫn có verdict `Reject`; không được suy `Approve` từ counts.
 
@@ -62,7 +84,7 @@ Rule Resolution is evaluated before severity counts. Vì vậy `Rule Resolution:
 
 Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
 
-Khi orchestrator gọi step này với `workflow_type: migration`, immediate predecessor phải chứa đúng một section `Selected Migration Unit`. Validate và copy nguyên vẹn `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, và trace IDs sang report mới.
+Khi orchestrator gọi step này với `workflow_type: migration`, trước hết copy nguyên vẹn `Master Scope Context` của work item. Chỉ khi `Delivery Adapter Kind` là `migration-unit`, immediate predecessor mới phải chứa đúng một section `Selected Migration Unit`; validate và copy nguyên vẹn `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, và trace IDs sang report mới. Với adapter khác, bỏ section `Selected Migration Unit` và không suy ra unit từ diff.
 
 Đồng thời đọc `aitoolkit/contracts/activation-slice.md`, validate section `Activation Slice`, và copy nguyên vẹn cùng stable ID, mọi seam row và trace IDs sang report. Thiếu, duplicate, đổi tên hoặc mất trace làm handoff `result: blocked`; không suy lại slice từ diff.
 
@@ -94,8 +116,9 @@ Khi orchestrator gọi step này với `workflow_type: migration`, immediate pre
 2. **Tổng quan**: phạm vi (SHA `BASE..HEAD`), profile/pack path và project rules áp dụng.
 3. **Findings** nhóm theo mức; mỗi cái: `file:line` + vấn đề + **fix đề xuất**.
 4. **Critical count** (số nguyên) — chỉ là severity gate sau Rule Resolution.
-5. **Verdict**: `Approve` (rule resolution resolved, 0 Critical, 0 Major) | `Approve-with-fixes` (rule resolution resolved, còn Major) | `Reject` khi rule resolution blocked hoặc còn Critical. Reject when rule resolution is blocked or Critical remains.
-6. **Migration only**: preserve bảng `Selected Migration Unit`, `Activation Slice`, và migration `result`; feature/bugfix bỏ qua field này.
+5. **Verdict**: `Approve` (rule resolution resolved, cả ba architecture-first verdict không `BLOCKED`, 0 Critical, 0 Major) | `Approve-with-fixes` (các gate resolved/pass, còn Major) | `Reject` khi rule resolution blocked, bất kỳ architecture-first verdict nào blocked, hoặc còn Critical. Reject when rule resolution is blocked, an architecture-first verdict is blocked, or Critical remains.
+   Reject when rule resolution is blocked or Critical remains. Với migration, cũng Reject khi bất kỳ architecture-first verdict nào là `BLOCKED`.
+6. **Migration only**: preserve `Master Scope Context`; preserve bảng `Selected Migration Unit` chỉ cho adapter `migration-unit`; preserve `Activation Slice` và migration `result`. Feature/bugfix bỏ qua các field này.
 7. **Change Hygiene**: record task/unit scope, changed-file evidence, formatter commands, unrelated-diff verdict, and severity.
 8. **Migration blocked only**: when the routed output is `result: blocked` and Activation Slice/handoff validation is otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference`; omit it from non-blocked migration output. Feature/bugfix behavior is unchanged.
 

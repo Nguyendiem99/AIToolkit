@@ -21,15 +21,15 @@
 |---|---|---|
 | Task 1 — baseline và isolated mutation tests | `complete` | Full mutation suite exit `0` trong 63m32s; main validator `All` và source-integrity PASS; commit `test: isolate migration framework mutations` |
 | Task 2 — contracts/schema/interfaces | `complete` | Hai canonical contracts, schema shapes, sáu validator modules và public routing đã kiểm chứng; full mutation suite exit `0` trong 67m29.6s |
-| Task 3 — master artifacts | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
-| Task 4 — scope orchestrator | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
-| Task 5 — canonical adapters | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
-| Task 6 — target conformance | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
+| Task 3 — master artifacts | `complete` | Commit integration `9606198`; scope-artifact scenarios, Contracts, Templates và All PASS; review cuối APPROVE |
+| Task 4 — scope orchestrator | `complete` | Commit integration `b3380af`; scope-engine và Orchestrators PASS; review cuối APPROVE |
+| Task 5 — canonical adapters | `complete` | Commit integration `d6c4ef9`; adapter scenarios, Skills, Templates, Contracts và All PASS; review cuối APPROVE |
+| Task 6 — target conformance | `complete` | Commit integration `d39dbdc`; conformance scenarios và All PASS; review cuối APPROVE sau các seam-fix TDD |
 | Task 7 — structural pre-edit gate | `pending` | Chờ Task 5 và 6 |
 | Task 8 — architecture-first review/KB | `pending` | Chờ Task 6 |
 | Task 9 — integration/compatibility/E2E | `pending` | Chờ toàn bộ task trước |
 
-Task 2 hoàn tất không có nghĩa feature tổng thể hoặc Wave 2 hoàn tất. Tasks 3–6 mới chỉ `pending/ready`, chưa triển khai.
+Wave 2 đã hoàn tất: Tasks 3–6 được triển khai trong các worktree độc lập, review theo vòng sửa và tích hợp tuần tự vào `fmso/integration`. Feature tổng thể vẫn chưa hoàn tất vì Tasks 7–9 còn lại.
 
 ## Task 1 đã hiện thực
 
@@ -145,8 +145,8 @@ full suite 67 phút không chạy lại theo fix-round ruling vì exact mutation
 ## Cách tiếp tục
 
 1. Giữ commit Task 1 và Task 2 làm baseline đã kiểm chứng; không lặp lại helper/root override hoặc định nghĩa lại canonical contracts.
-2. Tasks 3–6 đang `pending/ready` và có thể bắt đầu Wave 2 trong các worktree tách biệt sau review gate của Task 2.
-3. Task 7 vẫn chờ Tasks 5 và 6; Task 8 vẫn chờ Task 6; Task 9 vẫn chờ toàn bộ task trước.
+2. Dùng commit `d39dbdc` làm baseline đã review của Wave 3; tách Task 7 và Task 8 vào hai worktree độc lập.
+3. Task 7 và Task 8 có thể chạy song song; Task 9 vẫn chờ toàn bộ task trước.
 4. Không tuyên feature hoàn tất, scope complete hoặc Wave 2 complete chỉ dựa trên Tasks 1–2.
 
 ## Điều kiện không được tuyên bố

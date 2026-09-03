@@ -1863,7 +1863,9 @@ function Test-Templates {
     Get-ChildItem -Path $templateRoot -File -Filter '*.md' |
       ForEach-Object { $_.BaseName }
   )
-  $unexpectedTemplateNames = $actualTemplateNames | Where-Object { $_ -notin ($templateNames + @('review-report', 'verification-report')) }
+  $unexpectedTemplateNames = $actualTemplateNames | Where-Object {
+    $_ -notin ($templateNames + @('review-report', 'verification-report', 'master-spec', 'master-plan'))
+  }
   $unexpectedTemplateNames | ForEach-Object {
     $errors.Add("Unexpected migration template: $_.md")
   }

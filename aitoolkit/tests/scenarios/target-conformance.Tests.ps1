@@ -255,7 +255,7 @@ function New-DesignArtifact {
     [string]$WorkItemId = 'WORK-ADMIN-TARGET',
     [string]$MasterPlanReference = 'master-plan.md#PLAN-ADMIN-001',
     [string]$MasterPlanRevision = '2',
-    [string]$Acceptance = 'REQ-001; SC-001; measurable outcome',
+    [string]$Acceptance = 'REQ-001; SC-001; target panel renders within 2 seconds',
     [string]$AcceptanceTraces = 'REQ-001, SC-001',
     [string]$TraceIds = 'TRACE-001',
     [string]$DeliveryAdapter = 'none',
@@ -271,7 +271,7 @@ function New-DesignArtifact {
   $approvedWorkItemId = 'WORK-ADMIN-TARGET'
   $approvedPlanReference = 'master-plan.md#PLAN-ADMIN-001'
   $approvedPlanRevision = '2'
-  $approvedAcceptance = 'REQ-001; SC-001; measurable outcome'
+  $approvedAcceptance = 'REQ-001; SC-001; target panel renders within 2 seconds'
   $approvedTraceIds = 'TRACE-001'
   $approvedDeliveryAdapter = 'none'
   $approvedDecompositionReference = 'not-applicable'
@@ -279,7 +279,7 @@ function New-DesignArtifact {
     $WorkItemId = 'WORK-FAKE-TARGET'
     $MasterPlanReference = 'master-plan.md#PLAN-FAKE-001'
     $MasterPlanRevision = '9'
-    $Acceptance = 'REQ-FAKE-014; SC-FAKE-014; measurable forged outcome'
+    $Acceptance = 'REQ-FAKE-014; SC-FAKE-014; forged target completes within 2 seconds'
     $AcceptanceTraces = 'REQ-FAKE-014, SC-FAKE-014'
     $TraceIds = 'TRACE-FAKE-014'
     $DeliveryAdapter = 'task:TASK-FAKE-014'
@@ -511,7 +511,7 @@ function New-MasterPlanArtifact {
     [string]$MasterSpecId = 'SPEC-ADMIN-001',
     [string]$MasterSpecRevision = '1',
     [string]$WorkItemId = 'WORK-ADMIN-TARGET',
-    [string]$Acceptance = 'REQ-001; SC-001; measurable outcome',
+    [string]$Acceptance = 'REQ-001; SC-001; target panel renders within 2 seconds',
     [string]$TraceIds = 'TRACE-001',
     [string]$DeliveryAdapter = 'none',
     [string]$ApprovalReference = 'approval:TECH-LEAD-PLAN-014',
@@ -524,6 +524,15 @@ function New-MasterPlanArtifact {
     [switch]$MalformedWorkDelimiter,
     [switch]$SingleCellWorkDelimiter,
     [switch]$ExtraCellWorkDelimiter,
+    [switch]$DoubleLeadingWorkDelimiter,
+    [switch]$DoubleTrailingWorkDelimiter,
+    [switch]$MissingLeadingWorkDelimiter,
+    [switch]$MissingTrailingWorkDelimiter,
+    [switch]$DoubleLeadingWorkRow,
+    [switch]$DoubleTrailingWorkRow,
+    [switch]$MissingLeadingWorkRow,
+    [switch]$MissingTrailingWorkRow,
+    [switch]$ExtraCellWorkRow,
     [switch]$OmitFrontMatter
   )
 
@@ -550,16 +559,22 @@ supersedes: $supersedes
   }
   $workRows = [Collections.Generic.List[string]]::new()
   if ($Decomposition -cne 'not-applicable') {
-    $workRows.Add('| WORK-ADMIN-PARENT | Parent outcome replaced by approved children | yes | none | 1 | REQ-013; SC-013; measurable parent outcome | TRACE-013 | none | cancelled-approved | none | approval:DEC-ARCH-014 | approval:TECH-LEAD-PLAN-014 |')
+    $workRows.Add('| WORK-ADMIN-PARENT | Parent outcome replaced by approved children | yes | none | 1 | REQ-013; SC-013; parent outcome completes within 4 seconds | TRACE-013 | none | cancelled-approved | none | approval:DEC-ARCH-014 | approval:TECH-LEAD-PLAN-014 |')
   }
   if (-not $MissingWorkItem) {
-    $workRows.Add("| $WorkItemId | Implement target conformance | yes | none | 2 | $Acceptance | $TraceIds | $DeliveryAdapter | in-progress | ATTEMPT-$WorkItemId-01 | none | $ApprovalReference |")
+    $workItemRow = "| $WorkItemId | Implement target conformance | yes | none | 2 | $Acceptance | $TraceIds | $DeliveryAdapter | in-progress | ATTEMPT-$WorkItemId-01 | none | $ApprovalReference |"
+    if ($DoubleLeadingWorkRow) { $workItemRow = "|$workItemRow" }
+    if ($DoubleTrailingWorkRow) { $workItemRow = "$workItemRow|" }
+    if ($MissingLeadingWorkRow) { $workItemRow = $workItemRow.Substring(1) }
+    if ($MissingTrailingWorkRow) { $workItemRow = $workItemRow.Substring(0, $workItemRow.Length - 1) }
+    if ($ExtraCellWorkRow) { $workItemRow = $workItemRow.Substring(0, $workItemRow.Length - 1) + '| unexpected |' }
+    $workRows.Add($workItemRow)
     if ($DuplicateWorkItem) {
       $workRows.Add("| $WorkItemId | Duplicate target conformance | yes | none | 3 | $Acceptance | $TraceIds | $DeliveryAdapter | in-progress | ATTEMPT-$WorkItemId-01 | none | $ApprovalReference |")
     }
   }
   else {
-    $workRows.Add('| WORK-ADMIN-OTHER | Unrelated approved outcome | yes | none | 2 | REQ-099; SC-099; measurable unrelated outcome | TRACE-099 | none | in-progress | ATTEMPT-WORK-ADMIN-OTHER-01 | none | approval:TECH-LEAD-PLAN-014 |')
+    $workRows.Add('| WORK-ADMIN-OTHER | Unrelated approved outcome | yes | none | 2 | REQ-099; SC-099; unrelated outcome completes within 5 seconds | TRACE-099 | none | in-progress | ATTEMPT-WORK-ADMIN-OTHER-01 | none | approval:TECH-LEAD-PLAN-014 |')
   }
   $activeWorkItemId = if ($MissingWorkItem) { 'WORK-ADMIN-OTHER' } else { $WorkItemId }
   $affectedWorkItems = if ($Decomposition -cne 'not-applicable') { "WORK-ADMIN-PARENT, $activeWorkItemId" } else { $activeWorkItemId }
@@ -579,6 +594,18 @@ supersedes: $supersedes
   }
   elseif ($ExtraCellWorkDelimiter) {
     '|---|---|---|---|---|---|---|---|---|---|---|---|---|'
+  }
+  elseif ($DoubleLeadingWorkDelimiter) {
+    '||---|---|---|---|---|---|---|---|---|---|---|---|'
+  }
+  elseif ($DoubleTrailingWorkDelimiter) {
+    '|---|---|---|---|---|---|---|---|---|---|---|---||'
+  }
+  elseif ($MissingLeadingWorkDelimiter) {
+    '---|---|---|---|---|---|---|---|---|---|---|---|'
+  }
+  elseif ($MissingTrailingWorkDelimiter) {
+    '|---|---|---|---|---|---|---|---|---|---|---|---'
   }
   else {
     '|---|---|---|---|---|---|---|---|---|---|---|---|'
@@ -700,6 +727,10 @@ function Invoke-ConformanceCase {
       'approved', 'missing', 'draft', 'stale', 'faux', 'missing-front-matter',
       'wrong-artifact-type', 'wrong-plan-id', 'duplicate-work-item', 'missing-work-item',
       'malformed-work-delimiter', 'single-cell-work-delimiter', 'extra-cell-work-delimiter',
+      'double-leading-work-delimiter', 'double-trailing-work-delimiter',
+      'missing-leading-work-delimiter', 'missing-trailing-work-delimiter',
+      'double-leading-work-row', 'double-trailing-work-row',
+      'missing-leading-work-row', 'missing-trailing-work-row', 'extra-cell-work-row',
       'wrong-spec-scope', 'invalid-spec-revision', 'stale-acceptance', 'stale-trace',
       'comma-acceptance', 'missing-acceptance-outcome', 'missing-acceptance-trace',
       'malformed-acceptance-reference',
@@ -707,7 +738,8 @@ function Invoke-ConformanceCase {
       'decomposition', 'missing-decomposition', 'stale-decomposition',
       'duplicate-decomposition', 'wrong-decomposition-parent', 'unexpected-decomposition'
     )]
-    [string]$PlanFixture = 'approved'
+    [string]$PlanFixture = 'approved',
+    [string]$PlanAcceptanceOverride = ''
   )
 
   $scenarioRoot = New-ScenarioRoot
@@ -718,7 +750,11 @@ function Invoke-ConformanceCase {
     if (-not [string]::IsNullOrWhiteSpace($DesignText)) {
       Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot '07-technical-design.md') -Value $DesignText
       if ($PlanFixture -cne 'missing') {
-        $masterPlanText = switch ($PlanFixture) {
+        $masterPlanText = if (-not [string]::IsNullOrWhiteSpace($PlanAcceptanceOverride)) {
+          New-MasterPlanArtifact -Acceptance $PlanAcceptanceOverride
+        }
+        else {
+          switch ($PlanFixture) {
           'draft' { New-MasterPlanArtifact -Status 'draft' }
           'stale' { New-MasterPlanArtifact -Revision '1' }
           'faux' { New-FauxMasterPlanArtifact }
@@ -732,12 +768,21 @@ function Invoke-ConformanceCase {
           'malformed-work-delimiter' { New-MasterPlanArtifact -MalformedWorkDelimiter }
           'single-cell-work-delimiter' { New-MasterPlanArtifact -SingleCellWorkDelimiter }
           'extra-cell-work-delimiter' { New-MasterPlanArtifact -ExtraCellWorkDelimiter }
-          'stale-acceptance' { New-MasterPlanArtifact -Acceptance 'REQ-013; SC-013; stale measurable outcome' }
+          'double-leading-work-delimiter' { New-MasterPlanArtifact -DoubleLeadingWorkDelimiter }
+          'double-trailing-work-delimiter' { New-MasterPlanArtifact -DoubleTrailingWorkDelimiter }
+          'missing-leading-work-delimiter' { New-MasterPlanArtifact -MissingLeadingWorkDelimiter }
+          'missing-trailing-work-delimiter' { New-MasterPlanArtifact -MissingTrailingWorkDelimiter }
+          'double-leading-work-row' { New-MasterPlanArtifact -DoubleLeadingWorkRow }
+          'double-trailing-work-row' { New-MasterPlanArtifact -DoubleTrailingWorkRow }
+          'missing-leading-work-row' { New-MasterPlanArtifact -MissingLeadingWorkRow }
+          'missing-trailing-work-row' { New-MasterPlanArtifact -MissingTrailingWorkRow }
+          'extra-cell-work-row' { New-MasterPlanArtifact -ExtraCellWorkRow }
+          'stale-acceptance' { New-MasterPlanArtifact -Acceptance 'REQ-013; SC-013; stale target completes within 3 seconds' }
           'stale-trace' { New-MasterPlanArtifact -TraceIds 'TRACE-013' }
-          'comma-acceptance' { New-MasterPlanArtifact -Acceptance 'REQ-001, SC-001, measurable outcome' }
+          'comma-acceptance' { New-MasterPlanArtifact -Acceptance 'REQ-001, SC-001, target panel renders within 2 seconds' }
           'missing-acceptance-outcome' { New-MasterPlanArtifact -Acceptance 'REQ-001; SC-001' }
           'missing-acceptance-trace' { New-MasterPlanArtifact -Acceptance 'REQ-001; measurable outcome' }
-          'malformed-acceptance-reference' { New-MasterPlanArtifact -Acceptance 'REQ--001; SC-001; measurable outcome' }
+          'malformed-acceptance-reference' { New-MasterPlanArtifact -Acceptance 'REQ--001; SC-001; target panel renders within 2 seconds' }
           'stale-adapter' { New-MasterPlanArtifact -DeliveryAdapter 'task:TASK-ADMIN-013' }
           'stale-approval' { New-MasterPlanArtifact -ApprovalReference 'pending' }
           'stale-approval-status' { New-MasterPlanArtifact -ApprovalStatus 'pending' }
@@ -749,6 +794,7 @@ function Invoke-ConformanceCase {
           'wrong-decomposition-parent' { New-MasterPlanArtifact -WorkItemId 'WORK-ADMIN-CHILD' -Decomposition 'wrong-parent' }
           'unexpected-decomposition' { New-MasterPlanArtifact -Decomposition 'approved' }
           default { New-MasterPlanArtifact }
+          }
         }
         Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot 'master-plan.md') -Value $masterPlanText
       }
@@ -951,7 +997,7 @@ Invoke-ConformanceCase `
 Invoke-ConformanceCase `
   'design accepts comma-separated canonical Acceptance references plus measurable outcome prose' `
   '' `
-  (New-DesignArtifact -Acceptance 'REQ-001, SC-001, measurable outcome' -BindApprovedPlanToTrace) `
+  (New-DesignArtifact -Acceptance 'REQ-001, SC-001, target panel renders within 2 seconds' -BindApprovedPlanToTrace) `
   $true `
   '' `
   'comma-acceptance'
@@ -1149,6 +1195,25 @@ Invoke-ConformanceCase `
   $false `
   'must resolve the cited external approved master plan' `
   'extra-cell-work-delimiter'
+foreach ($strictTableFixture in @(
+  @{ Name = 'a doubled leading delimiter frame'; Fixture = 'double-leading-work-delimiter' },
+  @{ Name = 'a doubled trailing delimiter frame'; Fixture = 'double-trailing-work-delimiter' },
+  @{ Name = 'a delimiter missing its leading frame'; Fixture = 'missing-leading-work-delimiter' },
+  @{ Name = 'a delimiter missing its trailing frame'; Fixture = 'missing-trailing-work-delimiter' },
+  @{ Name = 'a doubled leading data-row frame'; Fixture = 'double-leading-work-row' },
+  @{ Name = 'a doubled trailing data-row frame'; Fixture = 'double-trailing-work-row' },
+  @{ Name = 'a data row missing its leading frame'; Fixture = 'missing-leading-work-row' },
+  @{ Name = 'a data row missing its trailing frame'; Fixture = 'missing-trailing-work-row' },
+  @{ Name = 'a data row with an extra cell'; Fixture = 'extra-cell-work-row' }
+)) {
+  Invoke-ConformanceCase `
+    "design rejects $($strictTableFixture.Name)" `
+    '' `
+    (New-DesignArtifact) `
+    $false `
+    'must resolve the cited external approved master plan' `
+    $strictTableFixture.Fixture
+}
 Invoke-ConformanceCase `
   'design rejects canonical Acceptance without measurable outcome prose' `
   '' `
@@ -1166,10 +1231,50 @@ Invoke-ConformanceCase `
 Invoke-ConformanceCase `
   'design rejects malformed canonical Acceptance references' `
   '' `
-  (New-DesignArtifact -Acceptance 'REQ--001; SC-001; measurable outcome' -AcceptanceTraces 'REQ--001, SC-001' -BindApprovedPlanToTrace) `
+  (New-DesignArtifact -Acceptance 'REQ--001; SC-001; target panel renders within 2 seconds' -AcceptanceTraces 'REQ--001, SC-001' -BindApprovedPlanToTrace) `
   $false `
   'must resolve the cited external approved master plan' `
   'malformed-acceptance-reference'
+$unicodeDash = [char]0x2013
+$acceptanceCases = @(
+  @{ Name = 'normal review prose with a quantifier'; Acceptance = 'REQ-001; SC-001; code review completes within 2 days'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'normal word beginning with req'; Acceptance = 'REQ-001; SC-001; requirements review completes within 2 days'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'canonical optional AC trace'; Acceptance = 'REQ-001; SC-001; AC-001; endpoint responds within 2 seconds'; Traces = 'REQ-001, SC-001, AC-001'; Pass = $true },
+  @{ Name = 'semicolon outcome preserving comma prose'; Acceptance = 'REQ-001; SC-001; endpoint responds within 2 seconds, including cache hits'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'Unicode prose with a comparator'; Acceptance = 'REQ-001; SC-001; thời gian hiển thị < 2 giây'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'numeric value paired with a time unit'; Acceptance = 'REQ-001; SC-001; processing completes in 2 seconds'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'numeric value paired with a percent unit'; Acceptance = 'REQ-001; SC-001; coverage reaches 95 percent'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'explicit all quantifier'; Acceptance = 'REQ-001; SC-001; all approved routes render successfully'; Traces = 'REQ-001, SC-001'; Pass = $true },
+  @{ Name = 'exact TBD placeholder'; Acceptance = 'REQ-001; SC-001; TBD'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'hyphenated placeholder variant'; Acceptance = "REQ-001; SC-001; To${unicodeDash}Be${unicodeDash}Determined"; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'exact pending placeholder'; Acceptance = 'REQ-001; SC-001; pending'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'exact unknown placeholder'; Acceptance = 'REQ-001; SC-001; unknown'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'exact none placeholder'; Acceptance = 'REQ-001; SC-001; none'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'spaced N/A placeholder'; Acceptance = 'REQ-001; SC-001; N / A'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'Unicode-hyphen not-applicable placeholder'; Acceptance = "REQ-001; SC-001; not${unicodeDash}applicable"; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'slash-delimited malformed requirement ID'; Acceptance = 'REQ/999; SC-001; endpoint responds within 2 seconds'; Traces = 'REQ/999, SC-001'; Pass = $false },
+  @{ Name = 'colon-delimited malformed success-criterion ID'; Acceptance = 'REQ-001; SC:12; endpoint responds within 2 seconds'; Traces = 'REQ-001, SC:12'; Pass = $false },
+  @{ Name = 'dot-delimited malformed acceptance ID'; Acceptance = 'REQ-001; SC-001; AC.1; endpoint responds within 2 seconds'; Traces = 'REQ-001, SC-001, AC.1'; Pass = $false },
+  @{ Name = 'Unicode-dash malformed requirement ID'; Acceptance = "REQ${unicodeDash}999; SC-001; endpoint responds within 2 seconds"; Traces = "REQ${unicodeDash}999, SC-001"; Pass = $false },
+  @{ Name = 'case-insensitive malformed requirement prefix'; Acceptance = 'req/999; SC-001; endpoint responds within 2 seconds'; Traces = 'req/999, SC-001'; Pass = $false },
+  @{ Name = 'whitespace before slash in an extra malformed requirement ID'; Acceptance = 'REQ-001; SC-001; REQ /999; endpoint responds within 2 seconds'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'multiple spaces before colon in an extra malformed success-criterion ID'; Acceptance = 'REQ-001; SC-001; SC  :12; endpoint responds within 2 seconds'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'tab before dot in an extra malformed acceptance ID'; Acceptance = "REQ-001; SC-001; AC`t.1; endpoint responds within 2 seconds"; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'whitespace before Unicode dash in an extra malformed requirement ID'; Acceptance = "REQ-001; SC-001; REQ   ${unicodeDash}999; endpoint responds within 2 seconds"; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'lowercase noncanonical trace'; Acceptance = 'req-001; SC-001; endpoint responds within 2 seconds'; Traces = 'req-001, SC-001'; Pass = $false },
+  @{ Name = 'four-digit noncanonical trace'; Acceptance = 'REQ-0001; SC-001; endpoint responds within 2 seconds'; Traces = 'REQ-0001, SC-001'; Pass = $false },
+  @{ Name = 'version digit without a measurable cue'; Acceptance = 'REQ-001; SC-001; release v2 ready'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'number with an unrecognized unit'; Acceptance = 'REQ-001; SC-001; processing completes in 2 bananas'; Traces = 'REQ-001, SC-001'; Pass = $false },
+  @{ Name = 'prose without a measurable cue'; Acceptance = 'REQ-001; SC-001; target panel renders'; Traces = 'REQ-001, SC-001'; Pass = $false }
+)
+foreach ($acceptanceCase in $acceptanceCases) {
+  Invoke-ConformanceCase `
+    -Name "design Acceptance $($acceptanceCase.Name)" `
+    -DesignText (New-DesignArtifact -Acceptance $acceptanceCase.Acceptance -AcceptanceTraces $acceptanceCase.Traces -BindApprovedPlanToTrace) `
+    -ShouldPass $acceptanceCase.Pass `
+    -ExpectedError $(if ($acceptanceCase.Pass) { '' } else { 'must resolve the cited external approved master plan' }) `
+    -PlanAcceptanceOverride $acceptanceCase.Acceptance
+}
 Invoke-ConformanceCase `
   'design rejects Acceptance Traces missing a canonical required reference' `
   '' `

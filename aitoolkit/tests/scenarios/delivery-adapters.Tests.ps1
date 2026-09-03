@@ -19,6 +19,14 @@ function Write-Utf8([string]$Path, [string]$Text) {
   [IO.File]::WriteAllText($Path, $Text, $utf8NoBom)
 }
 
+function Convert-CaseFilesToCrlf([string]$Root) {
+  foreach ($file in @(Get-ChildItem -LiteralPath $Root -Recurse -File -Filter '*.md')) {
+    $text = [IO.File]::ReadAllText($file.FullName)
+    $text = [regex]::Replace($text, '\r?\n', "`r`n")
+    [IO.File]::WriteAllText($file.FullName, $text, $utf8NoBom)
+  }
+}
+
 function New-Case([string]$Name) {
   $root = Join-Path $caseRoot $Name
   [void](New-Item -ItemType Directory -Force (Join-Path $root 'contracts'))
@@ -284,6 +292,12 @@ function Assert-Rejected([string]$Name, [string]$Root, [string]$Expected) {
 
 try {
   . $validatorPath
+
+  $root = New-Case 'valid-none-crlf-front-matter'
+  Write-MasterPlan $root 'none' 'not-applicable' 'not-applicable' 'not-applicable' 'not-applicable'
+  Write-FrontHalf $root -Steps @(4, 5, 6, 7, 8)
+  Convert-CaseFilesToCrlf $root
+  Assert-Accepted 'valid none adapter with CRLF front matter' $root
 
   foreach ($adapter in @(
     @{ Name = 'none'; Kind = 'none'; External = 'not-applicable'; Authority = 'not-applicable'; Revision = 'not-applicable'; Parent = 'not-applicable' },

@@ -27,6 +27,18 @@ produced_at: <yyyy-mm-dd>
 |---|---|---|---|---|---|
 | <orchestrator-provided-workflow-type> | <greenfield / incremental / not-applicable> | <UNIT-* / not-applicable> | <path đã xác minh tương đối với RUN_DIR> | <PASS / FAIL / BLOCKED / WAIVED / not-applicable> | <complete / partial / blocked> |
 
+## Work Item and Master Plan Transition
+
+| Work Item ID | Work Item Verdict | Master Plan Reference | Master Plan Revision | Transition | Terminal Evidence |
+|---|---|---|---|---|---|
+| <WORK-*> | <complete / blocked / cancelled-approved / not-applicable-approved> | <master-plan path> | <revision> | <prior state -> new state> | <artifact tương đối với RUN_DIR> |
+
+## Scope Status Calculation
+
+| Required Items Remaining | Next Eligible Item | Blocker | Dependency Graph State | Required Items Terminal-success | Architecture Conformance State | Selector Schema State | Terminal Scope Report | Calculated Scope Status | Calculation Evidence |
+|---|---|---|---|---|---|---|---|---|---|
+| <count và Work Item IDs hoặc none> | <WORK-* hoặc none> | <blocker/evidence hoặc none> | <valid / invalid> | <all-terminal-success / remaining> | <PASS / BLOCKED> | <PASS / BLOCKED> | <scope-terminal-report.md#evidence-index hoặc not-applicable> | <planned / scope-in-progress / scope-blocked / scope-complete / scope-cancelled-approved> | <master-plan revision + terminal evidence set; scope-complete cần all-required-terminal-evidence> |
+
 ## Automation waiver
 
 <!-- Chỉ giữ section này khi caller-provided workflow_type=migration; feature/bugfix bỏ section. -->

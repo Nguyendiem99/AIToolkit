@@ -100,6 +100,14 @@ try {
     $validErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
     Assert-True ($validErrors.Count -eq 0) ("Rendered master artifacts must validate: " + ($validErrors -join '; '))
 
+    foreach ($name in @('master-spec.md', 'master-plan.md')) {
+      $artifactPath = Join-Path $fixtureRoot "templates/migration/$name"
+      $lfText = (Get-Content -Raw -Encoding utf8 $artifactPath).Replace("`r`n", "`n").Replace("`r", "`n")
+      [IO.File]::WriteAllText($artifactPath, $lfText, [Text.UTF8Encoding]::new($false))
+    }
+    $lfErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+    Assert-True ($lfErrors.Count -eq 0) ("LF-rendered master artifacts must validate: " + ($lfErrors -join '; '))
+
     $specPath = Join-Path $fixtureRoot 'templates/migration/master-spec.md'
     $originalSpec = Get-Content -Raw -Encoding utf8 $specPath
     try {
