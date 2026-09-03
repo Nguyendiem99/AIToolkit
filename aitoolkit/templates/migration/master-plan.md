@@ -10,9 +10,6 @@ execution_policy: dependency-ready
 max_concurrency: 1
 produced_at: <yyyy-mm-dd>
 supersedes: not-applicable
-responsibility_contract:
-  version: 1
-  applicability: required
 ---
 
 <!-- artifact_language: vi -->
@@ -30,20 +27,6 @@ responsibility_contract:
 | Work Item ID | Title | Required | Dependencies | Plan Order | Acceptance | Trace IDs | Delivery Adapter | Status | Latest Attempt | Terminal Evidence | Approval Reference |
 |---|---|---|---|---|---|---|---|---|---|---|---|
 | WORK-<SCOPE>-<NAME> | <outcome độc lập, review được> | <yes/no> | none | <positive integer> | <REQ/SC IDs và kết quả đo được> | <stable trace IDs> | none | in-progress | ATTEMPT-<WORK-ITEM>-<NN> | none | pending |
-
-## Delivery Adapter Selection
-
-| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| WORK-<SCOPE>-<NAME> | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | <REQ/SC IDs và kết quả đo được> | <stable trace IDs> | <approved mode/architecture policy> | <approved design revision> | not-applicable | not-applicable |
-
-## Responsibility Owner References
-
-Copy exactly one row per Work Item from the approved technical-design responsibility model. The row and `Delivery Adapter Selection.Design Revision` jointly form pre-edit planned authority; they never substitute for the later review handoff.
-
-| Work Item ID | Design Revision | Responsibility IDs | Shared Foundation IDs | Integration Responsibility IDs | Independent Boundary Evidence |
-|---|---|---|---|---|---|
-| WORK-<SCOPE>-<NAME> | <approved design revision> | <ordered concrete RESP-* IDs> | <ordered shared RESP-* IDs or not-applicable> | <ordered integration RESP-* IDs or not-applicable> | <immutable rule/decision/approval evidence> |
 
 ## Dependency Graph
 

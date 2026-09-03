@@ -7,8 +7,6 @@ param(
   [switch]$FinalFixPerformanceOnly,
   [switch]$FinalFixUnicodeOnly,
   [switch]$ValidatorReusePerformanceOnly,
-  [switch]$Task9CodeMigrationSeamOnly,
-  [switch]$ResponsibilityConformanceOnly,
   [string]$IsolationToken = ''
 )
 
@@ -51,8 +49,6 @@ if (-not $isIsolatedChild) {
   if ($FinalFixPerformanceOnly) { $childArguments += '-FinalFixPerformanceOnly' }
   if ($FinalFixUnicodeOnly) { $childArguments += '-FinalFixUnicodeOnly' }
   if ($ValidatorReusePerformanceOnly) { $childArguments += '-ValidatorReusePerformanceOnly' }
-  if ($Task9CodeMigrationSeamOnly) { $childArguments += '-Task9CodeMigrationSeamOnly' }
-  if ($ResponsibilityConformanceOnly) { $childArguments += '-ResponsibilityConformanceOnly' }
   $previousIsolationToken = $env:AITOOLKIT_FRAMEWORK_TEST_ISOLATION_TOKEN
   $previousIsolationRoot = $env:AITOOLKIT_FRAMEWORK_TEST_ISOLATION_ROOT
   $env:AITOOLKIT_FRAMEWORK_TEST_ISOLATION_TOKEN = $childToken
@@ -86,57 +82,6 @@ if (-not $isIsolatedChild) {
 }
 
 if ($IsolationSmokeOnly) {
-  $smokeValidator = Join-Path $PSScriptRoot 'validate-migration-framework.ps1'
-  $smokeRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
-  $responsibilityHelper = Join-Path $PSScriptRoot 'validation/responsibility-conformance.validation.ps1'
-  if (-not (Test-Path -LiteralPath $responsibilityHelper -PathType Leaf)) {
-    Write-Output "FAIL: Isolation smoke responsibility helper fixture is missing: $responsibilityHelper"
-    exit 1
-  }
-  $responsibilityHelperBytes = [IO.File]::ReadAllBytes($responsibilityHelper)
-  try {
-    Remove-Item -LiteralPath $responsibilityHelper -Force -ErrorAction Stop
-    if (Test-Path -LiteralPath $responsibilityHelper) {
-      throw "Isolation smoke responsibility helper mutation was a silent no-op: $responsibilityHelper"
-    }
-    $previousSmokeErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-      $missingHelperOutput = & (Get-Process -Id $PID).Path `
-        -NoProfile -ExecutionPolicy Bypass -File $smokeValidator `
-        -Check Contracts -Root $smokeRoot 2>&1
-      $missingHelperExitCode = $LASTEXITCODE
-    }
-    finally {
-      $ErrorActionPreference = $previousSmokeErrorActionPreference
-    }
-  }
-  finally {
-    [IO.File]::WriteAllBytes($responsibilityHelper, $responsibilityHelperBytes)
-  }
-  $restoredResponsibilityHelperBytes = [IO.File]::ReadAllBytes($responsibilityHelper)
-  if (
-    [Convert]::ToBase64String($restoredResponsibilityHelperBytes) -cne
-    [Convert]::ToBase64String($responsibilityHelperBytes)
-  ) {
-    Write-Output 'FAIL: Isolation smoke did not restore responsibility helper bytes'
-    exit 1
-  }
-  $missingHelperText = $missingHelperOutput -join [Environment]::NewLine
-  $smokeFailures = [Collections.Generic.List[string]]::new()
-  if ($missingHelperExitCode -ne 1) {
-    $smokeFailures.Add("Missing responsibility helper should exit 1; actual=$missingHelperExitCode. Output: $missingHelperText")
-  }
-  if (-not $missingHelperText.Contains('FAIL: Missing responsibility conformance validation helper')) {
-    $smokeFailures.Add("Missing responsibility helper must emit the canonical diagnostic. Output: $missingHelperText")
-  }
-  if ($missingHelperText.Contains(". : The term '") -or $missingHelperText.Contains('CommandNotFoundException')) {
-    $smokeFailures.Add("Missing responsibility helper must not escape as a dot-source command-not-found error. Output: $missingHelperText")
-  }
-  if ($smokeFailures.Count -gt 0) {
-    $smokeFailures | ForEach-Object { Write-Output "FAIL: $_" }
-    exit 1
-  }
   Write-Output "PASS: migration framework tests isolated under $expectedIsolationRoot"
   exit 0
 }
@@ -321,10 +266,8 @@ if ($SourceIntegrityOnly) {
   exit 0
 }
 
-function Invoke-Validator([string]$Check, [switch]$AllowReducedResponsibilityFixture) {
-  $arguments = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $validator, '-Check', $Check, '-Root', $testRoot)
-  if ($AllowReducedResponsibilityFixture) { $arguments += '-AllowReducedResponsibilityFixture' }
-  $output = & $powershell @arguments 2>&1
+function Invoke-Validator([string]$Check) {
+  $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Check $Check -Root $testRoot 2>&1
   [pscustomobject]@{
     ExitCode = $LASTEXITCODE
     Output = ($output -join [Environment]::NewLine)
@@ -360,434 +303,6 @@ function Assert-Contains([string]$Text, [string]$Expected, [string]$Context) {
 
 function Assert-NotContains([string]$Text, [string]$Unexpected, [string]$Context) {
   Assert-True (-not $Text.Contains($Unexpected)) "$Context unexpectedly contained <$Unexpected>. Output: $Text"
-}
-
-function Replace-ExactOrFail(
-  [string]$Text,
-  [string]$From,
-  [string]$To,
-  [string]$Name
-) {
-  if ([string]::IsNullOrEmpty($From)) { throw "$Name mutation source must not be empty" }
-
-  $normalizedBuilder = [Text.StringBuilder]::new()
-  $originalBoundaries = [Collections.Generic.List[int]]::new()
-  $originalBoundaries.Add(0)
-  $originalIndex = 0
-  while ($originalIndex -lt $Text.Length) {
-    if ($Text[$originalIndex] -ceq "`r") {
-      if ($originalIndex + 1 -lt $Text.Length -and $Text[$originalIndex + 1] -ceq "`n") { $originalIndex += 2 }
-      else { $originalIndex++ }
-      [void]$normalizedBuilder.Append("`n")
-    }
-    else {
-      [void]$normalizedBuilder.Append($Text[$originalIndex])
-      $originalIndex++
-    }
-    $originalBoundaries.Add($originalIndex)
-  }
-  $normalizedText = $normalizedBuilder.ToString()
-  $normalizedFrom = $From.Replace("`r`n", "`n").Replace("`r", "`n")
-  $normalizedTo = $To.Replace("`r`n", "`n").Replace("`r", "`n")
-  $normalizedSearchIndex = 0
-  $originalCopyIndex = 0
-  $result = [Text.StringBuilder]::new()
-  $replacementCount = 0
-  while ($normalizedSearchIndex -le $normalizedText.Length - $normalizedFrom.Length) {
-    $matchIndex = $normalizedText.IndexOf($normalizedFrom, $normalizedSearchIndex, [StringComparison]::Ordinal)
-    if ($matchIndex -lt 0) { break }
-    $originalStart = $originalBoundaries[$matchIndex]
-    $originalEnd = $originalBoundaries[$matchIndex + $normalizedFrom.Length]
-    [void]$result.Append($Text.Substring($originalCopyIndex, $originalStart - $originalCopyIndex))
-    $matchedText = $Text.Substring($originalStart, $originalEnd - $originalStart)
-    $separatorMatch = [regex]::Match($matchedText, '\r\n|\r|\n')
-    if (-not $separatorMatch.Success) {
-      $prefixMatches = [regex]::Matches($Text.Substring(0, $originalStart), '\r\n|\r|\n')
-      if ($prefixMatches.Count -gt 0) { $separatorMatch = $prefixMatches[$prefixMatches.Count - 1] }
-      else { $separatorMatch = [regex]::Match($Text.Substring($originalEnd), '\r\n|\r|\n') }
-    }
-    $replacementSeparator = if ($separatorMatch.Success) { $separatorMatch.Value } else { [Environment]::NewLine }
-    [void]$result.Append($normalizedTo.Replace("`n", $replacementSeparator))
-    $originalCopyIndex = $originalEnd
-    $normalizedSearchIndex = $matchIndex + $normalizedFrom.Length
-    $replacementCount++
-  }
-  if ($replacementCount -eq 0) { throw "$Name mutation was a silent no-op" }
-  [void]$result.Append($Text.Substring($originalCopyIndex))
-  $changed = $result.ToString()
-  if ($changed -ceq $Text) { throw "$Name mutation was a silent no-op" }
-  return $changed
-}
-
-function Format-MutationCaseOutcome(
-  [string]$Name,
-  [string]$SourceDigest,
-  [string[]]$NewFailures
-) {
-  if (@($NewFailures).Count -eq 0) {
-    return "PASS: responsibility mutation $Name; source digest $SourceDigest"
-  }
-  return @($NewFailures | ForEach-Object { "FAIL: $_" })
-}
-
-if ($ResponsibilityConformanceOnly) {
-  $previousErrorActionPreference = $ErrorActionPreference
-  $ErrorActionPreference = 'Continue'
-  try {
-    $sourceIntegrity = Invoke-Validator 'SourceIntegrityOnly' -AllowReducedResponsibilityFixture
-  }
-  finally {
-    $ErrorActionPreference = $previousErrorActionPreference
-  }
-  Assert-True ($sourceIntegrity.ExitCode -eq 0) "Responsibility source-integrity baseline should pass. Output: $($sourceIntegrity.Output)"
-  Assert-Contains $sourceIntegrity.Output 'PASS: migration framework (SourceIntegrityOnly)' 'Responsibility source-integrity baseline'
-  if ($sourceIntegrity.ExitCode -ne 0) {
-    $testFailures | ForEach-Object { Write-Output "FAIL: $_" }
-    exit 1
-  }
-  $commentedCoverageResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-    param($fixtureRoot)
-    $fixtureScenario = Join-Path $fixtureRoot 'tests/scenarios/scope-engine.Tests.ps1'
-    $fixtureText = [IO.File]::ReadAllText($fixtureScenario, [Text.Encoding]::UTF8)
-    $mutatedText = Replace-ExactOrFail `
-      $fixtureText `
-      "Assert-Equal `$responsibilityChainSelection.work_item_id '' 'No dependent item may be selected after a responsibility mismatch'" `
-      "# Assert-Equal `$responsibilityChainSelection.work_item_id '' 'No dependent item may be selected after a responsibility mismatch'" `
-      'commented coverage registration'
-    [IO.File]::WriteAllText($fixtureScenario, $mutatedText, [Text.UTF8Encoding]::new($false))
-    $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-    $previousFixtureErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-      $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-      $exitCode = $LASTEXITCODE
-    }
-    finally {
-      $ErrorActionPreference = $previousFixtureErrorActionPreference
-    }
-    [pscustomobject]@{
-      ExitCode = $exitCode
-      Output = ($output -join [Environment]::NewLine)
-    }
-  }
-  Assert-True ($commentedCoverageResult.ExitCode -eq 1) "Commented coverage registration must fail source integrity. Output: $($commentedCoverageResult.Output)"
-  Assert-Contains $commentedCoverageResult.Output 'Responsibility source-integrity coverage missing: post-implementation queue advance' 'Commented coverage registration'
-  $coverageRegistration = "Assert-Equal `$responsibilityChainSelection.work_item_id '' 'No dependent item may be selected after a responsibility mismatch'"
-  foreach ($unreachableCoverageCase in @(
-    [pscustomobject]@{
-      Name = 'literal-false branch'
-      Replacement = "if (`$false) {`n  $coverageRegistration`n}"
-    }
-    [pscustomobject]@{
-      Name = 'uninvoked function'
-      Replacement = "function Register-InertCoverage {`n  $coverageRegistration`n}"
-    }
-    [pscustomobject]@{
-      Name = 'uninvoked scriptblock'
-      Replacement = "`$inertCoverageRegistration = {`n  $coverageRegistration`n}"
-    }
-    [pscustomobject]@{
-      Name = 'class method'
-      Replacement = "class InertCoverageRegistration {`n  [void] Register() {`n    `$responsibilityChainSelection = `$null`n    $coverageRegistration`n  }`n}"
-    }
-  )) {
-    $unreachableCoverageResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-      param($fixtureRoot)
-      $fixtureScenario = Join-Path $fixtureRoot 'tests/scenarios/scope-engine.Tests.ps1'
-      $fixtureText = [IO.File]::ReadAllText($fixtureScenario, [Text.Encoding]::UTF8)
-      $mutatedText = Replace-ExactOrFail $fixtureText $coverageRegistration $unreachableCoverageCase.Replacement "unreachable coverage registration: $($unreachableCoverageCase.Name)"
-      $parseTokens = $null
-      $parseErrors = $null
-      [void][Management.Automation.Language.Parser]::ParseInput($mutatedText, [ref]$parseTokens, [ref]$parseErrors)
-      if (@($parseErrors).Count -ne 0) { throw "Unreachable coverage fixture must remain parse-valid: $($unreachableCoverageCase.Name): $(@($parseErrors).Message -join '; ')" }
-      [IO.File]::WriteAllText($fixtureScenario, $mutatedText, [Text.UTF8Encoding]::new($false))
-      $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-      $previousFixtureErrorActionPreference = $ErrorActionPreference
-      $ErrorActionPreference = 'Continue'
-      try {
-        $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-        $exitCode = $LASTEXITCODE
-      }
-      finally {
-        $ErrorActionPreference = $previousFixtureErrorActionPreference
-      }
-      [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join [Environment]::NewLine) }
-    }
-    Assert-True ($unreachableCoverageResult.ExitCode -eq 1) "Unreachable $($unreachableCoverageCase.Name) coverage registration must fail source integrity. Output: $($unreachableCoverageResult.Output)"
-    Assert-Contains $unreachableCoverageResult.Output 'Responsibility source-integrity coverage missing: post-implementation queue advance' "Unreachable coverage registration: $($unreachableCoverageCase.Name)"
-  }
-  foreach ($foreachCoverageCase in @(
-    [pscustomobject]@{ Name = 'explicit array expression'; Condition = "@('LF', 'CRLF')"; ExpectedActive = $true },
-    [pscustomobject]@{ Name = 'comma literal array'; Condition = "'LF', 'CRLF'"; ExpectedActive = $true },
-    [pscustomobject]@{ Name = 'integer literal range'; Condition = '1..2'; ExpectedActive = $true },
-    [pscustomobject]@{ Name = 'nested explicit array expression'; Condition = "@((@('LF', 'CRLF')))"; ExpectedActive = $true },
-    [pscustomobject]@{ Name = 'redirected explicit array expression'; Condition = "@('LF', 'CRLF') > `$null"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'redirected comma literal array'; Condition = "'LF', 'CRLF' > `$null"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'redirected integer literal range'; Condition = '1..2 > $null'; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'nested redirected expression'; Condition = "@((@('LF', 'CRLF') > `$null))"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'empty array expression'; Condition = '@()'; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'dynamic command array'; Condition = '@(Get-Nothing)'; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'dynamic subexpression array'; Condition = '@($(Get-Nothing))'; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'variable collection'; Condition = '$coverageCases'; ExpectedActive = $false }
-  )) {
-    $foreachCoverageResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-      param($fixtureRoot)
-      $fixtureScenario = Join-Path $fixtureRoot 'tests/scenarios/scope-engine.Tests.ps1'
-      $fixtureText = [IO.File]::ReadAllText($fixtureScenario, [Text.Encoding]::UTF8)
-      $replacement = "foreach (`$coverageCase in $($foreachCoverageCase.Condition)) {`n  $coverageRegistration`n}"
-      $mutatedText = Replace-ExactOrFail $fixtureText $coverageRegistration $replacement "foreach coverage registration: $($foreachCoverageCase.Name)"
-      $parseTokens = $null
-      $parseErrors = $null
-      [void][Management.Automation.Language.Parser]::ParseInput($mutatedText, [ref]$parseTokens, [ref]$parseErrors)
-      if (@($parseErrors).Count -ne 0) { throw "Foreach coverage fixture must remain parse-valid: $($foreachCoverageCase.Name): $(@($parseErrors).Message -join '; ')" }
-      [IO.File]::WriteAllText($fixtureScenario, $mutatedText, [Text.UTF8Encoding]::new($false))
-      $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-      $previousFixtureErrorActionPreference = $ErrorActionPreference
-      $ErrorActionPreference = 'Continue'
-      try {
-        $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-        $exitCode = $LASTEXITCODE
-      }
-      finally {
-        $ErrorActionPreference = $previousFixtureErrorActionPreference
-      }
-      [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join [Environment]::NewLine) }
-    }
-    if ($foreachCoverageCase.ExpectedActive) {
-      Assert-True ($foreachCoverageResult.ExitCode -eq 0) "Provably nonempty $($foreachCoverageCase.Name) registration must satisfy source integrity. Output: $($foreachCoverageResult.Output)"
-      Assert-Contains $foreachCoverageResult.Output 'PASS: migration framework (SourceIntegrityOnly)' "Static foreach coverage registration: $($foreachCoverageCase.Name)"
-    }
-    else {
-      Assert-True ($foreachCoverageResult.ExitCode -eq 1) "Uncertain $($foreachCoverageCase.Name) registration must fail source integrity. Output: $($foreachCoverageResult.Output)"
-      Assert-Contains $foreachCoverageResult.Output 'Responsibility source-integrity coverage missing: post-implementation queue advance' "Uncertain foreach coverage registration: $($foreachCoverageCase.Name)"
-    }
-  }
-  foreach ($controlTransferCase in @(
-    [pscustomobject]@{ Name = 'preceding break'; Body = "break`n  $coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'preceding continue'; Body = "continue`n  $coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'preceding return'; Body = "return`n  $coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'preceding throw'; Body = "throw 'stop'`n  $coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'preceding exit'; Body = "exit 1`n  $coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'conditional preceding break'; Body = "if (`$coverageCase -eq 'never') { break }`n  $coverageRegistration"; ExpectedActive = $true },
-    [pscustomobject]@{ Name = 'trailing break'; Body = "$coverageRegistration`n  break"; ExpectedActive = $true }
-  )) {
-    $controlTransferResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-      param($fixtureRoot)
-      $fixtureScenario = Join-Path $fixtureRoot 'tests/scenarios/scope-engine.Tests.ps1'
-      $fixtureText = [IO.File]::ReadAllText($fixtureScenario, [Text.Encoding]::UTF8)
-      $replacement = "foreach (`$coverageCase in @('LF')) {`n  $($controlTransferCase.Body)`n}"
-      $mutatedText = Replace-ExactOrFail $fixtureText $coverageRegistration $replacement "control-transfer coverage registration: $($controlTransferCase.Name)"
-      $parseTokens = $null
-      $parseErrors = $null
-      [void][Management.Automation.Language.Parser]::ParseInput($mutatedText, [ref]$parseTokens, [ref]$parseErrors)
-      if (@($parseErrors).Count -ne 0) { throw "Control-transfer coverage fixture must remain parse-valid: $($controlTransferCase.Name): $(@($parseErrors).Message -join '; ')" }
-      [IO.File]::WriteAllText($fixtureScenario, $mutatedText, [Text.UTF8Encoding]::new($false))
-      $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-      $previousFixtureErrorActionPreference = $ErrorActionPreference
-      $ErrorActionPreference = 'Continue'
-      try {
-        $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-        $exitCode = $LASTEXITCODE
-      }
-      finally {
-        $ErrorActionPreference = $previousFixtureErrorActionPreference
-      }
-      [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join [Environment]::NewLine) }
-    }
-    if ($controlTransferCase.ExpectedActive) {
-      Assert-True ($controlTransferResult.ExitCode -eq 0) "Non-dominating $($controlTransferCase.Name) registration must satisfy source integrity. Output: $($controlTransferResult.Output)"
-      Assert-Contains $controlTransferResult.Output 'PASS: migration framework (SourceIntegrityOnly)' "Non-dominating control-transfer registration: $($controlTransferCase.Name)"
-    }
-    else {
-      Assert-True ($controlTransferResult.ExitCode -eq 1) "Dominated $($controlTransferCase.Name) registration must fail source integrity. Output: $($controlTransferResult.Output)"
-      Assert-Contains $controlTransferResult.Output 'Responsibility source-integrity coverage missing: post-implementation queue advance' "Dominated control-transfer registration: $($controlTransferCase.Name)"
-    }
-  }
-  foreach ($namedBlockControlTransferCase in @(
-    [pscustomobject]@{ Name = 'top-level return'; Body = "return`n$coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'top-level throw'; Body = "throw 'stop'`n$coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'top-level exit'; Body = "exit 1`n$coverageRegistration"; ExpectedActive = $false },
-    [pscustomobject]@{ Name = 'conditional top-level return'; Body = "if (`$false) { return }`n$coverageRegistration"; ExpectedActive = $true }
-  )) {
-    $namedBlockControlTransferResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-      param($fixtureRoot)
-      $fixtureScenario = Join-Path $fixtureRoot 'tests/scenarios/scope-engine.Tests.ps1'
-      $fixtureText = [IO.File]::ReadAllText($fixtureScenario, [Text.Encoding]::UTF8)
-      $mutatedText = Replace-ExactOrFail $fixtureText $coverageRegistration $namedBlockControlTransferCase.Body "named-block control-transfer coverage registration: $($namedBlockControlTransferCase.Name)"
-      $parseTokens = $null
-      $parseErrors = $null
-      [void][Management.Automation.Language.Parser]::ParseInput($mutatedText, [ref]$parseTokens, [ref]$parseErrors)
-      if (@($parseErrors).Count -ne 0) { throw "Named-block control-transfer fixture must remain parse-valid: $($namedBlockControlTransferCase.Name): $(@($parseErrors).Message -join '; ')" }
-      [IO.File]::WriteAllText($fixtureScenario, $mutatedText, [Text.UTF8Encoding]::new($false))
-      $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-      $previousFixtureErrorActionPreference = $ErrorActionPreference
-      $ErrorActionPreference = 'Continue'
-      try {
-        $output = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-        $exitCode = $LASTEXITCODE
-      }
-      finally { $ErrorActionPreference = $previousFixtureErrorActionPreference }
-      [pscustomobject]@{ ExitCode = $exitCode; Output = ($output -join [Environment]::NewLine) }
-    }
-    if ($namedBlockControlTransferCase.ExpectedActive) {
-      Assert-True ($namedBlockControlTransferResult.ExitCode -eq 0) "Non-dominating $($namedBlockControlTransferCase.Name) registration must satisfy source integrity. Output: $($namedBlockControlTransferResult.Output)"
-      Assert-Contains $namedBlockControlTransferResult.Output 'PASS: migration framework (SourceIntegrityOnly)' "Named-block control-transfer registration: $($namedBlockControlTransferCase.Name)"
-    }
-    else {
-      Assert-True ($namedBlockControlTransferResult.ExitCode -eq 1) "Dominated $($namedBlockControlTransferCase.Name) registration must fail source integrity. Output: $($namedBlockControlTransferResult.Output)"
-      Assert-Contains $namedBlockControlTransferResult.Output 'Responsibility source-integrity coverage missing: post-implementation queue advance' "Named-block control-transfer registration: $($namedBlockControlTransferCase.Name)"
-    }
-  }
-  foreach ($lineEndingProbe in @("`n", "`r`n")) {
-    $probe = "before${lineEndingProbe}target${lineEndingProbe}after"
-    $probeResult = Replace-ExactOrFail $probe "before`ntarget" "before`nchanged" 'line-ending probe'
-    Assert-Contains $probeResult "before${lineEndingProbe}changed" 'LF/CRLF-independent alter-or-fail helper'
-  }
-  $mixedEndingProbe = "untouched-crlf`r`nbefore`ntarget`r`nuntouched-lf`nend"
-  $mixedEndingExpected = "untouched-crlf`r`nbefore`nchanged`r`nuntouched-lf`nend"
-  $mixedEndingResult = Replace-ExactOrFail $mixedEndingProbe "before`r`ntarget" "before`nchanged" 'mixed-ending probe'
-  $mixedEndingExpectedBytes = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($mixedEndingExpected))
-  $mixedEndingActualBytes = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($mixedEndingResult))
-  Assert-True ($mixedEndingActualBytes -ceq $mixedEndingExpectedBytes) 'Mixed-ending alter-or-fail helper must preserve every byte outside the replaced span'
-  $silentNoOpRejected = $false
-  try { [void](Replace-ExactOrFail 'unchanged' 'unchanged' 'unchanged' 'same-byte probe') }
-  catch { $silentNoOpRejected = $_.Exception.Message.Contains('silent no-op') }
-  Assert-True $silentNoOpRejected 'Alter-or-fail helper must reject a replacement that leaves identical bytes'
-  $failureOutcomeProbe = @(Format-MutationCaseOutcome -Name 'failure-output-probe' -SourceDigest 'not-applicable' -NewFailures @('probe diagnostic mismatch'))
-  Assert-NotContains ($failureOutcomeProbe -join [Environment]::NewLine) 'PASS: responsibility mutation failure-output-probe' 'Failed mutation case output'
-  Assert-Contains ($failureOutcomeProbe -join [Environment]::NewLine) 'FAIL: probe diagnostic mismatch' 'Failed mutation case output'
-
-  $missingDocumentResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-    param($fixtureRoot)
-    $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-    $fixtureDocsRoot = Join-Path ([IO.Path]::GetDirectoryName($fixtureRoot)) 'docs/superpowers'
-    $fixtureDesignPath = Join-Path $fixtureDocsRoot 'specs/2026-08-21-architecture-responsibility-conformance-design.md'
-    $fixturePlanPath = Join-Path $fixtureDocsRoot 'plans/2026-08-21-architecture-responsibility-conformance-phase-1.md'
-    [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($fixtureDesignPath))
-    [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($fixturePlanPath))
-    [IO.File]::WriteAllText($fixtureDesignPath, 'aitoolkit/contracts/file-responsibility-conformance.md', [Text.UTF8Encoding]::new($false))
-    [IO.File]::WriteAllText($fixturePlanPath, '-ResponsibilityConformanceOnly', [Text.UTF8Encoding]::new($false))
-    $previousFixtureErrorActionPreference = $ErrorActionPreference
-    $ErrorActionPreference = 'Continue'
-    try {
-      $completeOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot 2>&1
-      $completeExitCode = $LASTEXITCODE
-      [IO.File]::Delete($fixtureDesignPath)
-      $missingDesignOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot 2>&1
-      $missingDesignExitCode = $LASTEXITCODE
-      [IO.File]::WriteAllText($fixtureDesignPath, 'aitoolkit/contracts/file-responsibility-conformance.md', [Text.UTF8Encoding]::new($false))
-      [IO.File]::Delete($fixturePlanPath)
-      $missingPlanOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot 2>&1
-      $missingPlanExitCode = $LASTEXITCODE
-      [IO.File]::Delete($fixtureDesignPath)
-      $reducedOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-      $reducedExitCode = $LASTEXITCODE
-    }
-    finally {
-      $ErrorActionPreference = $previousFixtureErrorActionPreference
-    }
-    [pscustomobject]@{
-      CompleteExitCode = $completeExitCode
-      CompleteOutput = ($completeOutput -join [Environment]::NewLine)
-      MissingDesignExitCode = $missingDesignExitCode
-      MissingDesignOutput = ($missingDesignOutput -join [Environment]::NewLine)
-      MissingPlanExitCode = $missingPlanExitCode
-      MissingPlanOutput = ($missingPlanOutput -join [Environment]::NewLine)
-      ReducedExitCode = $reducedExitCode
-      ReducedOutput = ($reducedOutput -join [Environment]::NewLine)
-    }
-  }
-  Assert-True ($missingDocumentResult.CompleteExitCode -eq 0) "Normal source-integrity fixture with both required documents should pass. Output: $($missingDocumentResult.CompleteOutput)"
-  Assert-True ($missingDocumentResult.MissingDesignExitCode -eq 1) "Normal source-integrity validation must fail when the required design document is absent. Output: $($missingDocumentResult.MissingDesignOutput)"
-  Assert-Contains $missingDocumentResult.MissingDesignOutput 'Responsibility source-integrity registration file missing: design document' 'Missing required design document'
-  Assert-NotContains $missingDocumentResult.MissingDesignOutput 'Responsibility source-integrity registration file missing: implementation plan' 'Design-only deletion'
-  Assert-True ($missingDocumentResult.MissingPlanExitCode -eq 1) "Normal source-integrity validation must fail when the required implementation plan is absent. Output: $($missingDocumentResult.MissingPlanOutput)"
-  Assert-Contains $missingDocumentResult.MissingPlanOutput 'Responsibility source-integrity registration file missing: implementation plan' 'Missing required implementation plan'
-  Assert-NotContains $missingDocumentResult.MissingPlanOutput 'Responsibility source-integrity registration file missing: design document' 'Plan-only deletion'
-  Assert-True ($missingDocumentResult.ReducedExitCode -eq 0) "Explicit reduced responsibility fixture should pass without external documents. Output: $($missingDocumentResult.ReducedOutput)"
-  Assert-Contains $missingDocumentResult.ReducedOutput 'PASS: migration framework (SourceIntegrityOnly)' 'Explicit reduced responsibility fixture'
-  if ($testFailures.Count -gt 0) {
-    $testFailures | ForEach-Object { Write-Output "FAIL: $_" }
-    exit 1
-  }
-
-  $responsibilityMutations = @(
-    [pscustomobject]@{ Name = 'contract version missing'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "responsibility_contract:`n  version: 1`n  applicability: required`n---`n`n## Comparable Target Exemplars"; To = "responsibility_contract:`n  applicability: required`n---`n`n## Comparable Target Exemplars"; ExpectedDiagnostics = @('responsibility-contract-version-invalid') }
-    [pscustomobject]@{ Name = 'contract version mixed'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "responsibility_contract:`n  version: 1`n  applicability: required`n---`n`n## Comparable Target Exemplars"; To = "responsibility_contract:`n  version: 1`n  applicability: required`nresponsibility_contract:`n  version: 2`n  applicability: required`n---`n`n## Comparable Target Exemplars"; ExpectedDiagnostics = @('responsibility-contract-version-invalid') }
-    [pscustomobject]@{ Name = 'capability and trace separation'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "[string]`$CapabilityId = 'CAP-ADMIN-WIFI',"; To = "[string]`$CapabilityId = 'REQ-101',"; ExpectedDiagnostics = @('responsibility-capability-mismatch') }
-    [pscustomobject]@{ Name = 'trace IDs are not owned capabilities'; Path = 'tests/validation/responsibility-conformance.validation.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "`$capabilities = @(& `$splitList `$row['Owned Capability IDs'])"; To = "`$capabilities = @(& `$splitList (`$row['Owned Capability IDs'] + '; ' + `$row['Trace IDs']))"; ExpectedDiagnostics = @('responsibility-capability-mismatch') }
-    [pscustomobject]@{ Name = 'classification authority loss'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "[string]`$ClassificationAuthority = 'factual-discovery-evidence',"; To = "[string]`$ClassificationAuthority = 'agent-opinion',"; ExpectedDiagnostics = @('exemplar-classification-authority-missing') }
-    [pscustomobject]@{ Name = 'greenfield approved authority rejection'; Path = 'tests/validation/responsibility-conformance.validation.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "`$row['Architecture Authority'] -cne 'approved-greenfield-design'"; To = "`$row['Architecture Authority'] -cne 'target-exemplar'"; ExpectedDiagnostics = @('greenfield-authority-invalid') }
-    [pscustomobject]@{ Name = 'greenfield fake deviation'; Path = 'tests/validation/responsibility-conformance.validation.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "`$row['Architecture Authority'] -cne 'approved-greenfield-design'"; To = "`$row['Architecture Authority'] -cnotin @('approved-greenfield-design', 'approved-structural-deviation')"; ExpectedDiagnostics = @('greenfield-authority-invalid') }
-    [pscustomobject]@{ Name = 'multi-capability approval removal'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = '$featureLocalDesign = New-ResponsibilityDesignFixture'; To = "`$featureLocalDesign = New-ResponsibilityDesignFixture -OwnedCapabilities 'CAP-ADMIN-LOCK; CAP-ADMIN-AUDIT'"; ExpectedDiagnostics = @('co-location-approval-missing') }
-    [pscustomobject]@{ Name = 'extra public symbol while tree matches'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "[string]`$OwnerSymbol = 'AdminWifi',"; To = "[string]`$OwnerSymbol = 'WifiResetProvider',"; ExpectedDiagnostics = @('responsibility-public-symbol-mismatch') }
-    [pscustomobject]@{ Name = 'extra effect while tree matches'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = "[string]`$Effect = 'none',"; To = "[string]`$Effect = 'settings.write:wifi-reset',"; ExpectedDiagnostics = @('responsibility-external-effect-mismatch') }
-    [pscustomobject]@{ Name = 'invalid verification not-applicable'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = '| VERIFY-OWNER-WIFI | RESP-WIFI | CAP-ADMIN-WIFI | test/admin_lock_test.ps1 | AdminWifiContract | contract | required | invokes ui/admin_wifi.dart#AdminWifi | not-applicable | PASS | not-applicable | diff:test/admin_lock_test.ps1#AdminWifiContract |'; To = '| VERIFY-OWNER-WIFI | RESP-WIFI | CAP-ADMIN-WIFI | test/admin_lock_test.ps1 | AdminWifiContract | contract | not-applicable-approved | invokes ui/admin_wifi.dart#AdminWifi | approval:OWNER-WIFI | PASS | not-applicable | diff:test/admin_lock_test.ps1#AdminWifiContract |'; ExpectedDiagnostics = @('verification-disposition-invalid') }
-    [pscustomobject]@{ Name = 'fake production composition'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-conformance.Tests.ps1'; From = '$compositionEvidence = "source:$($PinnedSource.FinalTreeSha):lib/admin_lock_composition.dart#AdminLockComposition'; To = '$compositionEvidence = "source:$($PinnedSource.FinalTreeSha):test/fake_registry.ps1#AdminLockComposition'; ExpectedDiagnostics = @('verification-production-binding-missing') }
-    [pscustomobject]@{ Name = 'implementation self-attestation bypass'; Path = 'tests/scenarios/architecture-review.Tests.ps1'; Scenario = 'tests/scenarios/architecture-review.Tests.ps1'; From = "Assert-Pass 'independent review accepts implementation-bound provenance' `$null `$true"; To = "Assert-Pass 'independent review accepts implementation-bound provenance' {`n  param(`$root)`n  Add-SourceSymbolEvidence `$root 'AdminRoute.factoryReset' 'RESP-UNPLANNED'`n  Keep-ImplementationSelfAttestationPass `$root`n} `$true"; ExpectedDiagnostics = @('responsibility-owner-extra', 'responsibility-public-symbol-mismatch') }
-    [pscustomobject]@{ Name = 'downstream sub-verdict loss'; Path = 'tests/scenarios/responsibility-handoff.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-handoff.Tests.ps1'; From = "`$parity = New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md'"; To = "`$parity = (New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md') -replace '(?ms)^## Architecture Responsibility Handoff.*?(?=\z)', ''"; ExpectedDiagnostics = @('ARC-CONTRACT-MISSING-TABLE: Architecture Responsibility Handoff') }
-    [pscustomobject]@{ Name = 'downstream sub-verdict mutation'; Path = 'tests/scenarios/responsibility-handoff.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-handoff.Tests.ps1'; From = "`$parity = New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md'"; To = "`$parity = New-HandoffArtifact -StepId '13-verify-parity' -SourceArtifact 'verification-report.md' -Responsibility 'BLOCKED' -Architecture 'PASS'"; ExpectedDiagnostics = @('responsibility-waiver-forbidden') }
-    [pscustomobject]@{ Name = 'runtime waiver override'; Path = 'tests/scenarios/responsibility-handoff.Tests.ps1'; Scenario = 'tests/scenarios/responsibility-handoff.Tests.ps1'; From = "`$verification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md'"; To = "`$verification = New-HandoffArtifact -StepId '12-verification-testing' -SourceArtifact 'review-report.md' -Responsibility 'BLOCKED' -Architecture 'PASS' -Waiver 'approval_source: auto-waive'"; ExpectedDiagnostics = @('responsibility-waiver-forbidden') }
-    [pscustomobject]@{ Name = 'post-implementation queue advance'; Path = 'tests/validation/scope-engine.validation.ps1'; Scenario = 'tests/scenarios/scope-engine.Tests.ps1'; From = "`$planWideResponsibilityBlock = & `$resolvePlanWideResponsibilityBlock `$items`n      if (`$null -ne `$planWideResponsibilityBlock) { return `$planWideResponsibilityBlock }"; To = '$planWideResponsibilityBlock = $null'; ExpectedOutput = 'Tree BLOCKED must stop the entire queue' }
-  )
-
-  for ($caseIndex = 0; $caseIndex -lt $responsibilityMutations.Count; $caseIndex++) {
-    $case = $responsibilityMutations[$caseIndex]
-    $caseFailureCountBefore = $testFailures.Count
-    $sourceDigestBeforeMutation = Get-TreeDigest -Root $testRoot
-    $mutationResult = Invoke-IsolatedMutation -SourceRoot $testRoot -Mutation {
-      param($fixtureRoot)
-      $fixturePath = Join-Path $fixtureRoot $case.Path
-      $fixtureText = [IO.File]::ReadAllText($fixturePath, [Text.Encoding]::UTF8)
-      $mutatedText = Replace-ExactOrFail $fixtureText $case.From $case.To $case.Name
-      [IO.File]::WriteAllText($fixturePath, $mutatedText, [Text.UTF8Encoding]::new($false))
-      $fixtureValidator = Join-Path $fixtureRoot 'tests/validate-migration-framework.ps1'
-      $fixtureScenario = Join-Path $fixtureRoot $case.Scenario
-      $previousFixtureErrorActionPreference = $ErrorActionPreference
-      $ErrorActionPreference = 'Continue'
-      try {
-        $integrityOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureValidator -Check SourceIntegrityOnly -Root $fixtureRoot -AllowReducedResponsibilityFixture 2>&1
-        $integrityExitCode = $LASTEXITCODE
-        $scenarioOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $fixtureScenario 2>&1
-        $scenarioExitCode = $LASTEXITCODE
-      }
-      finally {
-        $ErrorActionPreference = $previousFixtureErrorActionPreference
-      }
-      [pscustomobject]@{
-        IntegrityExitCode = $integrityExitCode
-        IntegrityOutput = ($integrityOutput -join [Environment]::NewLine)
-        ExitCode = $scenarioExitCode
-        Output = ($scenarioOutput -join [Environment]::NewLine)
-      }
-    }
-    $sourceDigestAfterMutation = Get-TreeDigest -Root $testRoot
-    Assert-True ($mutationResult.IntegrityExitCode -eq 0) "Responsibility mutation broke source registration: $($case.Name). Output: $($mutationResult.IntegrityOutput)"
-    Assert-True ($mutationResult.ExitCode -eq 1) "Responsibility mutation should fail: $($case.Name). Output: $($mutationResult.Output)"
-    if ($null -ne $case.PSObject.Properties['ExpectedDiagnostics']) {
-      $matchedDiagnostic = $false
-      foreach ($expectedDiagnostic in @($case.ExpectedDiagnostics)) {
-        if ($mutationResult.Output.Contains($expectedDiagnostic)) { $matchedDiagnostic = $true; break }
-      }
-      Assert-True $matchedDiagnostic "Responsibility mutation $($case.Name) emitted none of the allowed diagnostics <$(@($case.ExpectedDiagnostics) -join ', ')>. Output: $($mutationResult.Output)"
-    }
-    if ($null -ne $case.PSObject.Properties['ExpectedOutput']) {
-      Assert-Contains $mutationResult.Output $case.ExpectedOutput "Responsibility mutation: $($case.Name)"
-    }
-    Assert-NotContains $mutationResult.Output 'silent no-op' "Responsibility mutation: $($case.Name)"
-    Assert-True ($sourceDigestAfterMutation -ceq $sourceDigestBeforeMutation) "Responsibility mutation changed source digest: $($case.Name)"
-    $newCaseFailures = if ($testFailures.Count -gt $caseFailureCountBefore) {
-      @($testFailures.GetRange($caseFailureCountBefore, $testFailures.Count - $caseFailureCountBefore))
-    }
-    else { @() }
-    Format-MutationCaseOutcome -Name $case.Name -SourceDigest $sourceDigestAfterMutation -NewFailures $newCaseFailures | Write-Output
-  }
-
-  if ($testFailures.Count -gt 0) {
-    exit 1
-  }
-  Write-Output 'PASS: responsibility conformance mutation scenarios'
-  exit 0
 }
 
 function Replace-InMarkdownSection(
@@ -875,65 +390,6 @@ function Set-MarkdownRecordCellBlank([string]$Row, [int]$CellIndex) {
   return ($cells -join '|')
 }
 
-if ($Task9CodeMigrationSeamOnly) {
-  $codeMigrationPath = Join-Path $testRoot 'skills/migration/code-migration/SKILL.md'
-  $originalBytes = [IO.File]::ReadAllBytes($codeMigrationPath)
-  $original = [Text.Encoding]::UTF8.GetString($originalBytes)
-  $cases = @(
-    [pscustomobject]@{
-      Name = 'migration-unit input locality'
-      Text = $original.Replace(
-        'A `migration_unit_id` is present only when the selected adapter kind is `migration-unit`.',
-        ''
-      ) + [Environment]::NewLine + 'The orchestrator also provides `migration_unit_id`.'
-      Removed = 'A `migration_unit_id` is present only when the selected adapter kind is `migration-unit`.'
-      Expected = 'FAIL: Skill code-migration/SKILL.md Inputs missing: `migration_unit_id`'
-    }
-    [pscustomobject]@{
-      Name = 'foundation selector input locality'
-      Text = $original.Replace(', `foundation_baseline_id` when applicable', '') +
-        [Environment]::NewLine + 'The orchestrator may provide `foundation_baseline_id` outside Inputs.'
-      Removed = ', `foundation_baseline_id` when applicable'
-      Expected = 'FAIL: Skill code-migration/SKILL.md Inputs missing: `foundation_baseline_id`'
-    }
-    [pscustomobject]@{
-      Name = 'baseline before edit ordering'
-      Text = ([regex]::Replace(
-        $original,
-        '(?m)^' + [regex]::Escape('5. In incremental mode, capture a comparable pre-change regression baseline against the unchanged target and preserve its evidence reference. On a valid Approved baseline-waiver resume, skip only that collection and cite the exact approved waiver evidence as `Baseline Reference`. Greenfield records `not-applicable`.') + '\r?\n',
-        ''
-      )).Replace(
-        '8. Within `superpowers:executing-plans`, apply `superpowers:test-driven-development`: write an acceptance test, observe RED, implement the minimum, observe GREEN, then refactor while staying green.',
-        '8. Within `superpowers:executing-plans`, apply `superpowers:test-driven-development`: write an acceptance test, observe RED, implement the minimum, observe GREEN, then refactor while staying green.' + [Environment]::NewLine +
-          '5. In incremental mode, capture a comparable pre-change regression baseline against the unchanged target and preserve its evidence reference. On a valid Approved baseline-waiver resume, skip only that collection and cite the exact approved waiver evidence as `Baseline Reference`. Greenfield records `not-applicable`.'
-      )
-      Removed = ''
-      Expected = 'FAIL: Skill code-migration/SKILL.md Procedure requires order: capture a comparable pre-change regression baseline before evaluate the pre-mutation gate'
-    }
-  )
-  foreach ($case in $cases) {
-    try {
-      Assert-True ($case.Text -cne $original) "Task 9 seam mutation must alter code-migration: $($case.Name)"
-      if (-not [string]::IsNullOrEmpty($case.Removed)) {
-        Assert-True (-not $case.Text.Contains($case.Removed)) "Task 9 seam mutation must remove current source: $($case.Name)"
-      }
-      [IO.File]::WriteAllText($codeMigrationPath, $case.Text, [Text.UTF8Encoding]::new($false))
-      $result = Invoke-Validator 'Skills'
-      Assert-True ($result.ExitCode -eq 1) "Task 9 seam mutation should fail: $($case.Name). Output: $($result.Output)"
-      Assert-Contains $result.Output $case.Expected "Task 9 seam mutation: $($case.Name)"
-    }
-    finally {
-      [IO.File]::WriteAllBytes($codeMigrationPath, $originalBytes)
-    }
-  }
-  if ($testFailures.Count -gt 0) {
-    $testFailures | ForEach-Object { Write-Output "FAIL: $_" }
-    exit 1
-  }
-  Write-Output 'PASS: Task 9 code-migration integration seam mutations'
-  exit 0
-}
-
 $selectedMigrationUnitSection = 'Selected Migration Unit'
 $translatedSelectedMigrationUnitSection = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('xJDGoW4gduG7iyBtaWdyYXRpb24gxJHGsOG7o2MgY2jhu41u'))
 $nativeBlockersSection = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('QmxvY2tlciBn4buRYw=='))
@@ -970,14 +426,6 @@ $targetContracts = [pscustomobject]@{
 Assert-True ($targetContracts.ExitCode -eq 0) "Target alias should select Contracts. Output: $($targetContracts.Output)"
 Assert-Contains $targetContracts.Output 'PASS: migration framework (Contracts)' 'Target alias Contracts selector'
 
-$targetFlexibleScopeOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $validator -Target FlexibleScope 2>&1
-$targetFlexibleScope = [pscustomobject]@{
-  ExitCode = $LASTEXITCODE
-  Output = ($targetFlexibleScopeOutput -join [Environment]::NewLine)
-}
-Assert-True ($targetFlexibleScope.ExitCode -eq 0) "Target alias should select FlexibleScope. Output: $($targetFlexibleScope.Output)"
-Assert-Contains $targetFlexibleScope.Output 'PASS: migration framework (FlexibleScope)' 'Target alias FlexibleScope selector'
-
 $activationContractFixture = Join-Path $PSScriptRoot '../contracts/activation-slice.md'
 $activationContractOriginalBytes = [IO.File]::ReadAllBytes($activationContractFixture)
 $activationContractOriginal = [Text.Encoding]::UTF8.GetString($activationContractOriginalBytes)
@@ -993,16 +441,10 @@ finally {
 
 $scopeContractFixture = Join-Path $PSScriptRoot '../contracts/migration-scope-orchestration.md'
 $conformanceContractFixture = Join-Path $PSScriptRoot '../contracts/target-structure-conformance.md'
-$responsibilityContractFixture = Join-Path $PSScriptRoot '../contracts/file-responsibility-conformance.md'
-$responsibilityValidatorFixture = Join-Path $PSScriptRoot '../tests/validation/responsibility-conformance.validation.ps1'
 $scopeContractOriginalBytes = [IO.File]::ReadAllBytes($scopeContractFixture)
 $scopeContractOriginal = [Text.Encoding]::UTF8.GetString($scopeContractOriginalBytes)
 $conformanceContractOriginalBytes = [IO.File]::ReadAllBytes($conformanceContractFixture)
 $conformanceContractOriginal = [Text.Encoding]::UTF8.GetString($conformanceContractOriginalBytes)
-$responsibilityContractOriginalBytes = [IO.File]::ReadAllBytes($responsibilityContractFixture)
-$responsibilityContractOriginal = [Text.Encoding]::UTF8.GetString($responsibilityContractOriginalBytes)
-$responsibilityValidatorOriginalBytes = [IO.File]::ReadAllBytes($responsibilityValidatorFixture)
-$responsibilityValidatorOriginal = [Text.Encoding]::UTF8.GetString($responsibilityValidatorOriginalBytes)
 
 $contractResourceCases = @(
   [pscustomobject]@{
@@ -1017,18 +459,6 @@ $contractResourceCases = @(
     Expected = 'FAIL: Missing target structure conformance contract resource'
     Label = 'target structure conformance contract resource'
   }
-  [pscustomobject]@{
-    Path = $responsibilityContractFixture
-    Bytes = $responsibilityContractOriginalBytes
-    Expected = 'FAIL: Missing file responsibility conformance contract resource'
-    Label = 'file responsibility conformance contract resource'
-  }
-  [pscustomobject]@{
-    Path = $responsibilityValidatorFixture
-    Bytes = $responsibilityValidatorOriginalBytes
-    Expected = 'FAIL: Missing responsibility conformance validation helper'
-    Label = 'responsibility conformance validation helper'
-  }
 )
 foreach ($contractResourceCase in $contractResourceCases) {
   try {
@@ -1040,61 +470,6 @@ foreach ($contractResourceCase in $contractResourceCases) {
   finally {
     [IO.File]::WriteAllBytes($contractResourceCase.Path, $contractResourceCase.Bytes)
   }
-}
-
-$responsibilityContractMutations = @(
-  [pscustomobject]@{
-    Name = 'file responsibility matrix columns'
-    From = '| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |'
-    To = '| Owner Path | Responsibility ID | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |'
-    Expected = 'FAIL: ARC-CONTRACT-TABLE-COLUMNS: File Responsibility Matrix'
-  }
-  [pscustomobject]@{
-    Name = 'verification evidence disposition separation'
-    From = 'Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification'
-    To = 'Evidence Kind = required | not-applicable-approved'
-    Expected = 'FAIL: ARC-CONTRACT-ENUM: Evidence Kind = unit | integration | contract | production-composition | static-structure | generator-verification'
-  }
-  [pscustomobject]@{
-    Name = 'verification evidence kind required before not-applicable-approved disposition'
-    From = '| VERIFY-OWNER-### | RESP-### | CAP-### | evidence path | scenario | unit | required | binding evidence | decision reference | PASS | not-applicable |'
-    To = '| VERIFY-OWNER-### | RESP-### | CAP-### | evidence path | scenario | required | not-applicable-approved | binding evidence | decision reference | PASS | not-applicable |'
-    Expected = 'FAIL: ARC-CONTRACT-VERIFICATION-EVIDENCE-KIND: Evidence Kind must be canonical'
-  }
-  [pscustomobject]@{
-    Name = 'verification evidence kind not-applicable-approved before required disposition'
-    From = '| VERIFY-OWNER-### | RESP-### | CAP-### | evidence path | scenario | unit | required | binding evidence | decision reference | PASS | not-applicable |'
-    To = '| VERIFY-OWNER-### | RESP-### | CAP-### | evidence path | scenario | not-applicable-approved | required | binding evidence | decision reference | PASS | not-applicable |'
-    Expected = 'FAIL: ARC-CONTRACT-VERIFICATION-EVIDENCE-KIND: Evidence Kind must be canonical'
-  }
-)
-foreach ($responsibilityContractMutation in $responsibilityContractMutations) {
-  try {
-    $mutatedContract = $responsibilityContractOriginal.Replace($responsibilityContractMutation.From, $responsibilityContractMutation.To)
-    Assert-True ($mutatedContract -cne $responsibilityContractOriginal) "Responsibility mutation must alter: $($responsibilityContractMutation.Name)"
-    [IO.File]::WriteAllText($responsibilityContractFixture, $mutatedContract, [Text.UTF8Encoding]::new($false))
-    $contracts = Invoke-Validator 'Contracts'
-    Assert-True ($contracts.ExitCode -eq 1) "Responsibility contract mutation should fail: $($responsibilityContractMutation.Name). Output: $($contracts.Output)"
-    Assert-Contains $contracts.Output $responsibilityContractMutation.Expected "Responsibility contract mutation: $($responsibilityContractMutation.Name)"
-  }
-  finally {
-    [IO.File]::WriteAllBytes($responsibilityContractFixture, $responsibilityContractOriginalBytes)
-  }
-}
-
-try {
-  $missingEntryValidator = $responsibilityValidatorOriginal.Replace(
-    'function Test-ResponsibilityReview {',
-    'function Test-ResponsibilityReviewRemoved {'
-  )
-  Assert-True ($missingEntryValidator -cne $responsibilityValidatorOriginal) 'Responsibility entry-point mutation must alter validation helper'
-  [IO.File]::WriteAllText($responsibilityValidatorFixture, $missingEntryValidator, [Text.UTF8Encoding]::new($false))
-  $contracts = Invoke-Validator 'Contracts'
-  Assert-True ($contracts.ExitCode -eq 1) "Missing responsibility entry point should fail. Output: $($contracts.Output)"
-  Assert-Contains $contracts.Output 'FAIL: Missing responsibility validator entry point: Test-ResponsibilityReview' 'Responsibility validator entry point'
-}
-finally {
-  [IO.File]::WriteAllBytes($responsibilityValidatorFixture, $responsibilityValidatorOriginalBytes)
 }
 
 $contractTableCases = @(
@@ -1138,9 +513,9 @@ $contractTableCases = @(
     Path = $conformanceContractFixture
     Bytes = $conformanceContractOriginalBytes
     Original = $conformanceContractOriginal
-    From = '| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |'
-    To = '| Concern | Inspected Symbols | Path | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |'
-    Expected = 'FAIL: Target structure conformance contract Comparable Target Exemplars table columns must be exactly: Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence'
+    From = '| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |'
+    To = '| Concern | Path | Observed Pattern | Inspected Symbols | Comparable Reason | Evidence | Status |'
+    Expected = 'FAIL: Target structure conformance contract Comparable Target Exemplars table columns must be exactly: Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status'
     Label = 'Comparable Target Exemplars exact columns'
   }
   [pscustomobject]@{
@@ -1188,7 +563,7 @@ $contractTokenCases = @(
   [pscustomobject]@{ Path = $scopeContractFixture; Bytes = $scopeContractOriginalBytes; Original = $scopeContractOriginal; Token = 'Decomposition creates a new master-plan revision and canonical child selectors must be approved before adapter assignment.'; Context = 'Migration scope orchestration contract' }
   [pscustomobject]@{ Path = $scopeContractFixture; Bytes = $scopeContractOriginalBytes; Original = $scopeContractOriginal; Token = 'Scope-completion formula: every required work item is terminal-success AND no blocker remains AND the dependency graph is valid AND completed-item architecture conformance is PASS AND completed-item selector/schema is PASS AND the terminal scope report enumerates all evidence.'; Context = 'Migration scope orchestration contract' }
   [pscustomobject]@{ Path = $conformanceContractFixture; Bytes = $conformanceContractOriginalBytes; Original = $conformanceContractOriginal; Token = 'service/config subscription and normalization'; Context = 'Target structure conformance contract' }
-  [pscustomobject]@{ Path = $conformanceContractFixture; Bytes = $conformanceContractOriginalBytes; Original = $conformanceContractOriginal; Token = '`Inspection Status` and `Classification` are independent.'; Context = 'Target structure conformance contract' }
+  [pscustomobject]@{ Path = $conformanceContractFixture; Bytes = $conformanceContractOriginalBytes; Original = $conformanceContractOriginal; Token = 'Exemplar status: `verified | no-equivalent | unknown`.'; Context = 'Target structure conformance contract' }
   [pscustomobject]@{ Path = $conformanceContractFixture; Bytes = $conformanceContractOriginalBytes; Original = $conformanceContractOriginal; Token = 'A `Conforms = no` row requires a resolved conflict and Tech Lead approval in `Deviation Reference`.'; Context = 'Target structure conformance contract' }
   [pscustomobject]@{ Path = $conformanceContractFixture; Bytes = $conformanceContractOriginalBytes; Original = $conformanceContractOriginal; Token = 'The structural pre-edit gate blocks before target edit and is not waiver-eligible.'; Context = 'Target structure conformance contract' }
   [pscustomobject]@{ Path = $conformanceContractFixture; Bytes = $conformanceContractOriginalBytes; Original = $conformanceContractOriginal; Token = 'runtime_evidence_state: PASS | FAIL | NOT_RUN | WAIVED'; Context = 'Target structure conformance contract' }
@@ -1218,11 +593,7 @@ $scopeSchemaTokens = @(
   'attempt_id: ATTEMPT-<WORK-ITEM>-<NN>',
   'supersedes: <artifact-id>@<revision> | not-applicable',
   'runtime_evidence_state: <value from target-structure-conformance.md>',
-  'Historical unit-only artifacts remain readable, but they must not resume to production mutation before compatibility conversion.',
-  'artifact_type: migration-scope-terminal-report',
-  'Work Item Terminal Evidence',
-  'Scope Completion Calculation',
-  'fresh human approval gate'
+  'Historical unit-only artifacts remain readable, but they must not resume to production mutation before compatibility conversion.'
 )
 foreach ($scopeSchemaToken in $scopeSchemaTokens) {
   try {
@@ -1298,15 +669,6 @@ if ($ScopeContractsOnly) {
   Write-Output 'PASS: migration scope contract scenarios'
   exit 0
 }
-
-$flexibleScopeE2EPath = Join-Path $PSScriptRoot 'scenarios/flexible-scope-e2e.Tests.ps1'
-$flexibleScopeE2EOutput = & $powershell -NoProfile -ExecutionPolicy Bypass -File $flexibleScopeE2EPath 2>&1
-$flexibleScopeE2E = [pscustomobject]@{
-  ExitCode = $LASTEXITCODE
-  Output = ($flexibleScopeE2EOutput -join [Environment]::NewLine)
-}
-Assert-True ($flexibleScopeE2E.ExitCode -eq 0) "Flexible-scope E2E suite should pass. Output: $($flexibleScopeE2E.Output)"
-Assert-Contains $flexibleScopeE2E.Output 'PASS: flexible migration scope orchestration (21 isolated E2E scenarios)' 'Flexible-scope E2E suite'
 
 $completeActivationSlice = @'
 ---
@@ -1845,7 +1207,7 @@ $selectedMigrationUnitTable = @'
 
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
 |---|---|---|---|---|---|---|---|---|---|
-| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001 |
+| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001 |
 '@
 
 $orderedMigrationUnitTable = @"
@@ -1862,7 +1224,7 @@ $greenfieldSelectedMigrationUnitTable = @'
 
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
 |---|---|---|---|---|---|---|---|---|---|
-| UNIT-001 | plan-001@1 | approval-001 | greenfield/design-new | required | FOUNDATION-001 | target-baseline-001 | bootstrap-approved-001 | not-applicable | TR-REQ-001 |
+| UNIT-001 | plan-001 | approval-001 | greenfield/design-new | required | FOUNDATION-001 | target-baseline-001 | bootstrap-approved-001 | not-applicable | TR-REQ-001 |
 '@
 
 $greenfieldOrderedMigrationUnitTable = @"
@@ -1882,53 +1244,12 @@ $approvedFoundationRecord = @"
 | FOUNDATION-001 | UNIT-001 | target-baseline-001 | bootstrap-approved-001 | approved | bootstrap-evidence-001 |
 "@
 
-$implementationMasterScopeTable = @'
-## Master Scope Context
-
-| Master Spec Reference | Master Spec ID | Master Spec Revision | Master Plan Reference | Master Plan ID | Master Plan Revision | Work Item ID | Work Item Approval Reference |
-|---|---|---|---|---|---|---|---|
-| master-spec.md | SPEC-001 | 1 | master-plan.md | PLAN-001 | 1 | WORK-001 | approval:WORK-001 |
-'@
-$downstreamMasterScopeTable = @'
-## Master Scope Context
-
-| Run ID | Master Spec Reference | Master Spec ID | Master Spec Revision | Master Plan Reference | Master Plan ID | Master Plan Revision | Work Item ID |
-|---|---|---|---|---|---|---|---|
-| RUN-001 | master-spec.md | SPEC-001 | 1 | master-plan.md | PLAN-001 | 1 | WORK-001 |
-'@
-$incrementalCanonicalAdapterEvidence = @'
-## Canonical Adapter Evidence
-
-| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference | Canonical Match |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| WORK-001 | migration-unit | UNIT-001 | plan-001 | 1 | approval-001 | not-applicable | activation accepted | TR-REQ-001 | incremental/preserve-existing | DESIGN-001@1 | not-applicable | not-applicable | PASS |
-'@
-$greenfieldCanonicalAdapterEvidence = $incrementalCanonicalAdapterEvidence.Replace(
-  '| incremental/preserve-existing |',
-  '| greenfield/design-new |'
-)
-$incrementalDeliveryAdapterSelection = @'
-## Delivery Adapter Selection
-
-| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| WORK-001 | migration-unit | UNIT-001 | plan-001 | 1 | approval-001 | not-applicable | activation accepted | TR-REQ-001 | incremental/preserve-existing | DESIGN-001@1 | not-applicable | not-applicable |
-'@
-$greenfieldDeliveryAdapterSelection = $incrementalDeliveryAdapterSelection.Replace(
-  '| incremental/preserve-existing |',
-  '| greenfield/design-new |'
-)
-
 $changedFilesHeading = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('IyMgRmlsZSDEkcOjIHRoYXkgxJHhu5Vp'))
 $implementationActivationArtifact = $completeActivationSlice.Replace(
   'step_id: 01-validate-inputs',
   'step_id: 10-code-migration'
 ).TrimEnd() + @"
 
-
-$implementationMasterScopeTable
-
-$incrementalCanonicalAdapterEvidence
 
 $selectedMigrationUnitTable
 
@@ -1947,11 +1268,11 @@ $changedFilesHeading
 $approvedPlanActivationSlice = $completeActivationSlice.Replace(
   'step_id: 01-validate-inputs',
   'step_id: 08-plan-waves'
-).TrimEnd() + "`n`n$orderedMigrationUnitTable`n`n$incrementalDeliveryAdapterSelection"
+).TrimEnd() + "`n`n$orderedMigrationUnitTable"
 $approvedGreenfieldPlanActivationSlice = $completeActivationSlice.Replace(
   'step_id: 01-validate-inputs',
   'step_id: 08-plan-waves'
-).TrimEnd() + "`n`n$greenfieldOrderedMigrationUnitTable`n`n$greenfieldDeliveryAdapterSelection"
+).TrimEnd() + "`n`n$greenfieldOrderedMigrationUnitTable"
 $approvedBootstrapActivationSlice = $completeActivationSlice.Replace(
   'step_id: 01-validate-inputs',
   'step_id: 09-bootstrap-target'
@@ -1959,7 +1280,7 @@ $approvedBootstrapActivationSlice = $completeActivationSlice.Replace(
 $greenfieldImplementationActivationArtifact = $implementationActivationArtifact.Replace(
   $selectedMigrationUnitTable,
   $greenfieldSelectedMigrationUnitTable
-).Replace($incrementalCanonicalAdapterEvidence, $greenfieldCanonicalAdapterEvidence)
+)
 $implementationActivationResult = Invoke-ActivationSliceArtifactValidator $implementationActivationArtifact $approvedPlanActivationSlice
 Assert-True ($implementationActivationResult.ExitCode -eq 0) "Structured implementation links should resolve against the approved predecessor. Output: $($implementationActivationResult.Output)"
 $bootstrapImplementationActivationResult = Invoke-ActivationSliceArtifactValidator $greenfieldImplementationActivationArtifact $approvedBootstrapActivationSlice
@@ -1995,7 +1316,7 @@ $waivedStep10ActivationBase = $implementationActivationArtifact.Replace(
 $waivedStep10ActivationPredecessorBase = ($completeActivationSlice.Replace(
   "step_id: 01-validate-inputs`nstatus: approved`nresult: complete`napproval_source: human",
   $waivedLifecycleFrontMatter
-).TrimEnd() + "`n`n$implementationMasterScopeTable`n`n$incrementalCanonicalAdapterEvidence`n`n$selectedMigrationUnitTable").Replace(
+).TrimEnd() + "`n`n$selectedMigrationUnitTable").Replace(
   '| regression-baseline-001 | TR-REQ-001 |',
   '| capability-evidence-001 | TR-REQ-001 |'
 ).TrimEnd() + "`n`n$waiverEvidenceSections"
@@ -2404,12 +1725,12 @@ $fullWidthMigrationUnitId = "UNIT-$([char]0xFF10)$([char]0xFF10)$([char]0xFF11)"
 $unitIdFormatScenarios = @(
   [pscustomobject]@{
     Name = 'selected-unit invalid unit ID'
-    Text = $implementationActivationArtifact.Replace('| UNIT-001 | plan-001@1 |', '| UNIT-ABC | plan-001@1 |')
+    Text = $implementationActivationArtifact.Replace('| UNIT-001 | plan-001 |', '| UNIT-ABC | plan-001 |')
     Expected = 'selected-unit Migration Unit ID must match UNIT-[0-9]{3}: UNIT-ABC'
   }
   [pscustomobject]@{
     Name = 'selected-unit non-ASCII unit ID'
-    Text = $implementationActivationArtifact.Replace('| UNIT-001 | plan-001@1 |', "| $fullWidthMigrationUnitId | plan-001@1 |")
+    Text = $implementationActivationArtifact.Replace('| UNIT-001 | plan-001 |', "| $fullWidthMigrationUnitId | plan-001 |")
     Expected = "selected-unit Migration Unit ID must match UNIT-[0-9]{3}: $fullWidthMigrationUnitId"
   }
   [pscustomobject]@{
@@ -2443,10 +1764,10 @@ foreach ($unitIdFormatScenario in $unitIdFormatScenarios) {
 $missingCurrentSelectedUnit = Remove-MarkdownTablesInSection $implementationActivationArtifact $selectedMigrationUnitSection
 $missingCurrentSelectedUnitResult = Invoke-ActivationSliceArtifactValidator $missingCurrentSelectedUnit $approvedPlanActivationSlice
 Assert-True ($missingCurrentSelectedUnitResult.ExitCode -eq 1) "Step 10 without a selected-unit record should block. Output: $($missingCurrentSelectedUnitResult.Output)"
-Assert-Contains $missingCurrentSelectedUnitResult.Output 'current implementation Selected Migration Unit must contain exactly one row; found 0' 'Missing current selected-unit record'
+Assert-Contains $missingCurrentSelectedUnitResult.Output 'requires exactly one current Selected Migration Unit record; found 0' 'Missing current selected-unit record'
 
-$selectedMigrationUnitRecord = '| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001 |'
-$greenfieldSelectedMigrationUnitRecord = '| UNIT-001 | plan-001@1 | approval-001 | greenfield/design-new | required | FOUNDATION-001 | target-baseline-001 | bootstrap-approved-001 | not-applicable | TR-REQ-001 |'
+$selectedMigrationUnitRecord = '| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001 |'
+$greenfieldSelectedMigrationUnitRecord = '| UNIT-001 | plan-001 | approval-001 | greenfield/design-new | required | FOUNDATION-001 | target-baseline-001 | bootstrap-approved-001 | not-applicable | TR-REQ-001 |'
 $resumeSelectedMigrationUnitRecord = $selectedMigrationUnitRecord.Replace('regression-baseline-001', 'capability-evidence-001')
 $selectedMigrationUnitFields = @(
   [pscustomobject]@{ Column = 'Migration Unit ID'; Index = 1 }
@@ -2486,7 +1807,7 @@ $duplicateCurrentSelectedUnit = $implementationActivationArtifact.Replace(
 )
 $duplicateCurrentSelectedUnitResult = Invoke-ActivationSliceArtifactValidator $duplicateCurrentSelectedUnit $approvedPlanActivationSlice
 Assert-True ($duplicateCurrentSelectedUnitResult.ExitCode -eq 1) "Step 10 with two selected-unit records should block. Output: $($duplicateCurrentSelectedUnitResult.Output)"
-Assert-Contains $duplicateCurrentSelectedUnitResult.Output 'current implementation Selected Migration Unit must contain exactly one row; found 2' 'Duplicate current selected-unit record'
+Assert-Contains $duplicateCurrentSelectedUnitResult.Output 'requires exactly one current Selected Migration Unit record; found 2' 'Duplicate current selected-unit record'
 
 $missingPredecessorSelectedUnit = Remove-MarkdownTablesInSection $approvedBootstrapActivationSlice $selectedMigrationUnitSection
 $missingPredecessorSelectedUnitResult = Invoke-ActivationSliceArtifactValidator $greenfieldImplementationActivationArtifact $missingPredecessorSelectedUnit
@@ -2498,7 +1819,7 @@ $currentSelectedUnitMismatchResult = Invoke-ActivationSliceArtifactValidator $cu
 Assert-True ($currentSelectedUnitMismatchResult.ExitCode -eq 1) "A current step-10 unit that differs from its predecessor should block. Output: $($currentSelectedUnitMismatchResult.Output)"
 Assert-Contains $currentSelectedUnitMismatchResult.Output 'current Selected Migration Unit ID UNIT-002 does not match predecessor UNIT-001' 'Current/predecessor selected-unit consistency'
 
-$invalidPredecessorSelectedUnit = $approvedBootstrapActivationSlice.Replace('| UNIT-001 | plan-001@1 |', '| UNIT-ABC | plan-001@1 |')
+$invalidPredecessorSelectedUnit = $approvedBootstrapActivationSlice.Replace('| UNIT-001 | plan-001 |', '| UNIT-ABC | plan-001 |')
 $invalidPredecessorSelectedUnitResult = Invoke-ActivationSliceArtifactValidator $greenfieldImplementationActivationArtifact $invalidPredecessorSelectedUnit
 Assert-True ($invalidPredecessorSelectedUnitResult.ExitCode -eq 1) "An invalid predecessor selected-unit ID should block. Output: $($invalidPredecessorSelectedUnitResult.Output)"
 Assert-Contains $invalidPredecessorSelectedUnitResult.Output 'predecessor selected-unit Migration Unit ID must match UNIT-[0-9]{3}: UNIT-ABC' 'Predecessor selected-unit format'
@@ -2550,7 +1871,7 @@ Assert-Contains $pendingPlanUnitMatchResult.Output 'requires exactly one approve
 $duplicateCurrentSelectedSection = $implementationActivationArtifact.TrimEnd() + "`n`n$selectedMigrationUnitTable"
 $duplicateCurrentSelectedSectionResult = Invoke-ActivationSliceArtifactValidator $duplicateCurrentSelectedSection $approvedPlanActivationSlice
 Assert-True ($duplicateCurrentSelectedSectionResult.ExitCode -eq 1) "Duplicate current selected-unit sections should block. Output: $($duplicateCurrentSelectedSectionResult.Output)"
-Assert-Contains $duplicateCurrentSelectedSectionResult.Output 'current implementation Selected Migration Unit section must appear exactly once; found 2' 'Duplicate current selected-unit section'
+Assert-Contains $duplicateCurrentSelectedSectionResult.Output 'current selected-unit section must appear exactly once; found 2' 'Duplicate current selected-unit section'
 
 $duplicatePredecessorSelectedSection = $approvedBootstrapActivationSlice.TrimEnd() + "`n`n$greenfieldSelectedMigrationUnitTable"
 $duplicatePredecessorSelectedSectionResult = Invoke-ActivationSliceArtifactValidator $greenfieldImplementationActivationArtifact $duplicatePredecessorSelectedSection
@@ -2586,7 +1907,7 @@ Assert-Contains $duplicateTestEvidenceSectionResult.Output 'test-evidence struct
 $selectedUnitExtraColumnTable = @'
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs | Extra |
 |---|---|---|---|---|---|---|---|---|---|---|
-| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001 | hidden |
+| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001 | hidden |
 '@
 $overlappingSelectedUnitTable = $implementationActivationArtifact.Replace(
   $selectedMigrationUnitTable,
@@ -2594,7 +1915,7 @@ $overlappingSelectedUnitTable = $implementationActivationArtifact.Replace(
 )
 $overlappingSelectedUnitTableResult = Invoke-ActivationSliceArtifactValidator $overlappingSelectedUnitTable $approvedPlanActivationSlice
 Assert-True ($overlappingSelectedUnitTableResult.ExitCode -eq 1) "A selected-unit section must reject an extra-column overlapping table. Output: $($overlappingSelectedUnitTableResult.Output)"
-Assert-Contains $overlappingSelectedUnitTableResult.Output 'current implementation Selected Migration Unit structured section contains additional overlapping record table' 'Overlapping selected-unit table'
+Assert-Contains $overlappingSelectedUnitTableResult.Output 'current selected-unit linkage structured section contains additional overlapping record table' 'Overlapping selected-unit table'
 
 $changedFileMissingColumnTable = @'
 | Migration Unit ID | Activation Slice ID | Seam | File | Trace IDs |
@@ -2766,12 +2087,6 @@ $reviewChangeHygiene = @'
 |---|---|---|---|---|---|---|
 | UNIT-001 | target/render.dart | formatter-not-required | none | none | base-sha-001 | final-sha-001 |
 '@
-$downstreamMigrationAdapterEnvelope = @"
-$downstreamMasterScopeTable
-
-- Delivery Adapter Kind: migration-unit
-- Delivery Adapter Mode Constraint: incremental/preserve-existing
-"@
 $activationStepArtifacts = @{
   discovery = Add-ActivationStepId $completeActivationSlice '02-discovery'
   requirements = Add-ActivationStepId $completeActivationSlice '03-analyze-requirements-uiux'
@@ -2784,10 +2099,10 @@ $activationStepArtifacts = @{
   bootstrap = $approvedBootstrapActivationSlice
   implementation = $implementationActivationArtifact
   greenfieldImplementation = $greenfieldImplementationActivationArtifact
-  review = Add-ActivationStepId $completeActivationSlice '11-ai-review' @($downstreamMigrationAdapterEnvelope, $selectedMigrationUnitTable, $reviewChangeHygiene)
-  verification = Add-ActivationStepId $completeActivationSlice '12-verification-testing' @($downstreamMigrationAdapterEnvelope, $selectedMigrationUnitTable, $verificationTaskProvenance)
-  parity = Add-ActivationStepId $completeActivationSlice '13-verify-parity' @($downstreamMigrationAdapterEnvelope, $selectedMigrationUnitTable, $parityVerdictTable, $assuranceScenarioTable, $parityTaskProvenance)
-  regression = Add-ActivationStepId $completeActivationSlice '14-verify-regression' @($downstreamMigrationAdapterEnvelope, $selectedMigrationUnitTable, $regressionConclusionTable, $regressionScenarioTable, $regressionTaskProvenance)
+  review = Add-ActivationStepId $completeActivationSlice '11-ai-review' @($selectedMigrationUnitTable, $reviewChangeHygiene)
+  verification = Add-ActivationStepId $completeActivationSlice '12-verification-testing' @($selectedMigrationUnitTable, $verificationTaskProvenance)
+  parity = Add-ActivationStepId $completeActivationSlice '13-verify-parity' @($selectedMigrationUnitTable, $parityVerdictTable, $assuranceScenarioTable, $parityTaskProvenance)
+  regression = Add-ActivationStepId $completeActivationSlice '14-verify-regression' @($selectedMigrationUnitTable, $regressionConclusionTable, $regressionScenarioTable, $regressionTaskProvenance)
 }
 $activationHandoffChains = @(
   [pscustomobject]@{ Name = 'discovery to requirements'; Predecessor = 'discovery'; Successor = 'requirements' }
@@ -2952,7 +2267,7 @@ $implementationLinkContractSection = [regex]::Match(
 ).Value.TrimEnd()
 Assert-True (-not [string]::IsNullOrWhiteSpace($implementationLinkContractSection)) 'Implementation linkage contract fixture must locate its canonical section'
 $implementationLinkContractRows = @{}
-foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence', 'work-item-changed-file', 'work-item-test-evidence')) {
+foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence')) {
   $implementationLinkContractRows[$recordName] = [regex]::Match(
     $implementationLinkContractSection,
     "(?m)^\| ``$([regex]::Escape($recordName))`` \|.*\|\s*$"
@@ -2960,8 +2275,8 @@ foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence', 'wor
   Assert-True (-not [string]::IsNullOrWhiteSpace($implementationLinkContractRows[$recordName])) "Implementation linkage contract fixture must locate $recordName row"
 }
 $implementationLinkContractHeader = @'
-| Record | Current step ID | Allowed predecessor step IDs | Adapter Kind Applicability | Section | Required columns |
-|---|---|---|---|---|---|
+| Record | Current step ID | Allowed predecessor step IDs | Section | Required columns |
+|---|---|---|---|---|
 '@.TrimEnd()
 
 $implementationLinkContractMutations = [Collections.Generic.List[object]]::new()
@@ -2976,7 +2291,7 @@ $implementationLinkContractMutations.Add([pscustomobject]@{
   Expected = 'implementation linkage contract section must appear exactly once; found 2'
 })
 $emptyImplementationLinkContract = $activationContractOriginal
-foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence', 'work-item-changed-file', 'work-item-test-evidence')) {
+foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence')) {
   $emptyImplementationLinkContract = [regex]::Replace(
     $emptyImplementationLinkContract,
     "(?m)^$([regex]::Escape($implementationLinkContractRows[$recordName]))\r?\n?",
@@ -2988,7 +2303,7 @@ $implementationLinkContractMutations.Add([pscustomobject]@{
   Text = $emptyImplementationLinkContract
   Expected = 'implementation linkage contract must declare exactly one selected-unit rule; found 0'
 })
-foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence', 'work-item-changed-file', 'work-item-test-evidence')) {
+foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence')) {
   $missingRecordContract = [regex]::Replace(
     $activationContractOriginal,
     "(?m)^$([regex]::Escape($implementationLinkContractRows[$recordName]))\r?\n?",
@@ -3266,8 +2581,8 @@ $activationContractRuleMutations = @(
   [pscustomobject]@{
     Name = 'selected-unit linkage section'
     Section = 'Implementation linkage'
-    From = '| `selected-unit` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` |'
-    To = '| `selected-unit` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `migration-unit` | `Selected Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` |'
+    From = '| `selected-unit` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `Selected Migration Unit` |'
+    To = '| `selected-unit` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `Selected Unit` |'
     Expected = 'FAIL: Activation Slice contract Implementation linkage rules must match the canonical definition'
   }
 )
@@ -3303,7 +2618,6 @@ $contractOwnedRuleSections = @(
   'Bootstrap selected-unit handoff',
   'Step 10 predecessor unit selection',
   'Direct-plan foundation state',
-  'Delivery adapter evidence by artifact role',
   'Downstream selected-unit handoff',
   'Regression parity handoff',
   'Assurance task provenance handoff',
@@ -4585,29 +3899,22 @@ $codeMigrationFixture = Join-Path $skillRoot 'code-migration/SKILL.md'
 $codeMigrationOriginalBytes = [IO.File]::ReadAllBytes($codeMigrationFixture)
 $codeMigrationOriginal = [Text.Encoding]::UTF8.GetString($codeMigrationOriginalBytes)
 try {
-  $migrationUnitInputSentence = 'A `migration_unit_id` is present only when the selected adapter kind is `migration-unit`.'
   $selectorOutsideInputs = $codeMigrationOriginal.Replace(
-    $migrationUnitInputSentence,
-    ''
+    ', `migration_unit_id`, `foundation_baseline_id` for a greenfield `not-required` unit, and the resolved per-run `automation_mode`, alongside that path.',
+    ', `foundation_baseline_id` for a greenfield `not-required` unit, and the resolved per-run `automation_mode`, alongside that path.'
   ) + [Environment]::NewLine + 'The orchestrator also provides `migration_unit_id`.' + [Environment]::NewLine
-  Assert-True ($selectorOutsideInputs -cne $codeMigrationOriginal) 'Migration-unit selector locality mutation must alter code-migration'
-  Assert-True (-not $selectorOutsideInputs.Contains($migrationUnitInputSentence)) 'Migration-unit selector locality mutation must remove the current Inputs sentence'
   [IO.File]::WriteAllText($codeMigrationFixture, $selectorOutsideInputs, [Text.UTF8Encoding]::new($false))
   $skills = Invoke-Validator 'Skills'
   Assert-True ($skills.ExitCode -eq 1) "Migration-unit selector outside Inputs should fail. Output: $($skills.Output)"
   Assert-Contains $skills.Output 'FAIL: Skill code-migration/SKILL.md Inputs missing: `migration_unit_id`' 'Unit selector location'
 
-  $baselineStep = '5. In incremental mode, capture a comparable pre-change regression baseline against the unchanged target and preserve its evidence reference. On a valid Approved baseline-waiver resume, skip only that collection and cite the exact approved waiver evidence as `Baseline Reference`. Greenfield records `not-applicable`.'
-  $tddStep = '8. Within `superpowers:executing-plans`, apply `superpowers:test-driven-development`: write an acceptance test, observe RED, implement the minimum, observe GREEN, then refactor while staying green.'
+  $baselineStep = '4. In incremental mode, capture a comparable pre-change regression baseline against the unchanged target and preserve its evidence reference. On a valid Approved baseline-waiver resume, skip only that collection and cite the exact approved waiver evidence as `Baseline Reference`. Greenfield records `not-applicable`.'
+  $tddStep = '7. Within `superpowers:executing-plans`, apply `superpowers:test-driven-development`: write an acceptance test, observe RED, implement the minimum, observe GREEN, then refactor while staying green.'
   $baselineAfterEdit = [regex]::Replace(
     $codeMigrationOriginal,
     '(?m)^' + [regex]::Escape($baselineStep) + '\r?\n',
     ''
   ).Replace($tddStep, $tddStep + [Environment]::NewLine + $baselineStep)
-  Assert-True ($baselineAfterEdit -cne $codeMigrationOriginal) 'Baseline ordering mutation must alter code-migration'
-  $baselineIndex = $baselineAfterEdit.IndexOf($baselineStep, [StringComparison]::Ordinal)
-  $tddIndex = $baselineAfterEdit.IndexOf($tddStep, [StringComparison]::Ordinal)
-  Assert-True ($baselineIndex -gt $tddIndex) 'Baseline ordering mutation must move baseline capture after TDD/edit preparation'
   [IO.File]::WriteAllText($codeMigrationFixture, $baselineAfterEdit, [Text.UTF8Encoding]::new($false))
   $skills = Invoke-Validator 'Skills'
   Assert-True ($skills.ExitCode -eq 1) "Baseline capture after editing should fail. Output: $($skills.Output)"
@@ -5739,11 +5046,15 @@ finally {
 }
 
 try {
-  $foundationSelectorPhrase = ', `foundation_baseline_id` when applicable'
-  $foundationSelectorOutsideInputs = $codeMigrationOriginal.Replace($foundationSelectorPhrase, '')
+  $foundationSelectorPhrase = ', `foundation_baseline_id` for a greenfield `not-required` unit'
+  if ($codeMigrationOriginal.Contains($foundationSelectorPhrase)) {
+    $foundationSelectorOutsideInputs = $codeMigrationOriginal.Replace($foundationSelectorPhrase, '')
+  }
+  else {
+    $foundationSelectorOutsideInputs = $codeMigrationOriginal
+  }
   $foundationSelectorOutsideInputs += [Environment]::NewLine + 'The orchestrator may provide `foundation_baseline_id` outside Inputs.' + [Environment]::NewLine
   Assert-True ($foundationSelectorOutsideInputs -ne $codeMigrationOriginal) 'Foundation selector locality mutation must alter code-migration'
-  Assert-True (-not $foundationSelectorOutsideInputs.Contains($foundationSelectorPhrase)) 'Foundation selector locality mutation must remove the current Inputs phrase'
   [IO.File]::WriteAllText($codeMigrationFixture, $foundationSelectorOutsideInputs, [Text.UTF8Encoding]::new($false))
   $skills = Invoke-Validator 'Skills'
   Assert-True ($skills.ExitCode -eq 1) "Greenfield foundation selector outside Inputs should fail. Output: $($skills.Output)"

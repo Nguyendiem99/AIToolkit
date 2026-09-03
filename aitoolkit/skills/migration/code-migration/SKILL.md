@@ -1,11 +1,11 @@
 ---
 name: code-migration
-description: Use when an approved migration work item is ready for isolated, structurally gated, traceable implementation against an approved mode-aware plan.
+description: Use when an approved migration unit is ready for isolated, traceable implementation against an approved mode-aware plan.
 ---
 
 # Migration 10 — Code Migration
 
-**Core principle:** Implement exactly one approved work item only after its master scope, canonical adapter, target structure, and production activation path pass the non-waivable structural gate; preserve mode constraints and prove behavior with traceable tests.
+**Core principle:** Implement exactly one approved migration unit, preserve mode constraints, and prove behavior with traceable tests.
 
 **REQUIRED SUB-SKILLS:** Use `superpowers:using-git-worktrees`, `superpowers:writing-plans`, `superpowers:executing-plans`, and `superpowers:test-driven-development`.
 
@@ -15,35 +15,18 @@ Nhận `artifact_language` do orchestrator truyền. Hiện chỉ hỗ trợ `ar
 
 ## Inputs
 
-The orchestrator provides `RUN_DIR`, profile, project pack, source/target, one predecessor path, exact `master_spec_id`/revision, exact `master_plan_id`/revision, one approved `work_item_id`, its canonical delivery-adapter evidence, conformance matrix, the explicit external technical-design approval artifact path, exemplar-read evidence, planned file tree and boundaries, production activation evidence, `foundation_baseline_id` when applicable, and the resolved per-run `automation_mode`, alongside that path. A `migration_unit_id` is present only when the selected adapter kind is `migration-unit`. On an incremental baseline-waiver resume, it also provides the exact approved waiver artifact.
+The orchestrator provides `RUN_DIR`, profile, project pack, source/target, one predecessor path, `migration_unit_id`, `foundation_baseline_id` for a greenfield `not-required` unit, and the resolved per-run `automation_mode`, alongside that path. On an incremental baseline-waiver resume, it also provides the exact approved waiver artifact.
 
 `Immediate predecessor artifact = exactly one orchestrator-provided path`.
 
 Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
-Never load cumulative artifacts or create private state. Resolve these references explicitly; never scan a directory to infer a master revision, work item, selector, exemplar, or design.
+Never load cumulative artifacts or create private state.
 
 The approved Activation Slice is part of the selected-unit input. Read `aitoolkit/contracts/activation-slice.md` as the sole definition source and preserve the same stable slice ID, every seam row, and trace IDs; do not reconstruct or narrow it from the implementation diff.
 
-## Structural pre-edit gate
-
-Run this gate before the legacy Entry gate, incremental runtime baseline gate, worktree implementation plan, TDD, or target edit. Validate in this exact fail-fast order:
-
-1. responsibility contract: resolve explicit approved design and plan revisions, validate the canonical v1 File Responsibility Matrix and Verification Ownership Matrix, resolve the exact selected work-item Responsibility Owner References (including generic adapters without inventing `UNIT-*`), and reject absent exemplar/deviation authority before RED/TDD, baseline capture, worktree mutation, or target edit;
-2. master scope: resolve the explicit master-spec/master-plan paths without directory scanning, then match exact approved IDs/revisions, one approved `work_item_id`, membership, acceptance and approval in that external current master-plan revision; a well-formed report row is never authority by itself;
-3. canonical adapter: resolve exactly one external Task 5 selector row for the work item and compare all 13 selector fields ordinally, including acceptance, trace IDs, mode, design revision, parent/decomposition fields and exact non-`none` external ID; also bind relevant Work Item acceptance, trace and delivery-adapter fields. `migration-unit` additionally resolves the cited external approved step-08 canonical unit plus its work-item trace, while generic/`none` adapters retain their exact external canonical selection;
-4. conformance matrix: resolve the explicit external Task 6 design path using only its bounded first front matter and preserve its exact canonical `draft/complete` schema without `approval_source`; never mutate Task 6 to approved. Resolve the separately supplied external approval artifact and require exact global migration lifecycle front matter (`step_id`, `status: approved`, `result: complete`, `approval_source: human`, `produced_at`), rejecting missing, auto, auto-waive, extra or malformed fields. Its sole approval row binds exact design ID/revision, normalized SHA-256 content digest, Tech Lead decision, approval reference and approved status. Report values or a derived approval string are never authority. Bind every report deviation exactly to the Task 6 `Approved Structural Deviations` row (including conflict, decision and approval); do not add fields or approval tables to Task 6;
-5. exemplar read: resolve the explicit external discovery path and require every report row to exactly match its real path, fully inspected symbols and evidence for all applicable canonical concerns with `read-complete` status;
-6. planned file tree and target boundaries: compare the complete actual mapping against the external approved planned tree; provider, router, localization, subscription and lifecycle owner/mechanism must equal the external approved design evidence; direct widget-to-service/router edges are forbidden for literal, identifier, qualified, member and call forms, without classifying presenter/controller identifiers as widgets;
-7. production activation path: when applicable, derive registration exactly as `<router Owner Path/Symbol> @ <construct.Output>` and production evidence as `<test.Output> @ <test.Source Reference>` from the canonical Task 6 boundary/slice rows; require a runtime chain containing both subscription and lifecycle with `PASS`. Never add private key-value evidence to Task 6. `not-applicable-approved` requires an explicit Tech Lead decision/reference and exact `not-applicable` sentinel fields;
-8. assurance states: `architecture_conformance_state` and `selector_schema_state` are independently `PASS` before runtime baseline classification.
-
-Any responsibility, verification ownership, master, architecture, exemplar, selector, schema, tree, boundary, deviation, or activation failure yields `status: draft`, `result: blocked`, and stops before edit. These failures never enter the environment-waiver classifier. Only after all checks pass may incremental runtime baseline collection, worktree/plan/TDD, and target editing begin. After implementation, record Actual File Responsibility Matrix and Actual Verification Ownership Matrix with source/diff evidence; self-attestation is not final semantic PASS, and any planned-versus-actual mismatch remains draft/blocked.
-
-Record the gate in `Master Scope Context`, `Canonical Adapter Evidence`, `Conformance Matrix Reference`, `Responsibility Plan Reference`, `Responsibility Owner References`, `Exemplar Read Evidence`, `Actual File Tree vs Planned File Tree`, `Actual File Responsibility Matrix`, `Actual Verification Ownership Matrix`, `Architecture Responsibility Verdicts`, `Target Boundary Conformance`, `Exemplar Deviations`, `Production Activation Path Evidence`, and `Assurance State`. `Responsibility Plan Reference` binds the explicit approved step-08 path and revision; the selected owner row must match that plan exactly. Tables use unique headings, exact columns, strict single-pipe framing and exact cardinality; malformed, filtered, doubled-pipe, unknown/extra-row or mixed-sentinel evidence blocks. A new abstraction requires a resolved decision and `approval:TECH-LEAD-*`; otherwise block.
-
 ## Entry gate
 
-Resolve the exact approved `work_item_id` and its one canonical adapter selection; never select implicitly. When `Adapter Kind = migration-unit`, resolve `migration_unit_id` and require exactly one approved migration unit whose acceptance, mode/policy, design revision, and trace IDs agree. For `task | story | package | phase | milestone | none`, keep the canonical adapter evidence and work-item trace without inventing or requiring a migration-unit ID.
+Resolve `migration_unit_id`. Require exactly one approved migration unit whose acceptance, mode/policy, design revision, and trace IDs agree; never select implicitly.
 
 Validate the approved `Activation Slice` at the `Entry gate` before any target edit. Require its preserved ID, all seam rows, dispositions, approval/deferred references, and trace IDs to agree with the selected unit. Missing, conflicting, draft, or narrowed activation evidence that can prevent activation yields `status: draft` and `result: blocked`, never partial.
 
@@ -87,16 +70,14 @@ The resumed invocation still performs selector validation, target source edits, 
 
 ## Procedure
 
-1. Read `aitoolkit-schemas`, both scope/conformance contracts, `aitoolkit/contracts/activation-slice.md`, `shared/change-hygiene.md`, explicit inputs, and `aitoolkit/templates/migration/implementation-report.md`.
-2. Run the Structural pre-edit gate in its exact order. On any failure, write the structured evidence as `status: draft`, `result: blocked`, and stop without runtime-waiver classification or target edit.
-3. Validate the selected adapter's legacy Entry gate and approved Activation Slice. For `migration-unit`, retain `migration_unit_id`; for any other adapter, do not invent one. Treat the shared scope, formatting, final-diff, and commit-boundary rules as mandatory.
-4. Resolve required commands in this command resolution order: `explicit profile -> existing project scripts/config -> marker detection -> human gate`. Use repository commands verbatim; never invent or translate one.
-5. In incremental mode, capture a comparable pre-change regression baseline against the unchanged target and preserve its evidence reference. On a valid Approved baseline-waiver resume, skip only that collection and cite the exact approved waiver evidence as `Baseline Reference`. Greenfield records `not-applicable`.
-6. After baseline capture, evaluate the pre-mutation gate for runtime evidence or validate the exact Approved baseline-waiver resume. An unresolved command or failed/non-comparable baseline capture records `result: blocked` plus its native blocker evidence before any edit; invalid resume evidence also blocks. A runtime waiver cannot change structural assurance states.
-7. Use `superpowers:using-git-worktrees` to create or verify an isolated worktree and branch without editing the target, then use `superpowers:writing-plans` to translate only the approved work item into steps and review checkpoints.
-8. Within `superpowers:executing-plans`, apply `superpowers:test-driven-development`: write an acceptance test, observe RED, implement the minimum, observe GREEN, then refactor while staying green.
-   When a real source or verification file carries responsibility-contract metadata, emit the contract's language-valid semantic marker form: exact whole-line `// arc:<payload>` in the documented slash-comment languages or `# arc:<payload>` in the documented hash-comment/PowerShell languages. Every owner uses exact paired `@ownership-begin RESP-*` / `@ownership-end RESP-*` delimiters with the same ID; ranges never nest or overlap. Put module imports/re-exports, docstrings, future/directive prologues, package/namespace/preprocessor declarations, attributes, shared wiring, and every owned declaration/body inside exactly one range. Use the sentinel for every `@...`, `route ...`, and `scenario ...` payload; never infer range extent from braces, indentation, a first symbol, the next owner, or EOF.
-9. Resolve the external Activation Slice contract before editing: report and external authority must have exact Slice ID set/cardinality equality in both directions, including every `not-applicable-approved` group; every `ACT-[0-9]{3}` slice has exactly the nine canonical seams in order, legal disposition/status state, and router/async evidence. Derive the production handoff only from the canonical router boundary plus construct/test fields; never add private evidence keys to Task 6. Preserve each row exactly except canonical `Source Reference` enrichment (`<predecessor>; <non-whitespace evidence>`); predecessor Trace IDs are a non-empty subset of successor Trace IDs, which may append only Work Item-authorized IDs. Record each changed-file row and each test by `Work Item ID`, plus a structured `Activation Slice ID`, `Seam`, and non-empty canonical `Trace IDs` subset resolved against both the approved work item and the exact predecessor seam; repeat rows for multi-seam files or tests. A truthful `draft/blocked` pre-mutation artifact may omit both implementation-evidence sections and must stop before edit; normal `draft/complete` and `approved/complete` output requires real changed/test evidence. Unit-specific IDs are recorded only inside conditional `Selected Migration Unit` evidence when the adapter is `migration-unit`; generic adapters never invent `UNIT-*`. Also record whether each file is `new` or `existing`, edited regions/symbols, actual/planned tree evidence, boundary/activation evidence, and every formatter command. Inspect the final diff, remove all untraced or formatting-only changes, and block unrelated whole-file churn. Capture commands, sources, exit codes, and Evidence. Local checkpoint commits are non-delivery history; this work item must become one final delivery commit. Do not upload, merge, or mutate unrelated work.
+1. Read `aitoolkit-schemas`, `aitoolkit/contracts/activation-slice.md`, `shared/change-hygiene.md`, inputs, and `aitoolkit/templates/migration/implementation-report.md`; validate the selected-unit Entry gate and approved Activation Slice. Treat the shared scope, formatting, final-diff, and commit-boundary rules as mandatory before any edit.
+2. Use `superpowers:using-git-worktrees` to create or verify an isolated worktree and branch without editing the target.
+3. Resolve required commands in this command resolution order: `explicit profile -> existing project scripts/config -> marker detection -> human gate`. Use repository commands verbatim; never invent or translate one.
+4. In incremental mode, capture a comparable pre-change regression baseline against the unchanged target and preserve its evidence reference. On a valid Approved baseline-waiver resume, skip only that collection and cite the exact approved waiver evidence as `Baseline Reference`. Greenfield records `not-applicable`.
+5. Evaluate the pre-mutation gate or validate the exact Approved baseline-waiver resume. An unresolved command or failed/non-comparable baseline capture records `result: blocked` plus its native blocker evidence before any edit; invalid resume evidence also blocks.
+6. Use `superpowers:writing-plans` to translate only the approved unit into steps and review checkpoints.
+7. Within `superpowers:executing-plans`, apply `superpowers:test-driven-development`: write an acceptance test, observe RED, implement the minimum, observe GREEN, then refactor while staying green.
+8. Record each changed-file row and each test as a structured `Activation Slice ID`, `Seam`, and `Trace IDs` link resolved against the approved immediate-predecessor Activation Slice envelope. Every linked slice/seam must exist there and every linked trace ID must belong to that exact predecessor `(Activation Slice ID, Seam)` pair; repeat rows for multi-seam files or tests. Also record unit ID, whether each file is `new` or `existing`, edited regions/symbols, and every formatter command. Inspect the final diff, remove all untraced or formatting-only changes, and block unrelated whole-file churn. Capture commands, sources, exit codes, and Evidence. Local checkpoint commits are non-delivery history; this unit must become one final delivery commit. Do not upload, merge, or mutate unrelated work.
 
 ## Evidence and Unknowns
 
@@ -105,28 +86,24 @@ Evidence includes approval, conformance, RED/GREEN output, commands, changes, an
 ## Hợp đồng đầu ra
 
 - File: `<RUN_DIR>/10-implementation-report.md`.
-- Front matter: `step_id: 10-code-migration`, canonical lifecycle, `produced_at`; normal implementation output may be `draft/complete`, approved output may be `approved/complete` with canonical `approval_source`, and pre-edit failure remains `draft/blocked` with no fabricated changes/tests.
-- Preserve the exact `Master Scope Context`, canonical adapter row, conformance-matrix approval, eight exemplar-read rows, actual/planned file mapping, five target-boundary rows, deviation dispositions, activation evidence, and three independent assurance states.
-- `architecture_conformance_state` and `selector_schema_state` must both be `PASS` for editing; neither can be waived. Runtime `WAIVED` does not alter them.
-- Preserve `Selected Migration Unit` with `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, and trace IDs only when `Adapter Kind = migration-unit`; omit that section for every other canonical adapter.
-- Preserve `Activation Slice` with canonical `ACT-[0-9]{3}`, all nine canonical seam rows in order, legal states, and exact fields except allowed append-only Source Reference enrichment.
+- Front matter: `step_id: 10-code-migration`, `status: draft`, `result: complete | partial | blocked`, `produced_at`.
+- Preserve `Selected Migration Unit` with `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, and trace IDs.
+- Preserve `Activation Slice` with the same ID and all seam rows; implementation never narrows the selected slice.
 - Every changed-file row and every test evidence record must link to the approved Activation Slice seam and its trace IDs.
-- Each link carries non-empty canonical Trace IDs that are a subset of both seam and Work Item authority; whole-set equality is not required.
-- Those rows use the exact approved `Work Item ID`; generic adapters contain no invented unit ID.
 - Use the structured changed-file and `Activation Slice Test Evidence` tables; prose-only linkage is invalid.
 - Preserve the exact resolved selector as `foundation_baseline_id` in the implementation artifact and every downstream migration handoff; never rename, omit, or regenerate it.
 - Preserve `Changed Files`, `Trace IDs`, `Commands and Results`, `Evidence`, `Unknowns`, and `Verdict`.
-- Preserve `Change Hygiene` with adapter-aware assurance identity for every changed Git path: `Task / Unit` is the exact selected Migration Unit ID for `migration-unit`, otherwise the approved current Work Item ID. Reconcile the pinned status exactly as `A/C = new`, `M/R = existing`, or `D = deleted`; also preserve edited region/symbol, formatter command, and unrelated-diff verdict. A `deleted` row has no final-tree path requirement and must carry exact `source:<task-base SHA>:<path>; diff:<task-base SHA>..<final-tree SHA>:<path>` base/removal evidence. A responsibility block removed from a surviving file uses `existing` with that same evidence pair for the removed owner. Omitted, stale, foreign, or status-mismatched evidence blocks output.
+- Preserve `Change Hygiene` with file kind, edited region/symbol, formatter command, and unrelated-diff verdict for every changed file.
 - Preserve `Blocker gốc` with the native verdict, command/capability, observed error, and evidence reference even if the orchestrator later appends an automation waiver.
 - For a routed `result: blocked` artifact whose Activation Slice and immediate-predecessor handoff are otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference` values; omit that section for non-blocked output.
-- Every changed-file row names one approved work item and at least one trace ID.
+- Every changed-file row names one approved unit and at least one trace ID.
 - On baseline-waiver resume, preserve `Approved Baseline Waiver` and `Step 10 Waiver Resume State`; without target source mutation evidence the result is `blocked`.
 
 ## Quick reference
 
 | Condition | Action |
 |---|---|
-| Approved work item, structural PASS, and resolved commands | TDD in isolated worktree |
+| Approved unit and resolved commands | TDD in isolated worktree |
 | Later greenfield unit and approved foundation baseline | Skip bootstrap; implement against that baseline |
 | Incremental architecture conflict | Stop and request approved conflict decision |
 | Required command unresolved | Block at human gate |

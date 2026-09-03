@@ -1,13 +1,11 @@
 param(
   [Alias('Target')]
-  [ValidateSet('Encoding','Contracts','Templates','Skills','Orchestrators','Onboarding','Compatibility','Docs','FlexibleScope','SourceIntegrityOnly','All')]
+  [ValidateSet('Encoding','Contracts','Templates','Skills','Orchestrators','Onboarding','Compatibility','Docs','All')]
   [string]$Check = 'All',
   [string]$Root = (Join-Path $PSScriptRoot '..'),
   [string]$ActivationSliceArtifactPath = '',
   [string]$PredecessorActivationSliceArtifactPath = '',
-  [string]$ActivationSliceContractFixturePath = '',
-  [string]$FlexibleScopeFixturePath = '',
-  [switch]$AllowReducedResponsibilityFixture
+  [string]$ActivationSliceContractFixturePath = ''
 )
 
 $ErrorActionPreference = 'Stop'
@@ -191,65 +189,6 @@ function ConvertFrom-MarkdownHeadingInlineText(
   return Trim-AsciiSpaceTab $rendered
 }
 
-function Get-MarkdownBacktickRunLength([string]$Line, [int]$StartIndex) {
-  if (
-    $StartIndex -lt 0 -or
-    $StartIndex -ge $Line.Length -or
-    $Line[$StartIndex] -cne [char]96
-  ) {
-    return 0
-  }
-  $cursor = $StartIndex
-  while ($cursor -lt $Line.Length -and $Line[$cursor] -ceq [char]96) { $cursor++ }
-  return $cursor - $StartIndex
-}
-
-function Test-MarkdownCharacterEscaped([string]$Line, [int]$Index) {
-  $backslashes = 0
-  for ($cursor = $Index - 1; $cursor -ge 0 -and $Line[$cursor] -ceq '\'; $cursor--) {
-    $backslashes++
-  }
-  return ($backslashes % 2) -eq 1
-}
-
-function Test-MarkdownLineHasUnclosedHtmlComment([string]$Line) {
-  $cursor = 0
-  while ($cursor -lt $Line.Length) {
-    if ($Line[$cursor] -ceq [char]96 -and -not (Test-MarkdownCharacterEscaped $Line $cursor)) {
-      $openingLength = Get-MarkdownBacktickRunLength $Line $cursor
-      $search = $cursor + $openingLength
-      $closingEnd = -1
-      while ($search -lt $Line.Length) {
-        $candidate = $Line.IndexOf([char]96, $search)
-        if ($candidate -lt 0) { break }
-        $candidateLength = Get-MarkdownBacktickRunLength $Line $candidate
-        if ($candidateLength -eq $openingLength) {
-          $closingEnd = $candidate + $candidateLength
-          break
-        }
-        $search = $candidate + $candidateLength
-      }
-      if ($closingEnd -gt 0) {
-        $cursor = $closingEnd
-        continue
-      }
-      $cursor += $openingLength
-      continue
-    }
-    if (
-      -not (Test-MarkdownCharacterEscaped $Line $cursor) -and
-      $Line.IndexOf('<!--', $cursor, [StringComparison]::Ordinal) -eq $cursor
-    ) {
-      $commentEnd = $Line.IndexOf('-->', $cursor + 4, [StringComparison]::Ordinal)
-      if ($commentEnd -lt 0) { return $true }
-      $cursor = $commentEnd + 3
-      continue
-    }
-    $cursor++
-  }
-  return $false
-}
-
 function Get-MarkdownLineStates([string]$Text) {
   if (
     $null -ne $script:markdownLineStateCacheStates -and
@@ -421,14 +360,6 @@ function Get-MarkdownLineStates([string]$Text) {
         $exclusionKind = 'html'
         $htmlUntilBlank = $true
       }
-    }
-
-    if (
-      -not $excluded -and
-      $line.IndexOf('<!--', [StringComparison]::Ordinal) -ge 0 -and
-      (Test-MarkdownLineHasUnclosedHtmlComment $line)
-    ) {
-      $inHtmlComment = $true
     }
 
     $states.Add([pscustomobject]@{
@@ -1003,9 +934,7 @@ function Test-ActivationSliceContract([string]$Text) {
         @('post-waiver-resume', '11-ai-review', 'draft/complete, approved/complete, draft/blocked', '10-code-migration', 'approved', 'partial', 'auto-waive', 'exact-baseline-waiver', 'incremental/preserve-existing', 'not-required'),
         @('handoff', '12-verification-testing', 'draft/complete, approved/complete, draft/blocked', '11-ai-review', 'approved', 'complete', '<canonical>', '<any>', '<canonical>', '<canonical>'),
         @('handoff', '13-verify-parity', 'draft/complete, approved/complete, draft/blocked', '12-verification-testing', 'approved', 'complete', '<canonical>', '<any>', '<canonical>', '<canonical>'),
-        @('handoff', '14-verify-regression', 'draft/complete, approved/complete, draft/blocked', '13-verify-parity', 'approved', 'complete', '<canonical>', '<any>', 'incremental/preserve-existing', 'not-required'),
-        @('handoff', '15-knowledge-base', 'draft/complete, approved/complete, draft/blocked', '13-verify-parity', 'approved', 'complete', '<canonical>', '<any>', 'greenfield/design-new', '<canonical>'),
-        @('handoff', '15-knowledge-base', 'draft/complete, approved/complete, draft/blocked', '14-verify-regression', 'approved', 'complete', '<canonical>', '<any>', 'incremental/preserve-existing', 'not-required')
+        @('handoff', '14-verify-regression', 'draft/complete, approved/complete, draft/blocked', '13-verify-parity', 'approved', 'complete', '<canonical>', '<any>', 'incremental/preserve-existing', 'not-required')
       )
       Label = 'Immediate predecessor roles and lifecycle'
     }
@@ -1110,34 +1039,13 @@ function Test-ActivationSliceContract([string]$Text) {
       Label = 'Direct-plan foundation state'
     }
     [pscustomobject]@{
-      Section = 'Delivery adapter evidence by artifact role'
-      Columns = @('Artifact step IDs', 'Canonical source', 'Required schema', 'Cardinality')
-      Rows = @(
-        @(
-          '10-code-migration',
-          'Canonical Adapter Evidence',
-          'Work Item ID, Adapter Kind, External ID, Authority, Authority Revision, Approval Reference, Parent Selector, Acceptance, Trace IDs, Mode Constraint, Design Revision, Parent Work Item ID, Decomposition Decision Reference, Canonical Match',
-          'exactly-one-visible-row'
-        ),
-        @(
-          '11-ai-review, 12-verification-testing, 13-verify-parity, 14-verify-regression, 15-knowledge-base',
-          'Delivery Adapter Kind, Delivery Adapter Mode Constraint',
-          'Adapter Kind, Mode Constraint',
-          'exactly-one-visible-line-each'
-        )
-      )
-      Label = 'Delivery adapter evidence by artifact role'
-    }
-    [pscustomobject]@{
       Section = 'Downstream selected-unit handoff'
-      Columns = @('Current step ID', 'Adapter Kind Applicability', 'Section', 'Required columns', 'Preservation')
+      Columns = @('Current step ID', 'Section', 'Required columns', 'Preservation')
       Rows = @(
-        @('11-ai-review', 'migration-unit', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
-        @('12-verification-testing', 'migration-unit', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
-        @('13-verify-parity', 'migration-unit', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
-        @('14-verify-regression', 'migration-unit', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
-        @('15-knowledge-base', 'migration-unit', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
-        @('11-ai-review, 12-verification-testing, 13-verify-parity, 14-verify-regression, 15-knowledge-base', 'task, story, package, phase, milestone, none', '<absent>', '<not-applicable>', 'ordinal-absence')
+        @('11-ai-review', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
+        @('12-verification-testing', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
+        @('13-verify-parity', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor'),
+        @('14-verify-regression', 'Selected Migration Unit', 'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs', 'ordinal-exact-predecessor')
       )
       Label = 'Downstream selected-unit handoff'
     }
@@ -1195,9 +1103,9 @@ function Test-ActivationSliceContract([string]$Text) {
         'Intrinsic predicates', 'Source Artifact rule'
       )
       Rows = @(
-        @('12-verification-testing', '11-ai-review', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Change Hygiene', 'Task / Unit, Scope Evidence, Formatter Evidence, Unrelated Diff, Severity, Task-base SHA, Final-tree SHA', 'Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA', 'Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder', 'resolves-to-immediate-predecessor-path'),
-        @('13-verify-parity', '12-verification-testing', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA', 'Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder', 'resolves-to-immediate-predecessor-path'),
-        @('14-verify-regression', '13-verify-parity', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA', 'Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder', 'resolves-to-immediate-predecessor-path')
+        @('12-verification-testing', '11-ai-review', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Change Hygiene', 'Task / Unit, Scope Evidence, Formatter Evidence, Unrelated Diff, Severity, Task-base SHA, Final-tree SHA', 'Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA', 'Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder', 'resolves-to-immediate-predecessor-path'),
+        @('13-verify-parity', '12-verification-testing', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA', 'Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder', 'resolves-to-immediate-predecessor-path'),
+        @('14-verify-regression', '13-verify-parity', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task Provenance', 'Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact', 'Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA', 'Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder', 'resolves-to-immediate-predecessor-path')
       )
       Label = 'Assurance task provenance handoff'
     }
@@ -1211,13 +1119,12 @@ function Test-ActivationSliceContract([string]$Text) {
     }
     [pscustomobject]@{
       Section = 'Implementation linkage'
-      Columns = @('Record', 'Current step ID', 'Allowed predecessor step IDs', 'Adapter Kind Applicability', 'Section', 'Required columns')
+      Columns = @('Record', 'Current step ID', 'Allowed predecessor step IDs', 'Section', 'Required columns')
       Rows = @(
         @(
           'selected-unit',
           '10-code-migration',
           '08-plan-waves, 09-bootstrap-target, 10-code-migration',
-          'migration-unit',
           'Selected Migration Unit',
           'Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs'
         ),
@@ -1225,7 +1132,6 @@ function Test-ActivationSliceContract([string]$Text) {
           'changed-file',
           '10-code-migration',
           '08-plan-waves, 09-bootstrap-target, 10-code-migration',
-          'migration-unit',
           (ConvertFrom-Utf8Base64 'RmlsZSDEkcOjIHRoYXkgxJHhu5Vp'),
           'Migration Unit ID, Activation Slice ID, Seam, File, Change, Trace IDs'
         ),
@@ -1233,25 +1139,8 @@ function Test-ActivationSliceContract([string]$Text) {
           'test-evidence',
           '10-code-migration',
           '08-plan-waves, 09-bootstrap-target, 10-code-migration',
-          'migration-unit',
           'Activation Slice Test Evidence',
           'Migration Unit ID, Activation Slice ID, Seam, Test, Command, Result, Trace IDs'
-        ),
-        @(
-          'work-item-changed-file',
-          '10-code-migration',
-          '08-plan-waves, 09-bootstrap-target, 10-code-migration',
-          'task, story, package, phase, milestone, none',
-          'Work Item Changed Files',
-          'Work Item ID, Activation Slice ID, Seam, File, Change, Trace IDs'
-        ),
-        @(
-          'work-item-test-evidence',
-          '10-code-migration',
-          '08-plan-waves, 09-bootstrap-target, 10-code-migration',
-          'task, story, package, phase, milestone, none',
-          'Work Item Test Evidence',
-          'Work Item ID, Activation Slice ID, Seam, Test, Command, Result, Trace IDs'
         )
       )
       Label = 'Implementation linkage'
@@ -1316,8 +1205,6 @@ function Test-Contracts {
   $profilePath = Join-Path $root 'templates/migration/project-profile.yaml'
   $scopeContractPath = Join-Path $root 'contracts/migration-scope-orchestration.md'
   $conformanceContractPath = Join-Path $root 'contracts/target-structure-conformance.md'
-  $responsibilityContractPath = Join-Path $root 'contracts/file-responsibility-conformance.md'
-  $responsibilityValidatorPath = Join-Path $root 'tests/validation/responsibility-conformance.validation.ps1'
   $activationContractPath = if ([string]::IsNullOrWhiteSpace($ActivationSliceContractFixturePath)) {
     Join-Path $root 'contracts/activation-slice.md'
   }
@@ -1329,10 +1216,6 @@ function Test-Contracts {
   $schemaText = Get-Content -Raw -Encoding utf8 $schemaPath
   $profileText = Get-Content -Raw -Encoding utf8 $profilePath
   $activationContractText = Get-Content -Raw -Encoding utf8 $activationContractPath
-  if (-not (Test-Path -LiteralPath $responsibilityValidatorPath -PathType Leaf)) {
-    $errors.Add('Missing responsibility conformance validation helper')
-    return
-  }
   if (-not (Test-Path -LiteralPath $scopeContractPath -PathType Leaf)) {
     $errors.Add('Missing migration scope orchestration contract resource')
   }
@@ -1350,45 +1233,12 @@ function Test-Contracts {
   }
   else {
     $conformanceContractText = Get-Content -Raw -Encoding utf8 $conformanceContractPath
-    Require-Token $conformanceContractText 'contracts/file-responsibility-conformance.md' 'Target structure responsibility route'
     Invoke-MigrationValidationModule `
       'tests/validation/target-conformance.validation.ps1' `
       'Test-TargetConformance' `
       'Comparable Target Exemplars' `
       $root `
       $conformanceContractText
-  }
-  if (-not (Test-Path -LiteralPath $responsibilityContractPath -PathType Leaf)) {
-    $errors.Add('Missing file responsibility conformance contract resource')
-  }
-  elseif (-not (Test-Path -LiteralPath $responsibilityValidatorPath -PathType Leaf)) {
-    $errors.Add('Missing responsibility conformance validation helper')
-  }
-  else {
-    $responsibilityContractText = Get-Content -Raw -Encoding utf8 $responsibilityContractPath
-    Require-Token $schemaText 'contracts/file-responsibility-conformance.md' 'Responsibility schema route'
-    $parseTokens = $null
-    $parseErrors = $null
-    [void][Management.Automation.Language.Parser]::ParseFile($responsibilityValidatorPath, [ref]$parseTokens, [ref]$parseErrors)
-    if (@($parseErrors).Count -gt 0) {
-      $errors.Add('Responsibility conformance validation helper has PowerShell parse errors')
-    }
-    else {
-      . $responsibilityValidatorPath
-      foreach ($entryPoint in @(
-        'Test-ResponsibilityContractSchema', 'Test-ResponsibilityDiscovery',
-        'Test-ResponsibilityDesign', 'Test-ResponsibilityPlan',
-        'Test-ResponsibilityImplementation', 'Test-ResponsibilityReview',
-        'Test-ResponsibilityHandoff', 'Test-ResponsibilityGerrit'
-      )) {
-        if (-not (Get-Command $entryPoint -ErrorAction SilentlyContinue)) {
-          $errors.Add("Missing responsibility validator entry point: $entryPoint")
-        }
-      }
-      @(Test-ResponsibilityContractSchema -ContractText $responsibilityContractText) | ForEach-Object {
-        $errors.Add($_)
-      }
-    }
   }
   $text = $schemaText + $profileText
   Test-ActivationSliceContract $activationContractText
@@ -1455,28 +1305,9 @@ function Test-Contracts {
     'runtime_evidence_state: <value from target-structure-conformance.md>',
     'architecture_conformance_state: <value from target-structure-conformance.md>',
     'selector_schema_state: <value from target-structure-conformance.md>',
-    'Historical unit-only artifacts remain readable, but they must not resume to production mutation before compatibility conversion.',
-    'artifact_type: migration-scope-terminal-report',
-    'Work Item Terminal Evidence',
-    'Scope Completion Calculation',
-    'fresh human approval gate'
+    'Historical unit-only artifacts remain readable, but they must not resume to production mutation before compatibility conversion.'
   ) | ForEach-Object {
     Require-Token $schemaText $_ 'Migration scope artifact schema'
-  }
-  $normalizedSchemaText = (($schemaText -replace "`r`n", "`n") -replace "`r", "`n")
-  $masterPlanSchemaMatch = [regex]::Match(
-    $normalizedSchemaText,
-    '(?s)The canonical master plan front matter is:\n\n```yaml\n(?<body>.*?)\n```'
-  )
-  $masterPlanSchemaContractMatchCount = if ($masterPlanSchemaMatch.Success) {
-    @([regex]::Matches($masterPlanSchemaMatch.Groups['body'].Value, '(?m)^responsibility_contract:\n  version: 1\n  applicability: required$')).Count
-  }
-  else { 0 }
-  if (
-    -not $masterPlanSchemaMatch.Success -or
-    $masterPlanSchemaContractMatchCount -ne 1
-  ) {
-    $errors.Add('Migration master-plan schema requires the canonical responsibility contract discriminator')
   }
   if ($schemaText -match '(?m)^\s*(?:runtime_evidence_state|architecture_conformance_state|selector_schema_state):\s*(?:PASS|FAIL|NOT_RUN|WAIVED|BLOCKED)(?:\s*\||\s*$)') {
     $errors.Add('Migration scope artifact schema must reference canonical assurance enums instead of duplicating them')
@@ -1560,1006 +1391,6 @@ function Test-Contracts {
   if ($schemaText -match '(?is)Migration Gerrit.{0,180}(?:immediate|predecessor)') {
     $errors.Add('Data contracts must not require an implicit Migration Gerrit predecessor')
   }
-}
-
-function Test-FlexibleScopeFixtureEnvelope([string]$FixturePath) {
-  if ([string]::IsNullOrWhiteSpace($FixturePath)) { return }
-  $resolvedFixturePath = [IO.Path]::GetFullPath($FixturePath)
-  $rootPrefix = $root.TrimEnd(
-    [IO.Path]::DirectorySeparatorChar,
-    [IO.Path]::AltDirectorySeparatorChar
-  ) + [IO.Path]::DirectorySeparatorChar
-  if (
-    -not $resolvedFixturePath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-    -not (Test-Path -LiteralPath $resolvedFixturePath -PathType Leaf)
-  ) {
-    $errors.Add('Flexible scope E2E fixture path must resolve to a file under the validation root')
-    return
-  }
-  try {
-    $fixture = Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedFixturePath | ConvertFrom-Json
-  }
-  catch {
-    $errors.Add('Flexible scope E2E fixture must be valid JSON')
-    return
-  }
-  $expectedFields = @(
-    'expected_diagnostic', 'expected_scope_state', 'legacy_conversion_ref',
-    'master_plan_ref', 'master_spec_ref', 'predecessor_ref',
-    'responsibility_chain_refs', 'scenario_id', 'target_evidence_ref', 'technical_design_refs', 'terminal_report_ref'
-  )
-  $actualFields = @($fixture.PSObject.Properties.Name)
-  [Array]::Sort($actualFields, [StringComparer]::Ordinal)
-  if (($actualFields -join '|') -cne ($expectedFields -join '|')) {
-    $errors.Add('Flexible scope E2E fixture must declare the exact evidence envelope')
-    return
-  }
-  foreach ($field in @('scenario_id', 'expected_diagnostic', 'expected_scope_state')) {
-    if ([string]::IsNullOrWhiteSpace([string]$fixture.$field)) {
-      $errors.Add("Flexible scope E2E fixture field must not be blank: $field")
-    }
-  }
-  $resolvedEvidence = @{}
-  foreach ($field in @('master_spec_ref', 'master_plan_ref', 'predecessor_ref', 'target_evidence_ref', 'terminal_report_ref', 'legacy_conversion_ref')) {
-    $declaredReference = [string]$fixture.$field
-    if ($declaredReference -ceq 'not-applicable' -and $field -in @('terminal_report_ref', 'legacy_conversion_ref')) { continue }
-    $immutableMatch = if($field -ceq 'predecessor_ref'){[regex]::Match($declaredReference,'^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$')}else{$null}
-    $relativePath = if($null -ne $immutableMatch -and $immutableMatch.Success){$immutableMatch.Groups['path'].Value}else{$declaredReference}
-    if (
-      [string]::IsNullOrWhiteSpace($relativePath) -or
-      [IO.Path]::IsPathRooted($relativePath) -or
-      $relativePath -match '(^|[\\/])\.\.([\\/]|$)'
-    ) {
-      $errors.Add("Flexible scope E2E fixture reference must be a safe relative path: $field")
-      continue
-    }
-    $resolvedEvidencePath = [IO.Path]::GetFullPath((Join-Path $root $relativePath))
-    if (
-      -not $resolvedEvidencePath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-      -not (Test-Path -LiteralPath $resolvedEvidencePath -PathType Leaf)
-    ) {
-      $errors.Add("Flexible scope E2E fixture reference does not resolve under root: $field")
-    }
-    else {
-      if($field -ceq 'predecessor_ref' -and $declaredReference -match '#sha256:' -and ($null -eq $immutableMatch -or -not $immutableMatch.Success)){$errors.Add('Flexible scope E2E predecessor immutable reference is malformed')}
-      elseif($null -ne $immutableMatch -and $immutableMatch.Success){$sha=[Security.Cryptography.SHA256]::Create();try{$actualDigest=([BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($resolvedEvidencePath)))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()};if($actualDigest -cne $immutableMatch.Groups['digest'].Value){$errors.Add('Flexible scope E2E predecessor immutable reference digest is stale')}else{$resolvedEvidence[$field]=$resolvedEvidencePath}}
-      else { $resolvedEvidence[$field] = $resolvedEvidencePath }
-    }
-  }
-
-  $resolvedTechnicalDesignPaths = [Collections.Generic.List[string]]::new()
-  $technicalDesignReferences = @($fixture.technical_design_refs)
-  if ($technicalDesignReferences.Count -eq 0) {
-    $errors.Add('Flexible scope E2E fixture requires immutable technical design references')
-  }
-  foreach ($technicalDesignReference in $technicalDesignReferences) {
-    $declaredDesignReference = [string]$technicalDesignReference
-    $designReferenceMatch = [regex]::Match($declaredDesignReference, '^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$')
-    if (
-      -not $designReferenceMatch.Success -or
-      [IO.Path]::IsPathRooted($designReferenceMatch.Groups['path'].Value) -or
-      $designReferenceMatch.Groups['path'].Value -match '(^|[\\/])\.\.([\\/]|$)'
-    ) {
-      $errors.Add('Flexible scope E2E technical design reference must be immutable and safe')
-      continue
-    }
-    $resolvedDesignPath = [IO.Path]::GetFullPath((Join-Path $root $designReferenceMatch.Groups['path'].Value))
-    if (
-      -not $resolvedDesignPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or
-      -not (Test-Path -LiteralPath $resolvedDesignPath -PathType Leaf)
-    ) {
-      $errors.Add('Flexible scope E2E technical design reference does not resolve under root')
-      continue
-    }
-    $designSha = [Security.Cryptography.SHA256]::Create()
-    try { $actualDesignDigest = ([BitConverter]::ToString($designSha.ComputeHash([IO.File]::ReadAllBytes($resolvedDesignPath)))).Replace('-', '').ToLowerInvariant() }
-    finally { $designSha.Dispose() }
-    if ($actualDesignDigest -cne $designReferenceMatch.Groups['digest'].Value) {
-      $errors.Add('Flexible scope E2E technical design immutable reference digest is stale')
-      continue
-    }
-    $resolvedTechnicalDesignPaths.Add($resolvedDesignPath)
-  }
-
-  if ($errors.Count -gt 0) { return }
-  $normalize = { param([string]$Text) (($Text -replace "`r`n", "`n") -replace "`r", "`n") }
-  $frontMatter = {
-    param([string]$Text, [string]$Context)
-    $normalized = & $normalize $Text
-    $match = [regex]::Match($normalized, '\A---\n(?<body>.*?)\n---\n', 'Singleline')
-    if (-not $match.Success) { $errors.Add("$Context requires bounded first front matter"); return @{} }
-    $map = @{}
-    $frontMatterLines = @($match.Groups['body'].Value -split "`n")
-    for ($lineIndex = 0; $lineIndex -lt $frontMatterLines.Count; $lineIndex++) {
-      $line = $frontMatterLines[$lineIndex]
-      if ($line -ceq 'responsibility_contract:') {
-        if (
-          $map.ContainsKey('responsibility_contract') -or
-          ($lineIndex + 2) -ge $frontMatterLines.Count -or
-          $frontMatterLines[$lineIndex + 1] -cne '  version: 1' -or
-          $frontMatterLines[$lineIndex + 2] -cne '  applicability: required' -or
-          (($lineIndex + 3) -lt $frontMatterLines.Count -and $frontMatterLines[$lineIndex + 3] -match '^[ \t]')
-        ) {
-          $errors.Add("$Context has malformed or duplicate front matter")
-          return @{}
-        }
-        $map['responsibility_contract'] = 'version=1;applicability=required'
-        $lineIndex += 2
-        continue
-      }
-      $fieldMatch = [regex]::Match($line, '^(?<key>[a-z_][a-z0-9_]*):[ \t]*(?<value>\S.*?)$')
-      if (-not $fieldMatch.Success -or $map.ContainsKey($fieldMatch.Groups['key'].Value)) {
-        $errors.Add("$Context has malformed or duplicate front matter"); return @{}
-      }
-      $map[$fieldMatch.Groups['key'].Value] = $fieldMatch.Groups['value'].Value.Trim()
-    }
-    return $map
-  }
-  $table = {
-    param([string]$Text, [string]$Heading, [string[]]$Columns, [string]$Context)
-    $normalized = & $normalize $Text
-    $headingMatches = @([regex]::Matches($normalized, '(?m)^## ' + [regex]::Escape($Heading) + '$'))
-    if ($headingMatches.Count -ne 1) { $errors.Add("$Context section must appear exactly once: $Heading"); return @() }
-    $tail = $normalized.Substring($headingMatches[0].Index + $headingMatches[0].Length)
-    $next = [regex]::Match($tail, '(?m)^## ')
-    $body = if ($next.Success) { $tail.Substring(0, $next.Index) } else { $tail }
-    $bodyLines = @($body -split "`n")
-    $tableIndexes = @(for ($lineIndex = 0; $lineIndex -lt $bodyLines.Count; $lineIndex++) { if ($bodyLines[$lineIndex] -match '^\|.*\|$') { $lineIndex } })
-    $lines = @($tableIndexes | ForEach-Object { $bodyLines[$_] })
-    if ($lines.Count -lt 3) { $errors.Add("$Context requires one nonempty table: $Heading"); return @() }
-    if (($tableIndexes[-1] - $tableIndexes[0] + 1) -ne $tableIndexes.Count) { $errors.Add("$Context requires exactly one contiguous table: $Heading"); return @() }
-    $split = { param([string]$Line) @($Line.Substring(1, $Line.Length - 2).Split('|') | ForEach-Object { $_.Trim() }) }
-    $headers = @(& $split $lines[0]); $delimiter = @(& $split $lines[1])
-    if (($headers -join '|') -cne ($Columns -join '|') -or $delimiter.Count -ne $Columns.Count -or @($delimiter | Where-Object { $_ -cnotmatch '^:?-{3,}:?$' }).Count -gt 0) {
-      $errors.Add("$Context table has invalid columns or delimiter: $Heading"); return @()
-    }
-    $rows = [Collections.Generic.List[object]]::new()
-    foreach ($line in @($lines | Select-Object -Skip 2)) {
-      if ($line -match '^\|\|' -or $line -match '\|\|$') { $errors.Add("$Context table has invalid framing: $Heading"); continue }
-      $cells = @(& $split $line)
-      if ($cells.Count -ne $Columns.Count -or @($cells | Where-Object { [string]::IsNullOrWhiteSpace($_) }).Count -gt 0) { $errors.Add("$Context table has invalid cardinality: $Heading"); continue }
-      $row = [ordered]@{}; for ($i=0; $i -lt $Columns.Count; $i++) { $row[$Columns[$i]] = $cells[$i] }; $rows.Add([pscustomobject]$row)
-    }
-    return @($rows)
-  }
-  $specText = Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedEvidence.master_spec_ref
-  $planText = Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedEvidence.master_plan_ref
-  $predecessorText = Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedEvidence.predecessor_ref
-  $targetText = Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedEvidence.target_evidence_ref
-  $approvedPlanSelectorColumns = @('Work Item ID','Adapter Kind','External ID','Authority','Authority Revision','Approval Reference','Parent Selector','Acceptance','Trace IDs','Mode Constraint','Design Revision','Parent Work Item ID','Decomposition Decision Reference')
-  $approvedPlanSelectorRows = @(& $table $planText 'Delivery Adapter Selection' $approvedPlanSelectorColumns 'Flexible scope approved adapter authority')
-  $specFm = & $frontMatter $specText 'Flexible scope master spec'
-  $planFm = & $frontMatter $planText 'Flexible scope master plan'
-  $planResponsibilityContractValid = (
-    $planFm.ContainsKey('responsibility_contract') -and
-    $planFm.responsibility_contract -ceq 'version=1;applicability=required'
-  )
-  $preFm = & $frontMatter $predecessorText 'Flexible scope predecessor'
-  $targetFm = & $frontMatter $targetText 'Flexible scope target evidence'
-  $scopeRunDirectory = [IO.Path]::GetFullPath((Split-Path -Parent $resolvedEvidence.master_plan_ref))
-  $masterScopeColumns = @('Run ID','Master Spec Reference','Master Spec ID','Master Spec Revision','Master Plan Reference','Master Plan ID','Master Plan Revision')
-  $readMasterScopeContext = {
-    param([string]$Text,[string]$Context)
-    $normalized = & $normalize $Text
-    $baseHeader = '| ' + ($masterScopeColumns -join ' | ') + ' |'
-    $workItemColumns = @($masterScopeColumns + 'Work Item ID')
-    $workItemHeader = '| ' + ($workItemColumns -join ' | ') + ' |'
-    if ($normalized -cmatch ('(?m)^' + [regex]::Escape($workItemHeader) + '$')) {
-      return @(& $table $Text 'Master Scope Context' $workItemColumns $Context)
-    }
-    if ($normalized -cmatch ('(?m)^' + [regex]::Escape($baseHeader) + '$')) {
-      return @(& $table $Text 'Master Scope Context' $masterScopeColumns $Context)
-    }
-    return @()
-  }
-  $resolveAssuranceEnvelope = {
-    param([string]$Text,[string]$ExpectedWorkItem,[string]$Context)
-    $visibleText=@(Get-MarkdownLineStates $Text|Where-Object{-not$_.Excluded}|ForEach-Object{$_.Text})-join"`n"
-    $adapterMatches=@([regex]::Matches($visibleText,'(?m)^[ ]{0,3}-[ \t]+Delivery Adapter Kind:[ \t]*(?<value>[^\r\n]+?)[ \t]*\r?$'))
-    $modeMatches=@([regex]::Matches($visibleText,'(?m)^[ ]{0,3}-[ \t]+Delivery Adapter Mode Constraint:[ \t]*(?<value>[^\r\n]+?)[ \t]*\r?$'))
-    if($adapterMatches.Count-ne1-or$modeMatches.Count-ne1){return [pscustomobject]@{Valid=$false;Identity='';AdapterKind='';ModeConstraint=''}}
-    $adapterKind=$adapterMatches[0].Groups['value'].Value.Trim()
-    $modeConstraint=$modeMatches[0].Groups['value'].Value.Trim()
-    if($modeConstraint-cnotin@('incremental/preserve-existing','greenfield/design-new')){return [pscustomobject]@{Valid=$false;Identity='';AdapterKind=$adapterKind;ModeConstraint=''}}
-    if($adapterKind-ceq'migration-unit'){
-      $selectedColumns=@('Migration Unit ID','Plan Reference','Approval Reference','Mode Constraint','Bootstrap Scope','Foundation Baseline ID','Foundation Baseline Reference','Foundation Baseline Approval Reference','Baseline Reference','Trace IDs')
-      $selectedRows=@(&$table $Text 'Selected Migration Unit' $selectedColumns "$Context selected assurance identity")
-      if($selectedRows.Count-ne1-or$selectedRows[0].'Migration Unit ID'-cnotmatch'^UNIT-[A-Z0-9]+(?:-[A-Z0-9]+)*$'-or$selectedRows[0].'Mode Constraint'-cne$modeConstraint){return [pscustomobject]@{Valid=$false;Identity='';AdapterKind=$adapterKind;ModeConstraint=$modeConstraint}}
-      return [pscustomobject]@{Valid=$true;Identity=[string]$selectedRows[0].'Migration Unit ID';AdapterKind=$adapterKind;ModeConstraint=$modeConstraint}
-    }
-    if($adapterKind-cin@('task','story','package','phase','milestone','none')){
-      if(@(Get-MarkdownSectionHeadings $Text 'Selected Migration Unit').Count-ne0){return [pscustomobject]@{Valid=$false;Identity='';AdapterKind=$adapterKind;ModeConstraint=$modeConstraint}}
-      return [pscustomobject]@{Valid=$true;Identity=$ExpectedWorkItem;AdapterKind=$adapterKind;ModeConstraint=$modeConstraint}
-    }
-    return [pscustomobject]@{Valid=$false;Identity='';AdapterKind=$adapterKind;ModeConstraint=$modeConstraint}
-  }
-  $resolvePlannedResponsibilityAuthority = {
-    $workItemColumns = @('Work Item ID','Title','Required','Dependencies','Plan Order','Acceptance','Trace IDs','Delivery Adapter','Status','Latest Attempt','Terminal Evidence','Approval Reference')
-    $selectorColumns = @('Work Item ID','Adapter Kind','External ID','Authority','Authority Revision','Approval Reference','Parent Selector','Acceptance','Trace IDs','Mode Constraint','Design Revision','Parent Work Item ID','Decomposition Decision Reference')
-    $ownerColumns = @('Work Item ID','Design Revision','Responsibility IDs','Shared Foundation IDs','Integration Responsibility IDs','Independent Boundary Evidence')
-    $responsibilityColumns = @('Responsibility ID','Owner Path','Owner Symbol','Boundary Kind','Primary Responsibility','Owned Capability IDs','Trace IDs','Atomic Boundary ID','Public Symbols','External Effects','Target Exemplar','Exemplar Classification','Classification Authority','Classification Evidence','Architecture Authority','Co-location Policy','Co-location Evidence','Verification Owner References','Conformance','Deviation Reference')
-    $verificationColumns = @('Verification Owner ID','Production Responsibility ID','Capability ID','Evidence Path','Evidence Symbol or Scenario','Evidence Kind','Verification Disposition','Production Binding Evidence','Decision Reference','Verdict','Deviation Reference')
-    $deviationColumns = @('Deviation Reference','Concern','Conflict Reference','Resolved Decision','Tech Lead Approval')
-    $workRows = @(& $table $planText 'Work Items' $workItemColumns 'Flexible scope planned responsibility authority')
-    $selectorRows = @(& $table $planText 'Delivery Adapter Selection' $selectorColumns 'Flexible scope planned responsibility authority')
-    $ownerRows = @(& $table $planText 'Responsibility Owner References' $ownerColumns 'Flexible scope planned responsibility authority')
-    $workIds = @($workRows | ForEach-Object { [string]$_.'Work Item ID' })
-    $selectorIds = @($selectorRows | ForEach-Object { [string]$_.'Work Item ID' })
-    $ownerIds = @($ownerRows | ForEach-Object { [string]$_.'Work Item ID' })
-    if (
-      $workIds.Count -eq 0 -or
-      $workIds.Count -ne $resolvedTechnicalDesignPaths.Count -or
-      ($workIds -join '|') -cne ($selectorIds -join '|') -or
-      ($workIds -join '|') -cne ($ownerIds -join '|') -or
-      @($workIds | Group-Object | Where-Object Count -ne 1).Count -gt 0
-    ) { return $false }
-    $splitIds = {
-      param([string]$Value)
-      if ($Value -ceq 'not-applicable') { return @() }
-      return @($Value -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
-    }
-    $exactOrdinal = {
-      param([object[]]$Actual,[object[]]$Expected)
-      if ($Actual.Count -ne $Expected.Count) { return $false }
-      for ($ordinalIndex=0;$ordinalIndex-lt$Expected.Count;$ordinalIndex++) { if ([string]$Actual[$ordinalIndex]-cne[string]$Expected[$ordinalIndex]) { return $false } }
-      return $true
-    }
-    $validBoundaryEvidence = {
-      param([string]$Value)
-      return (
-        -not [string]::IsNullOrWhiteSpace($Value) -and
-        $Value -match '(?i)implementable' -and $Value -match '(?i)reviewable' -and
-        $Value -match '(?i)verifiable|testable' -and $Value -match '(?i)revertible' -and
-        $Value -match '^(?:(?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+\.md#(?:RULE|DECISION|APPROVAL)-[A-Z0-9-]+|approval:(?:TECH-LEAD|OWNER)-[A-Z0-9-]+)(?::\s*.+)?$'
-      )
-    }
-    $canonicalResponsibilityValidatorPath = Join-Path $root 'tests/validation/responsibility-conformance.validation.ps1'
-    if (-not (Test-Path -LiteralPath $canonicalResponsibilityValidatorPath -PathType Leaf)) { return $false }
-    if ($null -eq (Get-Command -Name Test-ArcCanonicalDesignAuthorityRows -CommandType Function -ErrorAction SilentlyContinue)) {
-      . $canonicalResponsibilityValidatorPath
-    }
-    if ($null -eq (Get-Command -Name Test-ArcCanonicalDesignAuthorityRows -CommandType Function -ErrorAction SilentlyContinue)) { return $false }
-    $designByWorkItem = @{}
-    foreach ($designPath in $resolvedTechnicalDesignPaths) {
-      if ([IO.Path]::GetFullPath((Split-Path -Parent $designPath)) -cne $scopeRunDirectory) { return $false }
-      try { $designText = [Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($designPath)) }
-      catch { return $false }
-      $normalizedDesign = & $normalize $designText
-      $designFrontMatterMatch = [regex]::Match($normalizedDesign,'\A---\n(?<body>.*?)\n---\n','Singleline')
-      if (-not $designFrontMatterMatch.Success) { return $false }
-      $designTopLevel = @{}
-      foreach ($designLine in $designFrontMatterMatch.Groups['body'].Value -split "`n") {
-        $designFieldMatch = [regex]::Match($designLine,'^(?<key>[a-z_][a-z0-9_]*):[ \t]*(?<value>\S.*?)$')
-        if ($designFieldMatch.Success) {
-          if ($designTopLevel.ContainsKey($designFieldMatch.Groups['key'].Value)) { return $false }
-          $designTopLevel[$designFieldMatch.Groups['key'].Value]=$designFieldMatch.Groups['value'].Value.Trim()
-        }
-      }
-      $designKeys = @($designTopLevel.Keys | Sort-Object)
-      $designContractMatch = [regex]::Match($designFrontMatterMatch.Groups['body'].Value,'(?m)^responsibility_contract:\n  version: 1\n  applicability: required$')
-      $designScope = @(& $readMasterScopeContext $designText 'Flexible scope planned technical design')
-      $designResponsibilities = @(& $table $designText 'File Responsibility Matrix' $responsibilityColumns 'Flexible scope planned technical design')
-      $designVerifications = @(& $table $designText 'Verification Ownership Matrix' $verificationColumns 'Flexible scope planned technical design')
-      $designDeviations = if (@($designResponsibilities | Where-Object { $_.Conformance -ceq 'no' }).Count -gt 0) {
-        @(& $table $designText 'Approved Structural Deviations' $deviationColumns 'Flexible scope planned technical design')
-      }
-      else { @() }
-      $designWorkItem = [string]$designTopLevel.work_item_id
-      if (
-        ($designKeys -join '|') -cne 'approval_source|master_plan_id|master_plan_ref|master_plan_revision|master_spec_id|master_spec_ref|master_spec_revision|mode_constraint|produced_at|result|revision|run_id|status|step_id|work_item_id' -or
-        $designTopLevel.step_id -cne '07-technical-design' -or $designTopLevel.status -cne 'approved' -or
-        $designTopLevel.result -cne 'complete' -or $designTopLevel.approval_source -cne 'human' -or
-        $designTopLevel.produced_at -cnotmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' -or
-        -not $designContractMatch.Success -or $designWorkItem -cnotmatch '^WORK-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -or
-        $designByWorkItem.ContainsKey($designWorkItem) -or $designScope.Count -ne 1 -or
-        $designResponsibilities.Count -eq 0 -or $designVerifications.Count -eq 0
-      ) { return $false }
-      $designByWorkItem[$designWorkItem]=[pscustomobject]@{ FrontMatter=$designTopLevel; Scope=$designScope[0]; Responsibilities=$designResponsibilities; Verifications=$designVerifications; Deviations=$designDeviations }
-    }
-    if ($designByWorkItem.Count -ne $workIds.Count) { return $false }
-    $seenResponsibilityIds=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    $seenVerificationOwnerIds=[Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
-    for ($workIndex=0;$workIndex-lt$workRows.Count;$workIndex++) {
-      $workRow=$workRows[$workIndex];$selectorRow=$selectorRows[$workIndex];$ownerRow=$ownerRows[$workIndex];$workId=$workIds[$workIndex]
-      if (-not $designByWorkItem.ContainsKey($workId) -or -not (&$validBoundaryEvidence ([string]$ownerRow.'Independent Boundary Evidence'))) { return $false }
-      $design=$designByWorkItem[$workId];$designFm=$design.FrontMatter
-      if (
-        $selectorRow.'Design Revision' -cnotmatch '^DESIGN-[A-Z0-9]+(?:-[A-Z0-9]+)*@[1-9][0-9]*$' -or
-        $ownerRow.'Design Revision' -cne $selectorRow.'Design Revision' -or $designFm.revision -cne $ownerRow.'Design Revision' -or
-        $selectorRow.Acceptance -cne $workRow.Acceptance -or $selectorRow.'Trace IDs' -cne $workRow.'Trace IDs' -or
-        $designFm.run_id -cne 'RUN-E2E-001' -or $designFm.master_spec_ref -cne [string]$fixture.master_spec_ref -or
-        $designFm.master_spec_id -cne [string]$specFm.master_spec_id -or $designFm.master_spec_revision -cne [string]$specFm.revision -or
-        $designFm.master_plan_ref -cne [string]$fixture.master_plan_ref -or $designFm.master_plan_id -cne [string]$planFm.master_plan_id -or
-        $designFm.master_plan_revision -cne [string]$planFm.revision -or $designFm.mode_constraint -cne $selectorRow.'Mode Constraint' -or
-        $design.Scope.'Work Item ID' -cne $workId -or $design.Scope.'Run ID' -cne $designFm.run_id
-      ) { return $false }
-      $canonicalDesignDiagnostics = @(Test-ArcCanonicalDesignAuthorityRows `
-        -ResponsibilityRows @($design.Responsibilities) `
-        -VerificationRows @($design.Verifications) `
-        -ApprovedDeviationRows @($design.Deviations) `
-        -ModeConstraint ([string]$selectorRow.'Mode Constraint')
-      )
-      if ($canonicalDesignDiagnostics.Count -ne 0) { return $false }
-      if ($selectorRow.'Adapter Kind' -ceq 'migration-unit') {
-        if ($workRow.'Delivery Adapter' -cne ('migration-unit:'+$selectorRow.'External ID') -or $selectorRow.'External ID' -cnotmatch '^UNIT-[A-Z0-9]+(?:-[A-Z0-9]+)*$') { return $false }
-      } elseif ($selectorRow.'Adapter Kind' -ceq 'none') {
-        if ($workRow.'Delivery Adapter' -cne 'none' -and $workRow.'Delivery Adapter' -cnotmatch '^generic:[A-Za-z0-9][A-Za-z0-9._-]*$') { return $false }
-      } else { return $false }
-      $concreteIds=@($design.Responsibilities|Where-Object{$_.'Co-location Policy'-cne'shared-foundation'-and$_.'Boundary Kind'-cne'integration'}|ForEach-Object{[string]$_.'Responsibility ID'})
-      $sharedIds=@($design.Responsibilities|Where-Object{$_.'Co-location Policy'-ceq'shared-foundation'}|ForEach-Object{[string]$_.'Responsibility ID'})
-      $integrationIds=@($design.Responsibilities|Where-Object{$_.'Co-location Policy'-cne'shared-foundation'-and$_.'Boundary Kind'-ceq'integration'}|ForEach-Object{[string]$_.'Responsibility ID'})
-      $declaredConcrete=@(&$splitIds $ownerRow.'Responsibility IDs');$declaredShared=@(&$splitIds $ownerRow.'Shared Foundation IDs');$declaredIntegration=@(&$splitIds $ownerRow.'Integration Responsibility IDs')
-      if (-not(&$exactOrdinal $declaredConcrete $concreteIds)-or-not(&$exactOrdinal $declaredShared $sharedIds)-or-not(&$exactOrdinal $declaredIntegration $integrationIds)) { return $false }
-      $canonicalBoundaryKinds=@('domain','data','application','presentation','adapter','integration','config','test','project-defined')
-      $deviationPlaceholderPattern='(?i)(?:^|[^A-Za-z0-9])(?:pending|unknown|none|tbd|review|placeholder)(?:[^A-Za-z0-9]|$)|<[^>]+>'
-      $invalidDeviationRows=@($design.Deviations|Where-Object{
-        $deviationRow=$_
-        $decisionMatch=[regex]::Match([string]$deviationRow.'Resolved Decision','^resolved:DECISION-[A-Z0-9]+(?:-[A-Z0-9]+)*:\s*(?<body>\S.*)$')
-        [string]$deviationRow.'Deviation Reference'-cnotmatch'^DEV-[A-Z0-9]+(?:-[A-Z0-9]+)*$'-or
-        [string]::IsNullOrWhiteSpace([string]$deviationRow.Concern)-or[string]$deviationRow.Concern-match$deviationPlaceholderPattern-or
-        [string]$deviationRow.'Conflict Reference'-cnotmatch'^CONFLICT-[A-Z0-9]+(?:-[A-Z0-9]+)*$'-or
-        -not$decisionMatch.Success-or$decisionMatch.Groups['body'].Value-match$deviationPlaceholderPattern-or
-        [string]$deviationRow.'Tech Lead Approval'-cnotmatch'^approval:TECH-LEAD-[A-Z0-9]+(?:-[A-Z0-9]+)*$'
-      })
-      if($invalidDeviationRows.Count-ne0-or@($design.Deviations|Group-Object 'Deviation Reference'|Where-Object Count -ne 1).Count-ne0){return $false}
-      foreach($responsibilityRow in $design.Responsibilities){
-        $responsibilityId=[string]$responsibilityRow.'Responsibility ID';$verificationIds=@($responsibilityRow.'Verification Owner References'-split';'|ForEach-Object{$_.Trim()}|Where-Object{$_-ne''})
-        $responsibilityConformanceValid=$false
-        if($responsibilityRow.Conformance-ceq'yes'){
-          $responsibilityConformanceValid=$responsibilityRow.'Deviation Reference'-ceq'not-applicable'
-        }
-        elseif($responsibilityRow.Conformance-ceq'no'-and$responsibilityRow.'Architecture Authority'-ceq'approved-structural-deviation'-and$responsibilityRow.'Deviation Reference'-cmatch'^DEV-[A-Z0-9]+(?:-[A-Z0-9]+)*$'){
-          $responsibilityConformanceValid=@($design.Deviations|Where-Object{$_.'Deviation Reference'-ceq$responsibilityRow.'Deviation Reference'}).Count-eq1
-        }
-        if($responsibilityRow.'Boundary Kind'-cnotin$canonicalBoundaryKinds-or-not$responsibilityConformanceValid-or$responsibilityRow.'Trace IDs'-notmatch('(?:^|;\s*)'+[regex]::Escape($workId)+'(?:\s*;|$)')-or-not$seenResponsibilityIds.Add($responsibilityId)-or$verificationIds.Count-eq0){return $false}
-        if($responsibilityRow.'Boundary Kind'-ceq'test'){
-          if($verificationIds.Count-ne1-or$verificationIds[0]-cne'not-applicable'){return $false}
-          continue
-        }
-        foreach($verificationId in $verificationIds){
-          if(-not$seenVerificationOwnerIds.Add($verificationId)){return $false}
-          $verificationMatches=@($design.Verifications|Where-Object{$_.'Verification Owner ID'-ceq$verificationId})
-          if($verificationMatches.Count-ne1-or$verificationMatches[0].'Production Responsibility ID'-cne$responsibilityId-or$verificationMatches[0].Verdict-cne'PASS'){return $false}
-        }
-      }
-      $expectedVerificationCount=@($design.Responsibilities|Where-Object{$_.'Boundary Kind'-cne'test'}|ForEach-Object{@($_.'Verification Owner References'-split';'|Where-Object{$_-ne''-and$_-cne'not-applicable'})}).Count
-      if($design.Verifications.Count-ne$expectedVerificationCount){return $false}
-    }
-    return $true
-  }
-  $plannedResponsibilityAuthorityValid = if ($planResponsibilityContractValid) {
-    & $resolvePlannedResponsibilityAuthority
-  }
-  else { $false }
-  $resolveResponsibilityEvidence = {
-    param([string]$Reference,[string]$ExpectedWorkItem,[object]$ExpectedHandoff,[string]$ExpectedRunId,[string]$Context)
-    $referenceMatch=[regex]::Match($Reference,'^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$')
-    if(-not$referenceMatch.Success-or[IO.Path]::IsPathRooted($referenceMatch.Groups['path'].Value)-or$referenceMatch.Groups['path'].Value-match'(^|[\/])\.\.([\/]|$)'){return $false}
-    $path=[IO.Path]::GetFullPath((Join-Path $root $referenceMatch.Groups['path'].Value))
-    if(-not$path.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase)-or-not(Test-Path -LiteralPath $path -PathType Leaf)-or[IO.Path]::GetFullPath((Split-Path -Parent $path))-cne$scopeRunDirectory){return $false}
-    $bytes=[IO.File]::ReadAllBytes($path);$sha=[Security.Cryptography.SHA256]::Create()
-    try{$actualDigest=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
-    if($actualDigest-cne$referenceMatch.Groups['digest'].Value){return $false}
-    try{$text=[Text.UTF8Encoding]::new($false,$true).GetString($bytes)}catch{return $false}
-    $normalized=&$normalize $text
-    $frontMatterMatch=[regex]::Match($normalized,'\A---\n(?<body>.*?)\n---\n','Singleline')
-    if(-not$frontMatterMatch.Success){return $false}
-    $topLevel=@{}
-    foreach($line in $frontMatterMatch.Groups['body'].Value -split "`n"){
-      $fieldMatch=[regex]::Match($line,'^(?<key>[a-z_][a-z0-9_]*):[ \t]*(?<value>\S.*?)$')
-      if($fieldMatch.Success){if($topLevel.ContainsKey($fieldMatch.Groups['key'].Value)){return $false};$topLevel[$fieldMatch.Groups['key'].Value]=$fieldMatch.Groups['value'].Value.Trim()}
-    }
-    $topKeys=@($topLevel.Keys|Sort-Object)
-    $contractMatch=[regex]::Match($frontMatterMatch.Groups['body'].Value,'(?m)^responsibility_contract:\n  version: 1\n  applicability: required$')
-    $scope=@(&$table $text 'Master Scope Context' @('Run ID','Master Spec Reference','Master Spec ID','Master Spec Revision','Master Plan Reference','Master Plan ID','Master Plan Revision','Work Item ID') "$Context responsibility evidence")
-    $provenance=@(&$table $text 'Task Provenance' @('Task / Unit','Task-base SHA','Final-tree SHA','Source Artifact') "$Context responsibility evidence")
-    $handoff=@(&$table $text 'Architecture Responsibility Handoff' @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State','Evidence References') "$Context responsibility evidence")
-    if((($topKeys-join'|')-cne'approval_source|produced_at|result|status|step_id')-or-not$contractMatch.Success-or$topLevel.step_id-cne'11-ai-review'-or$topLevel.status-cne'approved'-or$topLevel.result-cne'complete'-or$topLevel.approval_source-cne'human'-or$topLevel.produced_at-cnotmatch'^20[0-9]{2}-[0-9]{2}-[0-9]{2}$'-or$scope.Count-ne1-or$provenance.Count-ne1-or$handoff.Count-ne1){return $false}
-    if($scope[0].'Run ID'-cne$ExpectedRunId-or$scope[0].'Master Spec Reference'-cne[string]$fixture.master_spec_ref-or$scope[0].'Master Spec ID'-cne[string]$specFm.master_spec_id-or$scope[0].'Master Spec Revision'-cne[string]$specFm.revision-or$scope[0].'Master Plan Reference'-cne[string]$fixture.master_plan_ref-or$scope[0].'Master Plan ID'-cne[string]$planFm.master_plan_id-or$scope[0].'Master Plan Revision'-cne[string]$planFm.revision-or$scope[0].'Work Item ID'-cne$ExpectedWorkItem){return $false}
-    $assuranceEnvelope=&$resolveAssuranceEnvelope $text $ExpectedWorkItem $Context
-    $approvedSelections=@($approvedPlanSelectorRows|Where-Object{$_.'Work Item ID'-ceq$ExpectedWorkItem})
-    if($approvedSelections.Count-ne1-or-not$assuranceEnvelope.Valid-or$assuranceEnvelope.AdapterKind-cne$approvedSelections[0].'Adapter Kind'-or$assuranceEnvelope.ModeConstraint-cne$approvedSelections[0].'Mode Constraint'-or$provenance[0].'Task / Unit'-cne$assuranceEnvelope.Identity-or$provenance[0].'Task-base SHA'-cnotmatch'^[0-9a-f]{40}$'-or$provenance[0].'Final-tree SHA'-cnotmatch'^[0-9a-f]{40}$'-or$provenance[0].'Source Artifact'-cne'implementation-report.md'){return $false}
-    foreach($field in @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State')){if($handoff[0].$field-cne$ExpectedHandoff.$field){return $false}}
-    $expectedSourceDiff='source-diff:'+$provenance[0].'Task-base SHA'+'..'+$provenance[0].'Final-tree SHA'+'#'+$ExpectedWorkItem
-    return $handoff[0].'Evidence References' -ceq $expectedSourceDiff
-  }
-  $responsibilityChainValid=$true
-  $structuralResponsibilityChainBlocked=$false
-  $responsibilityChainByWorkItem=@{}
-  $responsibilityContractPath=Join-Path $root 'contracts/file-responsibility-conformance.md'
-  $responsibilityValidatorPath=Join-Path $root 'tests/validation/responsibility-conformance.validation.ps1'
-  if(-not (Test-Path -LiteralPath $responsibilityContractPath -PathType Leaf) -or -not (Test-Path -LiteralPath $responsibilityValidatorPath -PathType Leaf)){
-    $responsibilityChainValid=$false
-  }else{
-    . $responsibilityValidatorPath
-    $responsibilityContractText=Get-Content -Raw -Encoding utf8 -LiteralPath $responsibilityContractPath
-    $declaredChains=@($fixture.responsibility_chain_refs)
-    foreach($declaredChain in $declaredChains){
-      $chainFields=@($declaredChain.PSObject.Properties.Name|Sort-Object)
-      $workItemId=[string]$declaredChain.work_item_id
-      $artifactReferences=@($declaredChain.artifact_refs)
-      $approvedSelections=@($approvedPlanSelectorRows|Where-Object{$_.'Work Item ID'-ceq$workItemId})
-      if(($chainFields-join'|')-cne'artifact_refs|work_item_id'-or[string]::IsNullOrWhiteSpace($workItemId)-or$responsibilityChainByWorkItem.ContainsKey($workItemId)-or$artifactReferences.Count-notin@(4,5)){$responsibilityChainValid=$false;continue}
-      if($approvedSelections.Count-ne1){$responsibilityChainValid=$false;continue}
-      $approvedSelection=$approvedSelections[0]
-      $chainTexts=[Collections.Generic.List[string]]::new()
-      $chainReferences=[Collections.Generic.List[string]]::new()
-      $chainScopes=[Collections.Generic.List[object]]::new()
-      $chainProvenance=[Collections.Generic.List[object]]::new()
-      $chainHandoffs=[Collections.Generic.List[object]]::new()
-      foreach($artifactReference in $artifactReferences){
-        $reference=[string]$artifactReference
-        $referenceMatch=[regex]::Match($reference,'^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$')
-        if(-not$referenceMatch.Success-or[IO.Path]::IsPathRooted($referenceMatch.Groups['path'].Value)-or$referenceMatch.Groups['path'].Value-match'(^|[\/])\.\.([\/]|$)'){$responsibilityChainValid=$false;continue}
-        $artifactPath=[IO.Path]::GetFullPath((Join-Path $root $referenceMatch.Groups['path'].Value))
-        if(-not $artifactPath.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $artifactPath -PathType Leaf) -or [IO.Path]::GetFullPath((Split-Path -Parent $artifactPath))-cne$scopeRunDirectory){$responsibilityChainValid=$false;continue}
-        $artifactBytes=[IO.File]::ReadAllBytes($artifactPath);$artifactSha=[Security.Cryptography.SHA256]::Create()
-        try{$artifactDigest=([BitConverter]::ToString($artifactSha.ComputeHash($artifactBytes))).Replace('-','').ToLowerInvariant()}finally{$artifactSha.Dispose()}
-        if($artifactDigest-cne$referenceMatch.Groups['digest'].Value){$responsibilityChainValid=$false;continue}
-        try{$artifactText=[Text.UTF8Encoding]::new($false,$true).GetString($artifactBytes)}catch{$responsibilityChainValid=$false;continue}
-        $artifactScope=@(&$table $artifactText 'Master Scope Context' @('Run ID','Master Spec Reference','Master Spec ID','Master Spec Revision','Master Plan Reference','Master Plan ID','Master Plan Revision','Work Item ID') "Responsibility chain artifact $workItemId")
-        $artifactProvenance=@(&$table $artifactText 'Task Provenance' @('Task / Unit','Task-base SHA','Final-tree SHA','Source Artifact') "Responsibility chain artifact $workItemId")
-        $artifactHandoff=@(&$table $artifactText 'Architecture Responsibility Handoff' @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State','Evidence References') "Responsibility chain artifact $workItemId")
-        if($artifactScope.Count-ne1-or$artifactProvenance.Count-ne1-or$artifactHandoff.Count-ne1){$responsibilityChainValid=$false;continue}
-        $chainReferences.Add($reference);$chainTexts.Add($artifactText);$chainScopes.Add($artifactScope[0]);$chainProvenance.Add($artifactProvenance[0]);$chainHandoffs.Add($artifactHandoff[0])
-      }
-      if($chainTexts.Count-ne$artifactReferences.Count){$responsibilityChainValid=$false;continue}
-      $chainStepIds=@($chainTexts|ForEach-Object{$stepMatch=[regex]::Match((&$normalize $_),'(?m)^step_id: (?<step>\S+)$');if($stepMatch.Success){$stepMatch.Groups['step'].Value}else{''}})
-      $incrementalSteps=@('11-ai-review','12-verification-testing','13-verify-parity','14-verify-regression','15-knowledge-base')
-      $greenfieldSteps=@('11-ai-review','12-verification-testing','13-verify-parity','15-knowledge-base')
-      $modeConstraint=[string]$approvedSelection.'Mode Constraint'
-      $expectedSteps=if($modeConstraint-ceq'incremental/preserve-existing'){$incrementalSteps}elseif($modeConstraint-ceq'greenfield/design-new'){$greenfieldSteps}else{@()}
-      if($expectedSteps.Count-eq0-or($chainStepIds-join'|')-cne($expectedSteps-join'|')){$responsibilityChainValid=$false;continue}
-      $predecessorScopeRows=@(& $readMasterScopeContext $predecessorText 'Flexible scope predecessor responsibility authority')
-      $expectedRunId=if($predecessorScopeRows.Count-eq1){[string]$predecessorScopeRows[0].'Run ID'}else{''}
-      $canonicalSourceDiff=''
-      for($provenanceIndex=0;$provenanceIndex-lt$chainProvenance.Count;$provenanceIndex++){
-        $scopeRow=$chainScopes[$provenanceIndex];$provenanceRow=$chainProvenance[$provenanceIndex];$handoffRow=$chainHandoffs[$provenanceIndex]
-        $observedSourceDiff='source-diff:'+$provenanceRow.'Task-base SHA'+'..'+$provenanceRow.'Final-tree SHA'+'#'+$workItemId
-        if($scopeRow.'Run ID'-cne$expectedRunId-or$scopeRow.'Master Spec Reference'-cne[string]$fixture.master_spec_ref-or$scopeRow.'Master Spec ID'-cne[string]$specFm.master_spec_id-or$scopeRow.'Master Spec Revision'-cne[string]$specFm.revision-or$scopeRow.'Master Plan Reference'-cne[string]$fixture.master_plan_ref-or$scopeRow.'Master Plan ID'-cne[string]$planFm.master_plan_id-or$scopeRow.'Master Plan Revision'-cne[string]$planFm.revision-or$scopeRow.'Work Item ID'-cne$workItemId){$responsibilityChainValid=$false}
-        $assuranceEnvelope=&$resolveAssuranceEnvelope $chainTexts[$provenanceIndex] $workItemId "Responsibility chain artifact $workItemId"
-        if(-not$assuranceEnvelope.Valid-or$assuranceEnvelope.AdapterKind-cne$approvedSelection.'Adapter Kind'-or$assuranceEnvelope.ModeConstraint-cne$modeConstraint-or$provenanceRow.'Task / Unit'-cne$assuranceEnvelope.Identity-or$provenanceRow.'Task-base SHA'-cnotmatch'^[0-9a-f]{40}$'-or$provenanceRow.'Final-tree SHA'-cnotmatch'^[0-9a-f]{40}$'-or$handoffRow.'Evidence References'-cne$observedSourceDiff){$responsibilityChainValid=$false}
-        if($provenanceIndex-eq0){$canonicalSourceDiff=$observedSourceDiff}elseif($observedSourceDiff-cne$canonicalSourceDiff){$responsibilityChainValid=$false}
-      }
-      $initialHandoff=@(& $table $chainTexts[0] 'Architecture Responsibility Handoff' @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State','Evidence References') "Responsibility review chain $workItemId")
-      if($initialHandoff.Count-ne1-or$initialHandoff[0].'Evidence References'-cne$canonicalSourceDiff-or-not(& $resolveResponsibilityEvidence $chainReferences[0] $workItemId $initialHandoff[0] $expectedRunId "Responsibility review chain $workItemId")){$responsibilityChainValid=$false}
-      for($chainIndex=0;$chainIndex-lt($chainTexts.Count-1);$chainIndex++){
-        $handoffDiagnostics=@(Test-ResponsibilityHandoff -SourceText $chainTexts[$chainIndex] -TargetText $chainTexts[$chainIndex+1] -ContractText $responsibilityContractText -ApprovedPlanText $planText)
-        if($handoffDiagnostics.Count-ne0){$responsibilityChainValid=$false}
-      }
-      $finalHandoff=@(& $table $chainTexts[-1] 'Architecture Responsibility Handoff' @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State','Evidence References') "Responsibility terminal chain $workItemId")
-      if($finalHandoff.Count-ne1-or$finalHandoff[0].'Responsibility Contract Version'-cne'1'){$responsibilityChainValid=$false;continue}
-      $derivedFinalArchitecture=if($finalHandoff[0].'Tree Conformance'-ceq'PASS'-and$finalHandoff[0].'Responsibility Conformance'-ceq'PASS'-and$finalHandoff[0].'Verification Ownership'-ceq'PASS'){'PASS'}else{'BLOCKED'}
-      if($finalHandoff[0].'Architecture Conformance State'-cne$derivedFinalArchitecture){$responsibilityChainValid=$false}
-      if($derivedFinalArchitecture-cne'PASS'){$structuralResponsibilityChainBlocked=$true;$responsibilityChainValid=$false}
-      $responsibilityChainByWorkItem[$workItemId]=[pscustomobject]@{SourceDiff=$canonicalSourceDiff;FinalReference=$chainReferences[-1];Handoff=$finalHandoff[0];ModeConstraint=$modeConstraint}
-    }
-  }
-  $resolveApprovedAdapterMode = {
-    param([string]$TerminalPath,[object]$AdapterRow,[string]$ExpectedWorkItem,[string]$ExpectedAdapter,[string]$Context)
-    if ($null -eq $AdapterRow) {
-      return [pscustomobject]@{ Valid=$false; ModeConstraint='' }
-    }
-    $expectedKind='';$expectedExternal=''
-    if($ExpectedAdapter-ceq'none'){$expectedKind='none';$expectedExternal='not-applicable'}
-    else{
-      $expectedAdapterMatch=[regex]::Match($ExpectedAdapter,'^(?<kind>migration-unit|task|story|package|phase|milestone):(?<external>\S+)$')
-      if(-not$expectedAdapterMatch.Success){return [pscustomobject]@{Valid=$false;ModeConstraint=''}}
-      $expectedKind=$expectedAdapterMatch.Groups['kind'].Value;$expectedExternal=$expectedAdapterMatch.Groups['external'].Value
-    }
-    $approvedSelections=@($approvedPlanSelectorRows|Where-Object{$_.'Work Item ID'-ceq$ExpectedWorkItem})
-    if($approvedSelections.Count-ne1){return [pscustomobject]@{Valid=$false;ModeConstraint=''}}
-    $approvedSelection=$approvedSelections[0]
-    $overlapColumns=@('Work Item ID','Adapter Kind','External ID','Authority','Authority Revision','Approval Reference','Parent Selector','Acceptance','Trace IDs','Mode Constraint','Design Revision','Parent Work Item ID','Decomposition Decision Reference')
-    $selectionMatches=($approvedSelection.'Adapter Kind'-ceq$expectedKind-and$approvedSelection.'External ID'-ceq$expectedExternal)
-    foreach($overlapColumn in $overlapColumns){if([string]$AdapterRow.$overlapColumn-cne[string]$approvedSelection.$overlapColumn){$selectionMatches=$false}}
-    $approvedMode=[string]$approvedSelection.'Mode Constraint'
-    if(-not$selectionMatches-or$approvedMode-cnotin@('incremental/preserve-existing','greenfield/design-new')){return [pscustomobject]@{Valid=$false;ModeConstraint=''}}
-    if($expectedKind-cne'migration-unit'){
-      return [pscustomobject]@{Valid=$true;ModeConstraint=$approvedMode}
-    }
-    $unitId = $expectedExternal
-    $authorityReference = [string]$AdapterRow.Authority
-    $authorityRevision = [string]$AdapterRow.'Authority Revision'
-    if (
-      [string]::IsNullOrWhiteSpace($authorityReference) -or
-      [IO.Path]::IsPathRooted($authorityReference) -or
-      $authorityReference -match '(^|[\/])\.\.([\/]|$)' -or
-      $authorityRevision -cnotmatch '^[1-9][0-9]*$'
-    ) { return [pscustomobject]@{ Valid=$false; ModeConstraint='' } }
-    $authorityPath = [IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $TerminalPath) $authorityReference))
-    if (
-      -not $authorityPath.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or
-      -not (Test-Path -LiteralPath $authorityPath -PathType Leaf) -or
-      [IO.Path]::GetFullPath((Split-Path -Parent $authorityPath)) -cne $scopeRunDirectory
-    ) { return [pscustomobject]@{ Valid=$false; ModeConstraint='' } }
-    try { $authorityText = [Text.UTF8Encoding]::new($false,$true).GetString([IO.File]::ReadAllBytes($authorityPath)) }
-    catch { return [pscustomobject]@{ Valid=$false; ModeConstraint='' } }
-    $authorityFm = & $frontMatter $authorityText "$Context approved mode authority"
-    $authorityKeys = @($authorityFm.Keys | Sort-Object)
-    $unitColumns = @('Migration Unit ID','Plan Reference','Approval Reference','Mode Constraint','Bootstrap Scope','Foundation Baseline ID','Foundation Baseline Reference','Foundation Baseline Approval Reference','Baseline Reference','Trace IDs')
-    $unitRows = @(& $table $authorityText 'Migration Units' $unitColumns "$Context approved mode authority" | Where-Object { $_.'Migration Unit ID' -ceq $unitId })
-    $valid = (
-      ($authorityKeys -join '|') -ceq 'approval_source|produced_at|result|revision|status|step_id' -and
-      $authorityFm.step_id -ceq '08-plan-waves' -and $authorityFm.status -ceq 'approved' -and
-      $authorityFm.result -ceq 'complete' -and $authorityFm.approval_source -ceq 'human' -and
-      $authorityFm.produced_at -cmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' -and
-      $authorityFm.revision -ceq $authorityRevision -and $unitRows.Count -eq 1
-    )
-    if ($unitRows.Count -eq 1) {
-      $unitRow = $unitRows[0]
-      $valid = $valid -and
-        $unitRow.'Plan Reference' -ceq ($authorityReference+'@'+$authorityRevision) -and
-        $unitRow.'Approval Reference' -ceq [string]$AdapterRow.'Approval Reference' -and
-        $unitRow.'Mode Constraint' -ceq [string]$AdapterRow.'Mode Constraint' -and
-        -not [string]::IsNullOrWhiteSpace($unitRow.'Bootstrap Scope') -and
-        -not [string]::IsNullOrWhiteSpace($unitRow.'Foundation Baseline ID') -and
-        -not [string]::IsNullOrWhiteSpace($unitRow.'Foundation Baseline Reference') -and
-        -not [string]::IsNullOrWhiteSpace($unitRow.'Foundation Baseline Approval Reference') -and
-        -not [string]::IsNullOrWhiteSpace($unitRow.'Baseline Reference') -and
-        -not [string]::IsNullOrWhiteSpace($unitRow.'Trace IDs') -and
-        $unitRow.'Mode Constraint' -cin @('incremental/preserve-existing','greenfield/design-new')
-    }
-    $mode = if ($valid) { $approvedMode } else { '' }
-    return [pscustomobject]@{ Valid=$valid; ModeConstraint=$mode }
-  }
-  $resolveImmutableEvidence = {
-    param([string]$Reference,[string]$ExpectedWorkItem,[string]$ExpectedRevision,[string]$ExpectedTraces,[string]$ExpectedAcceptance,[string]$ExpectedAdapter,[string]$ExpectedApproval,[string]$ExpectedSpecReference,[string]$ExpectedPlanReference,[string]$Context)
-    $m=[regex]::Match($Reference,'^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$')
-    if(-not $m.Success -or [IO.Path]::IsPathRooted($m.Groups['path'].Value) -or $m.Groups['path'].Value -match '(^|[\/])\.\.([\/]|$)'){$errors.Add("$Context requires immutable relative artifact#sha256 reference");return $false}
-    $path=[IO.Path]::GetFullPath((Join-Path $root $m.Groups['path'].Value));if(-not $path.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase)-or -not(Test-Path -LiteralPath $path -PathType Leaf)-or[IO.Path]::GetFullPath((Split-Path -Parent $path))-cne$scopeRunDirectory){$errors.Add("$Context evidence artifact is missing or foreign");return $false}
-    $bytes=[IO.File]::ReadAllBytes($path);$sha=[Security.Cryptography.SHA256]::Create();try{$actual=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
-    if($actual -cne $m.Groups['digest'].Value){$errors.Add("$Context evidence digest is stale");return $false}
-    $text=[Text.Encoding]::UTF8.GetString($bytes);$fm=& $frontMatter $text $Context
-    $keys=@($fm.Keys|Sort-Object);$expected=@('approval_source','produced_at','result','status','step_id')
-    $scope=@(& $table $text 'Master Scope Context' @('Master Spec Reference','Master Spec ID','Master Spec Revision','Master Plan Reference','Master Plan ID','Master Plan Revision','Work Item ID','Work Item Approval Reference') $Context)
-    $adapter=@(& $table $text 'Canonical Adapter Evidence' @('Work Item ID','Adapter Kind','External ID','Authority','Authority Revision','Approval Reference','Parent Selector','Acceptance','Trace IDs','Mode Constraint','Design Revision','Parent Work Item ID','Decomposition Decision Reference','Canonical Match') $Context)
-    $assurance=@(& $table $text 'Assurance State' @('Runtime Evidence State','Architecture Conformance State','Selector Schema State') $Context)
-    $handoff=@(& $table $text 'Architecture Responsibility Handoff' @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State','Evidence References') "$Context work-item terminal")
-    $terminalChain=@(& $table $text 'Terminal Chain Reference' @('Work Item ID','Artifact Reference') "$Context work-item terminal")
-    $tests=@(& $table $text 'Work Item Test Evidence' @('Work Item ID','Activation Slice ID','Seam','Test','Command','Result','Trace IDs') $Context)
-    $allowedTraces=@($ExpectedTraces -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
-    $observedTraces=@($tests | ForEach-Object { $_.'Trace IDs' -split '[;,]' } | ForEach-Object { $_.Trim() } | Where-Object { $_ } | Sort-Object -Unique)
-    $badTests=@($tests | Where-Object {
-      $_.'Work Item ID' -cne $ExpectedWorkItem -or
-      $_.Result -cne 'PASS' -or
-      @($_.'Trace IDs' -split '[;,]' | ForEach-Object { $_.Trim() } | Where-Object { $allowedTraces -cnotcontains $_ }).Count
-    })
-    $adapterKind='none';$externalId='not-applicable';if($ExpectedAdapter-cmatch'^(?<kind>migration-unit|task|story|package|phase|milestone):(?<id>\S+)$'){$adapterKind=$Matches.kind;$externalId=$Matches.id}elseif($ExpectedAdapter-cne'none'){$adapterKind='invalid'}
-    $approvedMode = if($adapter.Count-eq1){& $resolveApprovedAdapterMode $path $adapter[0] $ExpectedWorkItem $ExpectedAdapter $Context}else{[pscustomobject]@{Valid=$false;ModeConstraint=''}}
-    $runtime=if($assurance.Count-eq1){$assurance[0].'Runtime Evidence State'}else{''};$architecture=if($assurance.Count-eq1){$assurance[0].'Architecture Conformance State'}else{''};$selector=if($assurance.Count-eq1){$assurance[0].'Selector Schema State'}else{''}
-    $normalLifecycle=($fm.status-ceq'approved'-and$fm.result-ceq'complete'-and$fm.approval_source-ceq'human')
-    $blockerHeading=[regex]::Unescape('Blocker g\u1ed1c');$evidenceHeading=[regex]::Unescape('B\u1eb1ng ch\u1ee9ng')
-    $selectedUnitColumns=@('Migration Unit ID','Plan Reference','Approval Reference','Mode Constraint','Bootstrap Scope','Foundation Baseline ID','Foundation Baseline Reference','Foundation Baseline Approval Reference','Baseline Reference','Trace IDs')
-    $waiverRows=@();$resumeRows=@();$activationRows=@();$waiverEvidenceRows=@();$selectedUnitRows=@();if($runtime-ceq'WAIVED'){$waiverRows=@(& $table $text $blockerHeading @('Stage / Check','Native Verdict','Command Role','Required Command Lifecycle','Command / Capability','Observed Error','Evidence Reference') $Context);$resumeRows=@(& $table $text 'Step 10 Waiver Resume State' @('Resume Phase','Baseline Action','Implementation Status','Target Mutation Evidence','Waiver Evidence') $Context);$activationRows=@(& $table $text 'Activation Slice' @('Activation Slice ID','Applicability','Seam','Input','Output','Source Reference','Trace IDs','Disposition','Status','Decision Reference','Deferred Unit ID') $Context);$waiverEvidenceRows=@(& $table $text $evidenceHeading @('Evidence','Location','Notes') $Context);$selectedUnitRows=@(& $table $text 'Selected Migration Unit' $selectedUnitColumns $Context)}
-    $normalized=&$normalize $text;$waiverPattern='(?ms)^## Approved Baseline Waiver\n\n```yaml\nstatus: approved\nresult: partial\napproval_source: auto-waive\nwaiver:\n  policy: auto-waive\n  category: environment-unavailable\n  original_verdict: blocked\n  effective_action: continue\n  evidence: (?<evidence>\S+)\n```\n\n(?=## Step 10 Waiver Resume State$)';$waiverMatch=[regex]::Match($normalized,$waiverPattern)
-    $activationColumns=@('Activation Slice ID','Applicability','Seam','Input','Output','Source Reference','Trace IDs','Disposition','Status','Decision Reference','Deferred Unit ID')
-    $expectedSeams=@('upstream-response','requested-key','parse-model','state-holder','selector','construct','render','downstream-consumer','test')
-    $predecessorActivationRows=@();$predecessorWaiverRows=@();$predecessorResumeRows=@();$predecessorEvidenceRows=@();$predecessorSelectedUnitRows=@();if($runtime -ceq 'WAIVED'){$predecessorActivationRows=@(& $table $predecessorText 'Activation Slice' $activationColumns "$Context predecessor");$predecessorWaiverRows=@(& $table $predecessorText $blockerHeading @('Stage / Check','Native Verdict','Command Role','Required Command Lifecycle','Command / Capability','Observed Error','Evidence Reference') "$Context predecessor");$predecessorResumeRows=@(& $table $predecessorText 'Step 10 Waiver Resume State' @('Resume Phase','Baseline Action','Implementation Status','Target Mutation Evidence','Waiver Evidence') "$Context predecessor");$predecessorEvidenceRows=@(& $table $predecessorText $evidenceHeading @('Evidence','Location','Notes') "$Context predecessor");$predecessorSelectedUnitRows=@(& $table $predecessorText 'Selected Migration Unit' $selectedUnitColumns "$Context predecessor")}
-    $normalizedPredecessor=& $normalize $predecessorText;$predecessorWaiverMatch=[regex]::Match($normalizedPredecessor,$waiverPattern)
-    $currentSliceIds=@($activationRows | ForEach-Object {$_.'Activation Slice ID'} | Select-Object -Unique)
-    $predecessorSliceIds=@($predecessorActivationRows | ForEach-Object {$_.'Activation Slice ID'} | Select-Object -Unique)
-    $predecessorKeys=@($preFm.Keys | Sort-Object)
-    $predecessorAuthorityValid=(
-      [string]$fixture.predecessor_ref -cmatch '^[^#]+#sha256:[0-9a-f]{64}$' -and
-      (($predecessorKeys -join '|') -ceq 'approval_source|produced_at|result|status|step_id') -and
-      $preFm.step_id -ceq '10-code-migration' -and $preFm.status -ceq 'approved' -and
-      $preFm.result -ceq 'partial' -and $preFm.approval_source -ceq 'auto-waive' -and
-      $preFm.produced_at -cmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$'
-    )
-    $activationValid=(
-      $predecessorAuthorityValid -and
-      $currentSliceIds.Count -ge 1 -and
-      (($currentSliceIds -join '|') -ceq ($predecessorSliceIds -join '|')) -and
-      $activationRows.Count -eq $predecessorActivationRows.Count
-    )
-    $activationTraceAggregate=[Collections.Generic.List[string]]::new()
-    $waiverProvenanceRows=@($waiverEvidenceRows | Where-Object {$_.Evidence -ceq 'activation-waiver-provenance'})
-    $upstreamProvenanceRows=@($predecessorEvidenceRows | Where-Object {$_.Evidence -ceq 'activation-authority-provenance'})
-    $upstreamReferences=[Collections.Generic.List[string]]::new();$upstreamSlices=[Collections.Generic.List[string]]::new()
-    foreach($upstreamProvenance in $upstreamProvenanceRows){$upstreamMatch=[regex]::Match($upstreamProvenance.Location,'^(?<artifact>[^#]+#sha256:[0-9a-f]{64})#(?<slice>ACT-[0-9]{3})$');if(-not $upstreamMatch.Success){$activationValid=$false}else{$upstreamReferences.Add($upstreamMatch.Groups['artifact'].Value);$upstreamSlices.Add($upstreamMatch.Groups['slice'].Value)}}
-    $uniqueUpstreamReferences=@($upstreamReferences | Sort-Object -Unique);$upstreamActivationRows=@()
-    if($uniqueUpstreamReferences.Count -eq 1){
-      $upstreamReferenceMatch=[regex]::Match($uniqueUpstreamReferences[0],'^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$');$upstreamPath=[IO.Path]::GetFullPath((Join-Path $root $upstreamReferenceMatch.Groups['path'].Value))
-      if(-not $upstreamPath.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or -not(Test-Path -LiteralPath $upstreamPath -PathType Leaf)){
-        $activationValid=$false
-      }else{
-        $upstreamBytes=[IO.File]::ReadAllBytes($upstreamPath);$upstreamSha=[Security.Cryptography.SHA256]::Create()
-        try{$upstreamDigest=([BitConverter]::ToString($upstreamSha.ComputeHash($upstreamBytes))).Replace('-','').ToLowerInvariant()}finally{$upstreamSha.Dispose()}
-        if($upstreamDigest -cne $upstreamReferenceMatch.Groups['digest'].Value){
-          $activationValid=$false
-        }else{
-          $upstreamText=[Text.Encoding]::UTF8.GetString($upstreamBytes);$upstreamFm=& $frontMatter $upstreamText "$Context upstream activation authority"
-          $upstreamKeys=@($upstreamFm.Keys|Sort-Object)
-          $upstreamLifecycleInvalid=((($upstreamKeys-join'|')-cne'approval_source|produced_at|result|revision|status|step_id')-or$upstreamFm.step_id-cne'08-plan-waves'-or$upstreamFm.status-cne'approved'-or$upstreamFm.result-cne'complete'-or$upstreamFm.approval_source-cne'human'-or$upstreamFm.revision-cnotmatch'^[1-9][0-9]*$')
-          if($upstreamLifecycleInvalid){$activationValid=$false}
-          $upstreamActivationRows=@(& $table $upstreamText 'Activation Slice' $activationColumns "$Context upstream activation authority")
-        }
-      }
-    }else{
-      $activationValid=$false
-    }
-    if((($upstreamSlices|Sort-Object)-join'|') -cne (($predecessorSliceIds|Sort-Object)-join'|') -or $upstreamProvenanceRows.Count -ne $predecessorSliceIds.Count -or $upstreamActivationRows.Count -ne $predecessorActivationRows.Count){$activationValid=$false}
-    $stableActivationFields=@('Activation Slice ID','Applicability','Seam','Input','Output','Disposition','Status','Decision Reference','Deferred Unit ID')
-    for($authorityIndex=0;$authorityIndex -lt [Math]::Min($upstreamActivationRows.Count,$predecessorActivationRows.Count);$authorityIndex++){
-      $upstreamRow=$upstreamActivationRows[$authorityIndex];$predecessorAuthorityRow=$predecessorActivationRows[$authorityIndex]
-      foreach($field in $stableActivationFields){if($upstreamRow.$field -cne $predecessorAuthorityRow.$field){$activationValid=$false}}
-      if($predecessorAuthorityRow.'Source Reference' -cne $upstreamRow.'Source Reference' -and -not $predecessorAuthorityRow.'Source Reference'.StartsWith(($upstreamRow.'Source Reference'+'; '),[StringComparison]::Ordinal)){$activationValid=$false}
-      $upstreamRowTraces=@($upstreamRow.'Trace IDs'-split'[;,]'|ForEach-Object{$_.Trim()}|Where-Object{$_}|Sort-Object -Unique)
-      $predecessorRowTraces=@($predecessorAuthorityRow.'Trace IDs'-split'[;,]'|ForEach-Object{$_.Trim()}|Where-Object{$_}|Sort-Object -Unique)
-      if($upstreamRowTraces.Count-eq0-or$predecessorRowTraces.Count-eq0-or@($upstreamRowTraces|Where-Object{$predecessorRowTraces-cnotcontains$_}).Count-or@($predecessorRowTraces|Where-Object{$allowedTraces-cnotcontains$_}).Count){$activationValid=$false}
-    }
-    $blockerFields=@('Stage / Check','Native Verdict','Command Role','Required Command Lifecycle','Command / Capability','Observed Error','Evidence Reference')
-    if($waiverRows.Count-ne1-or$predecessorWaiverRows.Count-ne1){$activationValid=$false}else{foreach($field in $blockerFields){if($waiverRows[0].$field-cne$predecessorWaiverRows[0].$field){$activationValid=$false}}}
-    if(-not$waiverMatch.Success-or-not$predecessorWaiverMatch.Success-or$waiverMatch.Value-cne$predecessorWaiverMatch.Value){$activationValid=$false}
-    if($predecessorResumeRows.Count-ne1-or$predecessorResumeRows[0].'Resume Phase'-cne'resume-required'-or$predecessorResumeRows[0].'Baseline Action'-cne'skip-pre-mutation-baseline-only'-or$predecessorResumeRows[0].'Implementation Status'-cne'blocked'-or$predecessorResumeRows[0].'Target Mutation Evidence'-cne'none'-or$predecessorResumeRows[0].'Waiver Evidence'-cne$predecessorWaiverMatch.Groups['evidence'].Value){$activationValid=$false}
-    if($selectedUnitRows.Count-ne1-or$predecessorSelectedUnitRows.Count-ne1){$activationValid=$false}else{foreach($field in $selectedUnitColumns){if($selectedUnitRows[0].$field-cne$predecessorSelectedUnitRows[0].$field){$activationValid=$false}};if($selectedUnitRows[0].'Migration Unit ID'-cne$externalId-or$selectedUnitRows[0].'Mode Constraint'-cne'incremental/preserve-existing'-or$selectedUnitRows[0].'Bootstrap Scope'-cne'not-required'-or$selectedUnitRows[0].'Baseline Reference'-cne$waiverMatch.Groups['evidence'].Value-or$selectedUnitRows[0].'Trace IDs'-cne$ExpectedTraces){$activationValid=$false}}
-    foreach($sliceId in $currentSliceIds){
-      $currentGroup=@($activationRows | Where-Object {$_.'Activation Slice ID' -ceq $sliceId})
-      $predecessorGroup=@($predecessorActivationRows | Where-Object {$_.'Activation Slice ID' -ceq $sliceId})
-      if($sliceId -cnotmatch '^ACT-[0-9]{3}$' -or $currentGroup.Count -ne 9 -or $predecessorGroup.Count -ne 9 -or (($currentGroup.Seam -join '|') -cne ($expectedSeams -join '|')) -or (($predecessorGroup.Seam -join '|') -cne ($expectedSeams -join '|'))){$activationValid=$false;continue}
-      $applicability=$currentGroup[0].Applicability
-      if(@($currentGroup | Where-Object {$_.Applicability -cne $applicability}).Count -or @($predecessorGroup | Where-Object {$_.Applicability -cne $applicability}).Count){$activationValid=$false}
-      for($rowIndex=0;$rowIndex -lt 9;$rowIndex++){
-        $currentRow=$currentGroup[$rowIndex];$predecessorRow=$predecessorGroup[$rowIndex]
-        foreach($field in @('Activation Slice ID','Applicability','Seam','Input','Output','Disposition','Status','Decision Reference','Deferred Unit ID')){if($currentRow.$field -cne $predecessorRow.$field){$activationValid=$false}}
-        if($currentRow.'Source Reference' -cne $predecessorRow.'Source Reference' -and -not $currentRow.'Source Reference'.StartsWith(($predecessorRow.'Source Reference'+'; '),[StringComparison]::Ordinal)){$activationValid=$false}
-        $currentTraces=@($currentRow.'Trace IDs' -split '[;,]' | ForEach-Object {$_.Trim()} | Where-Object {$_} | Sort-Object -Unique)
-        $predecessorTraces=@($predecessorRow.'Trace IDs' -split '[;,]' | ForEach-Object {$_.Trim()} | Where-Object {$_} | Sort-Object -Unique)
-        if($currentTraces.Count -eq 0 -or $predecessorTraces.Count -eq 0 -or @($predecessorTraces | Where-Object {$currentTraces -cnotcontains $_}).Count -or @($currentTraces | Where-Object {$allowedTraces -cnotcontains $_}).Count){$activationValid=$false}
-        foreach($trace in $currentTraces){if(-not $activationTraceAggregate.Contains($trace)){$activationTraceAggregate.Add($trace)}}
-        $routerDecisionOverride=($currentRow.Seam -ceq 'construct' -and $currentRow.Output -cmatch '(?:^|;\s*)policy=compatibility-dual-path(?:;|$)' -and $currentRow.'Decision Reference' -cne 'not-applicable')
-        $ordinaryApplicable=($applicability -ceq 'applicable' -and $currentRow.Status -ceq 'verified' -and $currentRow.Disposition -in @('implement','reuse') -and ($currentRow.'Decision Reference' -ceq 'not-applicable' -or $routerDecisionOverride) -and $currentRow.'Deferred Unit ID' -ceq 'not-applicable')
-        $deferredApplicable=($applicability -ceq 'applicable' -and $currentRow.Status -ceq 'verified' -and $currentRow.Disposition -ceq 'deferred-approved' -and $currentRow.'Decision Reference' -cne 'not-applicable' -and $currentRow.'Deferred Unit ID' -cmatch '^UNIT-[0-9]{3}$')
-        $approvedNotApplicable=($applicability -ceq 'not-applicable-approved' -and $currentRow.Status -ceq 'verified' -and $currentRow.Disposition -ceq 'not-applicable-approved' -and $currentRow.'Decision Reference' -cne 'not-applicable' -and $currentRow.'Deferred Unit ID' -ceq 'not-applicable')
-        if(-not($ordinaryApplicable -or $deferredApplicable -or $approvedNotApplicable)){$activationValid=$false}
-      }
-      if($applicability -ceq 'applicable'){
-        $construct=$currentGroup[5];$policyMatch=[regex]::Match($construct.Output,'(?:^|;\s*)policy=(?<policy>base-owned|specialized-owned|injected-strategy|compatibility-dual-path)(?:;|$)')
-        if(-not $policyMatch.Success){$activationValid=$false}elseif($policyMatch.Groups['policy'].Value -ceq 'compatibility-dual-path'){
-          $constructTraces=@($construct.'Trace IDs' -split '[;,]' | ForEach-Object {$_.Trim()})
-          if($construct.'Source Reference' -cnotmatch '(?:^|;\s*)compatibility-reason=\S+' -or $construct.'Source Reference' -cnotmatch '(?:^|;\s*)router-owner=\S+' -or $construct.'Decision Reference' -ceq 'not-applicable' -or -not @($constructTraces | Where-Object {$_ -cmatch '^PARITY-[0-9]{3}$'}).Count){$activationValid=$false}
-        }
-      }
-      $relevantApprovals=@($predecessorGroup | ForEach-Object {$_.'Decision Reference'} | Where-Object {$_ -cne 'not-applicable'} | Sort-Object -Unique)
-      $expectedApprovalProvenance=if($relevantApprovals.Count){$relevantApprovals-join'; '}else{'not-applicable'}
-      $upstreamProvenance=@($upstreamProvenanceRows | Where-Object {$_.Location -ceq ($uniqueUpstreamReferences[0]+'#'+$sliceId) -and $_.Notes -ceq $expectedApprovalProvenance})
-      if($upstreamProvenance.Count-ne1){$activationValid=$false}
-      $provenance=@($waiverProvenanceRows | Where-Object {$_.Location -ceq ([string]$fixture.predecessor_ref+'#'+$sliceId) -and $_.Notes -ceq $waiverMatch.Groups['evidence'].Value})
-      if($provenance.Count -ne 1){$activationValid=$false}
-    }
-    if((($activationTraceAggregate | Sort-Object) -join '|') -cne ($allowedTraces -join '|') -or $waiverProvenanceRows.Count -ne $currentSliceIds.Count){$activationValid=$false}
-    $resumeMutationValid=($resumeRows.Count -eq 1 -and $resumeRows[0].'Target Mutation Evidence' -cmatch [regex]::Escape($externalId) -and @($allowedTraces | Where-Object {$resumeRows[0].'Target Mutation Evidence' -cmatch [regex]::Escape($_)}).Count -ge 1)
-    $eligibleWaiver=(
-      $fm.status -ceq 'approved' -and $fm.result -ceq 'partial' -and $fm.approval_source -ceq 'auto-waive' -and
-      $waiverRows.Count -eq 1 -and
-      $waiverRows[0].'Stage / Check' -ceq 'pre-mutation baseline' -and
-      $waiverRows[0].'Native Verdict' -ceq 'BLOCKED' -and
-      $waiverRows[0].'Command Role' -ceq 'availability probe' -and
-      $waiverRows[0].'Required Command Lifecycle' -ceq 'not-started' -and
-      -not [string]::IsNullOrWhiteSpace($waiverRows[0].'Command / Capability') -and
-      -not [string]::IsNullOrWhiteSpace($waiverRows[0].'Observed Error') -and
-      $waiverMatch.Success -and
-      $waiverRows[0].'Evidence Reference' -ceq $waiverMatch.Groups['evidence'].Value -and
-      $resumeRows.Count -eq 1 -and
-      $resumeRows[0].'Resume Phase' -ceq 'resume-consumed' -and
-      $resumeRows[0].'Baseline Action' -ceq 'skip-pre-mutation-baseline-only' -and
-      $resumeRows[0].'Implementation Status' -cne 'blocked' -and
-      $resumeMutationValid -and
-      $resumeRows[0].'Waiver Evidence' -ceq $waiverMatch.Groups['evidence'].Value -and
-      $activationValid -and $waiverEvidenceRows.Count -ge 1 -and
-      $normalized -cmatch '(?ms)^## B\u1eb1ng ch\u1ee9ng\n.*?\n## \u0110i\u1ec3m ch\u01b0a r\u00f5\n\n- none\n\n## K\u1ebft lu\u1eadn\n\npartial\n?$'
-    )
-    $derivedResponsibilityArchitecture=if($handoff.Count-eq1-and$handoff[0].'Tree Conformance'-ceq'PASS'-and$handoff[0].'Responsibility Conformance'-ceq'PASS'-and$handoff[0].'Verification Ownership'-ceq'PASS'){'PASS'}else{'BLOCKED'}
-    $responsibilityEvidenceValid=(
-      $handoff.Count-eq1 -and
-      $handoff[0].'Responsibility Contract Version'-ceq'1' -and
-      $handoff[0].'Tree Conformance'-ceq'PASS' -and
-      $handoff[0].'Responsibility Conformance'-ceq'PASS' -and
-      $handoff[0].'Verification Ownership'-ceq'PASS' -and
-      $handoff[0].'Architecture Conformance State'-ceq$derivedResponsibilityArchitecture -and
-      $handoff[0].'Evidence References'-cmatch'^source-diff:[0-9a-f]{40}\.{2}[0-9a-f]{40}#WORK-[A-Z0-9]+(?:-[A-Z0-9]+)*$' -and
-      $terminalChain.Count-eq1 -and
-      $terminalChain[0].'Work Item ID'-ceq$ExpectedWorkItem -and
-      $terminalChain[0].'Artifact Reference'-cmatch'^[^#]+#sha256:[0-9a-f]{64}$'
-    )
-    $valid=(
-      (($keys -join '|') -ceq ($expected -join '|')) -and
-      $fm.step_id -ceq '10-code-migration' -and $fm.produced_at -cmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' -and
-      $scope.Count -eq 1 -and
-      $scope[0].'Master Spec Reference' -ceq $ExpectedSpecReference -and
-      $scope[0].'Master Spec ID' -ceq $specFm.master_spec_id -and
-      $scope[0].'Master Spec Revision' -ceq $specFm.revision -and
-      $scope[0].'Master Plan Reference' -ceq $ExpectedPlanReference -and
-      $scope[0].'Master Plan ID' -ceq $planFm.master_plan_id -and
-      $scope[0].'Master Plan Revision' -ceq $ExpectedRevision -and
-      $scope[0].'Work Item ID' -ceq $ExpectedWorkItem -and
-      $scope[0].'Work Item Approval Reference' -ceq $ExpectedApproval -and
-      $adapter.Count -eq 1 -and $adapter[0].'Work Item ID' -ceq $ExpectedWorkItem -and
-      $adapter[0].'Adapter Kind' -ceq $adapterKind -and $adapter[0].'External ID' -ceq $externalId -and
-      $adapter[0].Acceptance -ceq $ExpectedAcceptance -and $adapter[0].'Trace IDs' -ceq $ExpectedTraces -and
-      $adapter[0].'Canonical Match' -ceq 'PASS' -and $approvedMode.Valid -and $tests.Count -ge 1 -and $badTests.Count -eq 0 -and
-      (($observedTraces -join '|') -ceq ($allowedTraces -join '|')) -and
-      $architecture -ceq 'PASS' -and $selector -ceq 'PASS' -and $responsibilityEvidenceValid -and
-      (($runtime -ceq 'PASS' -and $normalLifecycle -and -not $waiverMatch.Success) -or
-       ($runtime -ceq 'WAIVED' -and $eligibleWaiver))
-    )
-    if(-not$valid){$observedSpecRef=if($scope.Count-eq1){$scope[0].'Master Spec Reference'}else{'missing'};$observedPlanRef=if($scope.Count-eq1){$scope[0].'Master Plan Reference'}else{'missing'};$observedApproval=if($scope.Count-eq1){$scope[0].'Work Item Approval Reference'}else{'missing'};$errors.Add("$Context implementation evidence binding is invalid [scope=$($scope.Count), adapter=$($adapter.Count), assurance=$($assurance.Count), tests=$($tests.Count), runtime=$runtime, architecture=$architecture, selector=$selector, responsibilityEvidence=$responsibilityEvidenceValid, approvedMode=$($approvedMode.Valid), lifecycle=$normalLifecycle, waiver=$eligibleWaiver, waiverMatch=$($waiverMatch.Success), waiverRows=$($waiverRows.Count), traces=$($observedTraces-join';')/$($allowedTraces-join';'), specRef=$observedSpecRef/$ExpectedSpecReference, planRef=$observedPlanRef/$ExpectedPlanReference, approval=$observedApproval/$ExpectedApproval]")};[pscustomobject]@{Valid=$valid;Runtime=$runtime;Architecture=$architecture;Selector=$selector;ModeConstraint=[string]$approvedMode.ModeConstraint;Handoff=if($handoff.Count-eq1){$handoff[0]}else{$null};TerminalChainReference=if($terminalChain.Count-eq1){[string]$terminalChain[0].'Artifact Reference'}else{''}}
-  }
-  $resolveHistoricalEvidence={param([string]$Reference,[string]$LegacyUnit,[string]$Context)
-    $columns=@('Migration Unit ID','Plan Reference','Approval Reference','Mode Constraint','Bootstrap Scope','Foundation Baseline ID','Foundation Baseline Reference','Foundation Baseline Approval Reference','Baseline Reference','Trace IDs')
-    $referenceMatch=[regex]::Match($Reference,'^(?<path>[^#]+)#sha256:(?<digest>[0-9a-f]{64})$')
-    if(-not $referenceMatch.Success){$errors.Add("$Context historical reference invalid");return $false}
-    $path=[IO.Path]::GetFullPath((Join-Path $root $referenceMatch.Groups['path'].Value))
-    if(-not $path.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or -not(Test-Path -LiteralPath $path -PathType Leaf)){return $false}
-    $bytes=[IO.File]::ReadAllBytes($path);$sha=[Security.Cryptography.SHA256]::Create()
-    try{$actual=([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()}finally{$sha.Dispose()}
-    if($actual -cne $referenceMatch.Groups['digest'].Value){return $false}
-    $text=[Text.Encoding]::UTF8.GetString($bytes);$fm=& $frontMatter $text $Context
-    $fileChangesHeading=[regex]::Unescape('File \u0111\u00e3 thay \u0111\u1ed5i')
-    $traceHeading=[regex]::Unescape('Trace ID tri\u1ec3n khai')
-    $commandsHeading=[regex]::Unescape('L\u1ec7nh v\u00e0 k\u1ebft qu\u1ea3')
-    $blockerHeading=[regex]::Unescape('Blocker g\u1ed1c')
-    $evidenceHeading=[regex]::Unescape('B\u1eb1ng ch\u1ee9ng')
-    $unknownHeading=[regex]::Unescape('\u0110i\u1ec3m ch\u01b0a r\u00f5')
-    $conclusionHeading=[regex]::Unescape('K\u1ebft lu\u1eadn')
-    $rows=@(& $table $text 'Selected Migration Unit' $columns $Context)
-    $changed=@(& $table $text $fileChangesHeading @('Migration Unit ID','File','Change','Trace IDs') $Context)
-    $traceRows=@(& $table $text $traceHeading @('Trace ID','Implementation Reference') $Context)
-    $commands=@(& $table $text $commandsHeading @('Command','Result','Evidence') $Context)
-    $blockers=@(& $table $text $blockerHeading @('Stage / Check','Native Verdict','Command Role','Required Command Lifecycle','Command / Capability','Observed Error','Evidence Reference') $Context)
-    $evidenceRows=@(& $table $text $evidenceHeading @('Evidence','Location','Notes') $Context)
-    $normalizedHistorical=& $normalize $text
-    $headings=@([regex]::Matches($normalizedHistorical,'(?m)^## (?<name>.+)$') | ForEach-Object {$_.Groups['name'].Value})
-    $expectedHeadings=@('Selected Migration Unit',$fileChangesHeading,$traceHeading,$commandsHeading,$blockerHeading,$evidenceHeading,$unknownHeading,$conclusionHeading)
-    $keys=@($fm.Keys | Sort-Object)
-    $validHistorical=(
-      (($headings -join '|') -ceq ($expectedHeadings -join '|')) -and
-      (($keys -join '|') -ceq 'approval_source|produced_at|result|status|step_id') -and
-      $fm.step_id -ceq '10-code-migration' -and $fm.status -ceq 'approved' -and
-      $fm.result -ceq 'complete' -and $fm.approval_source -ceq 'human' -and
-      $fm.produced_at -cmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' -and
-      $rows.Count -eq 1 -and $rows[0].'Migration Unit ID' -ceq $LegacyUnit -and
-      $changed.Count -ge 1 -and
-      @($changed | Where-Object {$_.'Migration Unit ID' -cne $LegacyUnit -or $_.'Trace IDs' -cne $rows[0].'Trace IDs'}).Count -eq 0 -and
-      $traceRows.Count -ge 1 -and
-      @($traceRows | Where-Object {$_.'Trace ID' -cne $rows[0].'Trace IDs'}).Count -eq 0 -and
-      $commands.Count -ge 1 -and @($commands | Where-Object {$_.Result -cne 'PASS'}).Count -eq 0 -and
-      $blockers.Count -eq 1 -and @($blockers[0].PSObject.Properties.Value | Where-Object {$_ -cne 'not-applicable'}).Count -eq 0 -and
-      $evidenceRows.Count -ge 1 -and
-      $normalizedHistorical -cmatch '(?ms)^## \u0110i\u1ec3m ch\u01b0a r\u00f5\n\n- none\n\n## K\u1ebft lu\u1eadn\n\nready\n?$'
-    )
-    if(-not $validHistorical){return $false}
-    $planMatch=[regex]::Match($rows[0].'Plan Reference','^(?<path>[^@]+)@(?<revision>[1-9][0-9]*)$')
-    $planRelative=if($planMatch.Success){$planMatch.Groups['path'].Value}else{''}
-    if(-not $planMatch.Success -or [IO.Path]::IsPathRooted($planRelative) -or $planRelative -match '(^|[\/])\.\.([\/]|$)'){return $false}
-    $planPath=[IO.Path]::GetFullPath((Join-Path (Split-Path -Parent $path) $planRelative))
-    if(-not $planPath.StartsWith($rootPrefix,[StringComparison]::OrdinalIgnoreCase) -or -not(Test-Path -LiteralPath $planPath -PathType Leaf)){return $false}
-    $planText=Get-Content -Raw -Encoding utf8 $planPath;$planFm=& $frontMatter $planText "$Context legacy plan"
-    $planKeys=@($planFm.Keys | Sort-Object)
-    $authorityRows=@(& $table $planText 'Migration Units' $columns "$Context legacy plan" | Where-Object {$_.'Migration Unit ID' -ceq $LegacyUnit})
-    if(
-      (($planKeys -join '|') -cne 'approval_source|produced_at|result|revision|status|step_id') -or
-      $planFm.step_id -cne '08-plan-waves' -or $planFm.status -cne 'approved' -or
-      $planFm.result -cne 'complete' -or $planFm.approval_source -cne 'human' -or
-      $planFm.revision -cne $planMatch.Groups['revision'].Value -or $authorityRows.Count -ne 1
-    ){return $false}
-    foreach($column in $columns){if($rows[0].$column -cne $authorityRows[0].$column){return $false}}
-    return (
-      $rows[0].'Approval Reference' -cmatch '^approval:HUMAN-' -and
-      $rows[0].'Mode Constraint' -cin @('incremental/preserve-existing','greenfield/design-new') -and
-      $rows[0].'Bootstrap Scope' -cin @('required','not-required') -and
-      -not [string]::IsNullOrWhiteSpace($rows[0].'Trace IDs')
-    )
-  }
-
-  . (Join-Path $root 'tests/validation/scope-artifacts.validation.ps1')
-  $renderValidationRoot=Join-Path $root ('.flexible-scope-canonical-'+[guid]::NewGuid().ToString('N'))
-  try{
-   New-Item -ItemType Directory -Path (Join-Path $renderValidationRoot 'templates/migration') -Force|Out-Null
-   Copy-Item -LiteralPath (Join-Path $root 'contracts') -Destination (Join-Path $renderValidationRoot 'contracts') -Recurse
-   Copy-Item -LiteralPath $resolvedEvidence.master_spec_ref -Destination (Join-Path $renderValidationRoot 'templates/migration/master-spec.md')
-   Copy-Item -LiteralPath $resolvedEvidence.master_plan_ref -Destination (Join-Path $renderValidationRoot 'templates/migration/master-plan.md')
-   Test-ScopeArtifacts $renderValidationRoot (Get-Content -Raw -Encoding utf8 (Join-Path $root 'contracts/migration-scope-orchestration.md'))
-  }finally{if(Test-Path -LiteralPath $renderValidationRoot){Remove-Item -LiteralPath $renderValidationRoot -Recurse -Force}}
-  $planRows = @(& $table $planText 'Work Items' @('Work Item ID','Title','Required','Dependencies','Plan Order','Acceptance','Trace IDs','Delivery Adapter','Status','Latest Attempt','Terminal Evidence','Approval Reference') 'Flexible scope master plan')
-  $planApprovalRows=@(& $table $planText 'Approval Record' @('Approval Reference','Status','Approved At') 'Flexible scope master plan')
-  $planRevisionRows=@(& $table $planText 'Revision History' @('Artifact ID','Revision','Supersedes','Change Summary','Affected Work Items','Approval Reference') 'Flexible scope master plan')
-  $diagnostic = 'scope-ready'; $scopeState = 'planned'
-  $specKeys=@($specFm.Keys|Sort-Object);$canonicalSpecKeys=@('approval_source','artifact_type','master_spec_id','produced_at','requested_scope_id','requested_scope_kind','result','revision','status','supersedes')
-  $planKeys=@($planFm.Keys|Sort-Object);$canonicalPlanKeys=@('artifact_type','execution_policy','master_plan_id','master_spec_id','master_spec_revision','max_concurrency','produced_at','responsibility_contract','revision','scope_status','status','supersedes')
-  if(-not$planResponsibilityContractValid){$diagnostic='responsibility-contract-version-invalid';$scopeState='scope-blocked'}
-  elseif(($specKeys-join'|')-cne($canonicalSpecKeys-join'|')-or($planKeys-join'|')-cne($canonicalPlanKeys-join'|')){$diagnostic='master-artifact-schema-invalid';$scopeState='scope-blocked'}
-  elseif($planApprovalRows.Count-ne1-or$planApprovalRows[0].Status-cne'approved'-or$planApprovalRows[0].'Approval Reference'-cnotmatch'^approval:HUMAN-'-or$planRevisionRows.Count-ne1-or$planRevisionRows[0].Revision-cne$planFm.revision-or$planRevisionRows[0].'Approval Reference'-cne$planApprovalRows[0].'Approval Reference'){$diagnostic='master-artifact-current-approval-invalid';$scopeState='scope-blocked'}
-  elseif ($preFm.status -cne 'approved') { $diagnostic='predecessor-not-approved'; $scopeState='scope-blocked' }
-  elseif (-not $plannedResponsibilityAuthorityValid) { $diagnostic='structural-assurance-blocked'; $scopeState='scope-blocked' }
-  elseif ($specFm.status -cne 'approved' -or $planFm.status -cne 'approved') { $diagnostic='master-artifacts-unapproved'; $scopeState='scope-blocked' }
-  elseif ($specFm.requested_scope_kind -ceq 'unresolved') { $diagnostic='scope-question-required'; $scopeState='scope-blocked' }
-  elseif ($planFm.revision -cne '1' -and ([string]::IsNullOrWhiteSpace([string]$planFm.supersedes) -or $planFm.supersedes -in @('none','not-applicable'))) { $diagnostic='revision-chain-invalid'; $scopeState='scope-blocked' }
-  elseif (@($planRows | Group-Object 'Work Item ID' | Where-Object Count -ne 1).Count -gt 0) { $diagnostic='work-item-set-invalid'; $scopeState='scope-blocked' }
-  else {
-    $ids=@($planRows | ForEach-Object { $_.'Work Item ID' })
-    foreach($row in $planRows){
-      if($row.Required -notin @('yes','no') -or $row.Status -notin @('proposed','pending','ready','in-progress','blocked','complete','cancelled-approved','not-applicable-approved') -or $row.'Plan Order' -cnotmatch '^[1-9][0-9]*$' -or [string]::IsNullOrWhiteSpace($row.'Approval Reference')){$diagnostic='work-item-row-invalid';$scopeState='scope-blocked'}
-      if($row.Status -eq 'complete' -and $row.'Terminal Evidence' -eq 'none'){$diagnostic='work-item-row-invalid';$scopeState='scope-blocked'}
-    }
-    $dependencyMap=@{};foreach($row in $planRows){$deps=@($row.Dependencies -split ','|ForEach-Object{$_.Trim()}|Where-Object{$_-ne'none'});$dependencyMap[$row.'Work Item ID']=$deps;foreach($dep in $deps){if($ids-cnotcontains$dep){$diagnostic='missing-dependency';$scopeState='scope-blocked'}}}
-    if($diagnostic-cne'missing-dependency'){$remaining=[Collections.Generic.List[string]]::new();$ids|ForEach-Object{$remaining.Add($_)};$done=[Collections.Generic.List[string]]::new();while($remaining.Count){$ready=@($remaining|Where-Object{$id=$_;@($dependencyMap[$id]|Where-Object{$done-cnotcontains$_}).Count-eq0});if(-not$ready.Count){$diagnostic='dependency-cycle';$scopeState='scope-blocked';break};foreach($id in $ready){[void]$remaining.Remove($id);$done.Add($id)}}}
-    if ($diagnostic -in @('work-item-row-invalid','missing-dependency','dependency-cycle')) { }
-    elseif (@($planRows | Where-Object { $_.Required-ceq'yes' -and $_.Status -ceq 'blocked' }).Count -gt 0) { $diagnostic='dependency-blocked'; $scopeState='scope-blocked' }
-    elseif ($targetFm.selector_state -ceq 'external-only') { $diagnostic='external-only-selector'; $scopeState='scope-blocked' }
-    elseif ($targetFm.decomposition_trace -ceq 'missing') { $diagnostic='decomposition-front-half-missing'; $scopeState='scope-blocked' }
-    elseif ($targetFm.exemplar_state -ceq 'generic-only') { $diagnostic='complete-exemplar-missing'; $scopeState='scope-blocked' }
-    elseif ($targetFm.design_state -ceq 'vague') { $diagnostic='structural-design-evidence-missing'; $scopeState='scope-blocked' }
-    elseif ($targetFm.wrapper_state -ceq 'mismatch-unapproved') { $diagnostic='wrapper-deviation-unapproved'; $scopeState='scope-blocked' }
-    elseif ($targetFm.tree_state -ceq 'drift') { $diagnostic='actual-planned-tree-drift'; $scopeState='scope-blocked' }
-    elseif ($targetFm.matrix_state -ceq 'missing') { $diagnostic='conformance-matrix-missing-before-review'; $scopeState='scope-blocked' }
-    elseif ($targetFm.subscription_key_state -ceq 'missing') { $diagnostic='production-subscription-key-missing-critical'; $scopeState='scope-blocked' }
-    elseif ($targetFm.architecture_conformance_state -ceq 'BLOCKED' -or $targetFm.selector_schema_state -ceq 'BLOCKED') { $diagnostic='structural-assurance-blocked'; $scopeState='scope-blocked' }
-    elseif ($targetFm.selection_test -ceq 'yes') {
-      $terminal=@('complete','cancelled-approved','not-applicable-approved');$depth=@{};foreach($id in $done){$deps=@($dependencyMap[$id]);$depth[$id]=if($deps.Count){1+(@($deps|ForEach-Object{[int]$depth[$_]})|Measure-Object -Maximum).Maximum}else{0}}
-      $eligible=@($planRows|Where-Object{$_.Status-in@('pending','ready')-and $_.'Approval Reference'-cmatch'^approval:HUMAN-'-and @($dependencyMap[$_.'Work Item ID']|Where-Object{$dep=$_;($planRows|Where-Object{$_.'Work Item ID'-ceq$dep}).Status-notin$terminal}).Count-eq0}|Sort-Object @{Expression={[int]$depth[$_.'Work Item ID']}},@{Expression={[int]$_.'Plan Order'}},@{Expression={$_.'Work Item ID'}})
-      if($eligible.Count -gt 0){$diagnostic='next-eligible:'+$eligible[0].'Work Item ID';$scopeState='scope-in-progress'}
-    }
-    elseif (@($planRows | Where-Object { $_.Required -ceq 'yes' -and $_.Status -notin @('complete','cancelled-approved','not-applicable-approved') }).Count -gt 0) { $diagnostic='required-work-remains'; $scopeState='scope-in-progress' }
-    elseif ($specFm.requested_scope_kind -ceq 'explicit-item') { $diagnostic='explicit-item-minimum-scope'; $scopeState='planned' }
-    elseif (@($planRows | Where-Object { $_.'Delivery Adapter' -like 'generic:*' }).Count -gt 0) { $diagnostic='generic-work-items-ready'; $scopeState='planned' }
-  }
-
-  if ($scopeState -cne 'scope-blocked' -and $resolvedEvidence.ContainsKey('legacy_conversion_ref')) {
-    $legacyText=Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedEvidence.legacy_conversion_ref
-    $legacyFm=& $frontMatter $legacyText 'Legacy conversion'
-    $historyRows=@(& $table $legacyText 'Approved Historical Units' @('Legacy Unit ID','Legacy Schema Version','Approval','Historical Evidence','Evidence Valid') 'Legacy conversion')
-    $legacyRows=@(& $table $legacyText 'Legacy Unit Conversion' @('Legacy Unit ID','Work Item ID','Delivery Adapter','Historical Evidence','Evidence Valid','Fresh Approval') 'Legacy conversion')
-    $historyIds=@($historyRows|ForEach-Object{$_.'Legacy Unit ID'}|Sort-Object);$legacyIds=@($legacyRows|ForEach-Object{$_.'Legacy Unit ID'}|Sort-Object);$convertedWorkIds=@($legacyRows|ForEach-Object{$_.'Work Item ID'}|Sort-Object)
-    $legacyKeys=@($legacyFm.Keys|Sort-Object)
-    $expectedLegacyKeys=@('artifact_type','master_plan_revision','master_spec_revision','scope_status','status')
-    if (($legacyKeys -join '|') -cne ($expectedLegacyKeys -join '|') -or $legacyFm.artifact_type -cne 'migration-legacy-conversion' -or $legacyFm.master_spec_revision -cne '1' -or $legacyFm.master_plan_revision -cne '1' -or $legacyFm.scope_status -ne 'planned' -or $legacyFm.status -cne 'approved' -or @($legacyRows).Count -eq 0 -or ($historyIds -join '|') -cne ($legacyIds -join '|') -or (($ids|Sort-Object) -join '|') -cne ($convertedWorkIds -join '|') -or @($legacyRows|Group-Object 'Work Item ID'|Where-Object Count -ne 1).Count -gt 0) { $diagnostic='legacy-conversion-invalid'; $scopeState='scope-blocked' }
-    else {
-      foreach($row in $legacyRows){
-        $history=@($historyRows|Where-Object{$_.'Legacy Unit ID' -ceq $row.'Legacy Unit ID'})
-        $planRow=@($planRows|Where-Object{$_.'Work Item ID'-ceq$row.'Work Item ID'})
-        if($history.Count -ne 1 -or $history[0].'Legacy Schema Version' -cne 'implementation-report@9bfed5b148eb07a284f567bcd7486c9a00318a50#gitblob:15299bfe69780430508cf9527fcfe14d1d216748' -or $history[0].Approval -cnotmatch '^approval:HIST-' -or $row.'Delivery Adapter' -cne ('migration-unit:'+$row.'Legacy Unit ID') -or $planRow.Count-ne1-or $planRow[0].'Delivery Adapter'-cne$row.'Delivery Adapter' -or $row.'Fresh Approval' -cnotmatch '^approval:HUMAN-' -or $row.'Evidence Valid' -notin @('yes','no') -or $row.'Evidence Valid' -cne $history[0].'Evidence Valid' -or ($row.'Evidence Valid' -ceq 'yes' -and ($row.'Historical Evidence' -cne $history[0].'Historical Evidence' -or -not(& $resolveHistoricalEvidence $row.'Historical Evidence' $row.'Legacy Unit ID' 'Legacy conversion'))) -or ($row.'Evidence Valid' -cne 'yes' -and $row.'Historical Evidence' -cne 'none')){$diagnostic='legacy-conversion-invalid';$scopeState='scope-blocked'}
-      }
-      if($diagnostic -cne 'legacy-conversion-invalid'){$diagnostic='legacy-conversion-approved-no-scope-inference';$scopeState='planned'}
-    }
-  }
-
-  if ($resolvedEvidence.ContainsKey('terminal_report_ref')) {
-    $priorDiagnostic=$diagnostic;$priorScopeState=$scopeState;$priorBlocked=$scopeState-ceq'scope-blocked'
-    $reportText=Get-Content -Raw -Encoding utf8 -LiteralPath $resolvedEvidence.terminal_report_ref
-    $reportFm=& $frontMatter $reportText 'Terminal scope report'
-    $contextRows=@(& $table $reportText 'Master Revision Context' @('Master Spec Reference','Master Spec Revision','Master Plan Reference','Master Plan Revision','Terminal Report Reference') 'Terminal scope report')
-    $reportRows=@(& $table $reportText 'Work Item Terminal Evidence' @('Work Item ID','Required','Status','Terminal Evidence','Runtime Evidence State','Architecture Conformance State','Selector Schema State','Blocker','Plan Revision') 'Terminal scope report')
-    $calc=@(& $table $reportText 'Scope Completion Calculation' @('Graph State','Required Items','Required Terminal Evidence','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture State','Selector Schema State','Remaining Blockers','Calculated Terminal Verdict') 'Terminal scope report')
-    $handoff=@(& $table $reportText 'Architecture Responsibility Handoff' @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State','Evidence References') 'Terminal scope report')
-    $evidenceRows=@(& $table $reportText 'Evidence Index' @('Evidence ID','Artifact Reference','Work Item ID','Purpose') 'Terminal scope report')
-    $blockerRows=@(& $table $reportText 'Blockers and Dispositions' @('Work Item ID','Blocker','Disposition','Decision Reference') 'Terminal scope report')
-    $approvalRows=@(& $table $reportText 'Approval Record' @('Decision','Approver','Evidence','Decided At') 'Terminal scope report')
-    $revisionRows=@(& $table $reportText 'Revision History' @('Artifact ID','Revision','Supersedes','Change Summary','Affected Work Items','Approval Reference') 'Terminal scope report')
-    $planIds=@($planRows|ForEach-Object{$_.'Work Item ID'});$reportIds=@($reportRows|ForEach-Object{$_.'Work Item ID'})
-    $reportKeys=@($reportFm.Keys|Sort-Object);$expectedReportKeys=@('approval_source','artifact_type','master_plan_id','master_plan_revision','master_spec_id','master_spec_revision','produced_at','result','scope_status','status')
-    $derivedReportArchitecture=if($handoff.Count-eq1-and$handoff[0].'Tree Conformance'-ceq'PASS'-and$handoff[0].'Responsibility Conformance'-ceq'PASS'-and$handoff[0].'Verification Ownership'-ceq'PASS'){'PASS'}else{'BLOCKED'}
-    $structuralTerminalBlocked=($structuralResponsibilityChainBlocked -or ($handoff.Count-eq1-and($handoff[0].'Tree Conformance'-cne'PASS'-or$handoff[0].'Responsibility Conformance'-cne'PASS'-or$handoff[0].'Verification Ownership'-cne'PASS'-or$handoff[0].'Architecture Conformance State'-cne'PASS')))
-    $chainIds=@($responsibilityChainByWorkItem.Keys|Sort-Object)
-    $terminalSuccessIds=@($planRows|Where-Object{$_.Status-in@('complete','cancelled-approved','not-applicable-approved')}|ForEach-Object{$_.'Work Item ID'})
-    $terminalSuccessIdSet=@($terminalSuccessIds|Sort-Object)
-    $valid=($responsibilityChainValid -and (($chainIds-join'|')-ceq($terminalSuccessIdSet-join'|')) -and ($reportKeys -join '|') -ceq ($expectedReportKeys -join '|') -and $reportFm.artifact_type -ceq 'migration-scope-terminal-report' -and $reportFm.master_spec_id -ceq $specFm.master_spec_id -and $reportFm.master_plan_id -ceq $planFm.master_plan_id -and $reportFm.master_spec_revision -ceq $specFm.revision -and $reportFm.master_plan_revision -ceq $planFm.revision -and $reportFm.status -ceq 'approved' -and $reportFm.result -ceq 'complete' -and $reportFm.approval_source -ceq 'human' -and $reportFm.produced_at -cmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$' -and $reportFm.scope_status -in @('scope-in-progress','scope-blocked','scope-complete') -and ($planIds -join '|') -ceq ($reportIds -join '|') -and $reportIds.Count -eq $planIds.Count -and $contextRows.Count -eq 1 -and $calc.Count -eq 1 -and $handoff.Count -eq 1 -and $handoff[0].'Responsibility Contract Version' -ceq '1' -and $handoff[0].'Tree Conformance' -cin @('PASS','BLOCKED') -and $handoff[0].'Responsibility Conformance' -cin @('PASS','BLOCKED') -and $handoff[0].'Verification Ownership' -cin @('PASS','BLOCKED') -and $handoff[0].'Architecture Conformance State' -ceq $derivedReportArchitecture -and $approvalRows.Count -eq 1 -and $revisionRows.Count -eq 1)
-    if($contextRows.Count -eq 1 -and ($contextRows[0].'Master Spec Reference' -cne 'master-spec.md' -or $contextRows[0].'Master Spec Revision' -cne $specFm.revision -or $contextRows[0].'Master Plan Reference' -cne 'master-plan.md' -or $contextRows[0].'Master Plan Revision' -cne $planFm.revision -or $contextRows[0].'Terminal Report Reference' -cne 'scope-terminal-report.md')){$valid=$false}
-    if($approvalRows.Count -eq 1 -and ($approvalRows[0].Decision -cne 'approved' -or $approvalRows[0].Approver -cne 'human' -or $approvalRows[0].Evidence -cnotmatch '^approval:HUMAN-' -or $approvalRows[0].'Decided At' -cnotmatch '^20[0-9]{2}-[0-9]{2}-[0-9]{2}$')){$valid=$false}
-    if($revisionRows.Count -eq 1 -and ($revisionRows[0].Revision -cne '1' -or $revisionRows[0].Supersedes -cne 'not-applicable' -or $revisionRows[0].'Affected Work Items' -cne 'all' -or $approvalRows.Count -ne 1 -or $revisionRows[0].'Approval Reference' -cne $approvalRows[0].Evidence)){$valid=$false}
-    $evidenceIds=@($evidenceRows|ForEach-Object{$_.'Work Item ID'});$blockerIds=@($blockerRows|ForEach-Object{$_.'Work Item ID'})
-    if(($evidenceIds-join'|') -cne ($terminalSuccessIds-join'|') -or ($blockerIds-join'|') -cne ($planIds-join'|') -or @($evidenceRows|Group-Object 'Evidence ID'|Where-Object Count -ne 1).Count -gt 0){$valid=$false}
-    $resolvedHandoffEvidenceReferences=[Collections.Generic.List[string]]::new()
-    $resolvedResponsibilityTerminals=[Collections.Generic.List[string]]::new()
-    foreach($p in $planRows){
-      $r=@($reportRows|Where-Object{$_.'Work Item ID' -ceq $p.'Work Item ID'});if($r.Count-ne 1 -or $r[0].Required-cne$p.Required -or $r[0].Status-cne$p.Status -or $r[0].'Terminal Evidence'-cne$p.'Terminal Evidence' -or $r[0].'Plan Revision'-cne$planFm.revision){$valid=$false;continue}
-      $e=@($evidenceRows|Where-Object{$_.'Work Item ID' -ceq $p.'Work Item ID'});$b=@($blockerRows|Where-Object{$_.'Work Item ID' -ceq $p.'Work Item ID'})
-      $chainEntry=if($responsibilityChainByWorkItem.ContainsKey([string]$p.'Work Item ID')){$responsibilityChainByWorkItem[[string]$p.'Work Item ID']}else{$null}
-      $terminalSuccess=$p.Status-in@('complete','cancelled-approved','not-applicable-approved')
-      if(($terminalSuccess-and($e.Count-ne1-or$null-eq$chainEntry-or$e[0].'Artifact Reference'-cne$chainEntry.FinalReference-or$e[0].Purpose-cne'architecture-responsibility-sub-verdicts'))-or(-not$terminalSuccess-and$e.Count-ne0)-or$b.Count-ne1-or$b[0].Blocker-cne$r[0].Blocker-or($r[0].Blocker-ceq'none'-and($b[0].Disposition-cne'not-applicable'-or$b[0].'Decision Reference'-cne'not-applicable'))){$valid=$false}
-      if($terminalSuccess-and$null-ne$chainEntry-and$handoff.Count-eq1){foreach($field in @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State')){if($chainEntry.Handoff.$field-cne$handoff[0].$field){$valid=$false}}}
-      if($r[0].'Runtime Evidence State' -notin @('PASS','FAIL','NOT_RUN','WAIVED') -or $r[0].'Architecture Conformance State' -notin @('PASS','BLOCKED') -or $r[0].'Selector Schema State' -notin @('PASS','BLOCKED')){$valid=$false}
-      if($terminalSuccess){
-        $terminalBindingResults=@(& $resolveImmutableEvidence $r[0].'Terminal Evidence' $p.'Work Item ID' $planFm.revision $p.'Trace IDs' $p.Acceptance $p.'Delivery Adapter' $p.'Approval Reference' ([string]$fixture.master_spec_ref) ([string]$fixture.master_plan_ref) 'Terminal scope report')
-        $terminalBindings=@($terminalBindingResults|Where-Object{$null-ne$_-and$null-ne$_.PSObject.Properties['Valid']})
-        $terminalBinding=if($terminalBindings.Count-eq1){$terminalBindings[0]}else{$null}
-        if($null-eq$terminalBinding-or-not$terminalBinding.Valid-or$r[0].'Runtime Evidence State'-cne$terminalBinding.Runtime-or$r[0].'Architecture Conformance State'-cne$terminalBinding.Architecture-or$r[0].'Selector Schema State'-cne$terminalBinding.Selector-or$null-eq$chainEntry-or$terminalBinding.ModeConstraint-cne$chainEntry.ModeConstraint-or$null-eq$terminalBinding.Handoff-or$terminalBinding.Handoff.'Evidence References'-cne$chainEntry.SourceDiff-or$terminalBinding.TerminalChainReference-cne$chainEntry.FinalReference){$valid=$false}
-        else{
-          foreach($field in @('Responsibility Contract Version','Tree Conformance','Responsibility Conformance','Verification Ownership','Architecture Conformance State')){if($terminalBinding.Handoff.$field-cne$chainEntry.Handoff.$field){$valid=$false}}
-          $resolvedHandoffEvidenceReferences.Add([string]$chainEntry.SourceDiff)
-          $resolvedResponsibilityTerminals.Add([string]$chainEntry.FinalReference)
-        }
-      }elseif($r[0].'Terminal Evidence'-cne'none'){$valid=$false}
-      if($r[0].Status -in @('complete','cancelled-approved','not-applicable-approved')){if($r[0].Blocker -cne 'none'){$valid=$false}}elseif($r[0].Status-ceq'blocked'-and$r[0].Blocker-ceq'none'){$valid=$false}
-      if($r[0].'Runtime Evidence State' -ceq 'WAIVED' -and $r[0].Status -cne 'complete'){$valid=$false}
-    }
-    if($handoff.Count-eq1){
-      $declaredResponsibilityTerminals=@($handoff[0].'Evidence References'-split';'|ForEach-Object{$_.Trim()}|Where-Object{$_})
-      if(($declaredResponsibilityTerminals-join'|')-cne($resolvedHandoffEvidenceReferences.ToArray()-join'|')-or@($declaredResponsibilityTerminals|Group-Object|Where-Object Count -ne 1).Count -gt 0){$valid=$false}
-      if($calc.Count-eq1-and($calc[0].'Tree Conformance'-cne$handoff[0].'Tree Conformance'-or$calc[0].'Responsibility Conformance'-cne$handoff[0].'Responsibility Conformance'-or$calc[0].'Verification Ownership'-cne$handoff[0].'Verification Ownership'-or$calc[0].'Architecture State'-cne$handoff[0].'Architecture Conformance State')){$valid=$false}
-    }else{$valid=$false}
-    $formula=($calc[0].'Graph State'-ceq'valid' -and $calc[0].'Required Items'-ceq'all-terminal-success' -and $calc[0].'Required Terminal Evidence'-ceq'all-required-terminal-evidence' -and $calc[0].'Tree Conformance'-ceq'PASS' -and $calc[0].'Responsibility Conformance'-ceq'PASS' -and $calc[0].'Verification Ownership'-ceq'PASS' -and $calc[0].'Architecture State'-ceq'PASS' -and $calc[0].'Selector Schema State'-ceq'PASS' -and $calc[0].'Remaining Blockers'-ceq'none' -and @($reportRows|Where-Object{$_.Required-ceq'yes' -and ($_.Status -notin @('complete','cancelled-approved','not-applicable-approved') -or $_.'Terminal Evidence'-ceq'none' -or $_.'Runtime Evidence State'-notin@('PASS','WAIVED') -or $_.'Architecture Conformance State'-cne'PASS' -or $_.'Selector Schema State'-cne'PASS' -or $_.Blocker-cne'none')}).Count-eq0)
-    $computedVerdict=if($formula){'scope-complete'}elseif(@($reportRows|Where-Object{$_.Required-ceq'yes'-and $_.Status-eq'blocked'}).Count){'scope-blocked'}else{'scope-in-progress'}
-    if(-not $valid -or $calc[0].'Calculated Terminal Verdict' -cne $computedVerdict -or $reportFm.scope_status -cne $computedVerdict){$diagnostic=if($structuralTerminalBlocked){'structural-assurance-blocked'}else{'terminal-scope-report-invalid'};$scopeState='scope-blocked'}elseif($formula){$diagnostic='scope-completion-calculated';$scopeState='scope-complete'}
-    if($priorBlocked){$diagnostic=$priorDiagnostic;$scopeState=$priorScopeState}
-  }
-  Write-Output "DIAGNOSTIC: $diagnostic"
-  Write-Output "SCOPE_STATE: $scopeState"
-  if ($diagnostic -cne [string]$fixture.expected_diagnostic -or $scopeState -cne [string]$fixture.expected_scope_state) { $errors.Add("Flexible scope rendered fixture outcome mismatch: expected $($fixture.expected_diagnostic)/$($fixture.expected_scope_state), got $diagnostic/$scopeState") }
-}
-
-function Test-FlexibleScopeIntegration([bool]$InvokeModules) {
-  $scopeContractPath = Join-Path $root 'contracts/migration-scope-orchestration.md'
-  $conformanceContractPath = Join-Path $root 'contracts/target-structure-conformance.md'
-  if (-not (Test-Path -LiteralPath $scopeContractPath -PathType Leaf)) {
-    $errors.Add('Missing migration scope orchestration contract resource')
-    return
-  }
-  if (-not (Test-Path -LiteralPath $conformanceContractPath -PathType Leaf)) {
-    $errors.Add('Missing target structure conformance contract resource')
-    return
-  }
-  $scopeContractText = Get-Content -Raw -Encoding utf8 -LiteralPath $scopeContractPath
-  $conformanceContractText = Get-Content -Raw -Encoding utf8 -LiteralPath $conformanceContractPath
-
-  if ($InvokeModules) {
-    @(
-      @('tests/validation/scope-artifacts.validation.ps1', 'Test-ScopeArtifacts', 'Requested Scope', $scopeContractText),
-      @('tests/validation/scope-engine.validation.ps1', 'Test-ScopeEngine', 'Deterministic selection order', $scopeContractText),
-      @('tests/validation/delivery-adapters.validation.ps1', 'Test-DeliveryAdapters', 'Delivery adapter kinds', $scopeContractText),
-      @('tests/validation/target-conformance.validation.ps1', 'Test-TargetConformance', 'Comparable Target Exemplars', $conformanceContractText),
-      @('tests/validation/structural-gate.validation.ps1', 'Test-StructuralGate', 'Structural pre-edit gate', $conformanceContractText),
-      @('tests/validation/architecture-review.validation.ps1', 'Test-ArchitectureReview', 'Architecture-first review order', $conformanceContractText)
-    ) | ForEach-Object {
-      Invoke-MigrationValidationModule $_[0] $_[1] $_[2] $root $_[3]
-    }
-  }
-
-  $terminalTemplatePath = Join-Path $root 'templates/migration/scope-terminal-report.md'
-  if (Test-Path -LiteralPath $terminalTemplatePath -PathType Leaf) {
-    $terminalTemplate = Get-Content -Raw -Encoding utf8 -LiteralPath $terminalTemplatePath
-    @(
-      'artifact_type: migration-scope-terminal-report',
-      'master_spec_revision:',
-      'master_plan_revision:',
-      'scope_status:',
-      '## Master Revision Context',
-      '## Work Item Terminal Evidence',
-      '## Scope Completion Calculation',
-      '## Architecture Responsibility Handoff',
-      '## Evidence Index',
-      '## Blockers and Dispositions',
-      '## Approval Record',
-      '## Revision History'
-    ) | ForEach-Object { Require-Token $terminalTemplate $_ 'Migration scope terminal report template' }
-    @(
-      'ordered immutable terminal evidence references resolved from Work Item Terminal Evidence',
-      'Terminal Evidence` resolves only the immutable work-item terminal artifact',
-      'same final ordered-chain artifact referenced by the work-item terminal handoff',
-      'architecture-responsibility-sub-verdicts'
-    ) | ForEach-Object { Require-Token $terminalTemplate $_ 'Migration scope terminal report responsibility provenance' }
-    Test-MarkdownTableExactColumns $terminalTemplate 'Work Item Terminal Evidence' `
-      @('Work Item ID', 'Required', 'Status', 'Terminal Evidence', 'Runtime Evidence State', 'Architecture Conformance State', 'Selector Schema State', 'Blocker', 'Plan Revision') `
-      'Migration scope terminal report template'
-    Test-MarkdownTableExactColumns $terminalTemplate 'Scope Completion Calculation' `
-      @('Graph State', 'Required Items', 'Required Terminal Evidence', 'Tree Conformance', 'Responsibility Conformance', 'Verification Ownership', 'Architecture State', 'Selector Schema State', 'Remaining Blockers', 'Calculated Terminal Verdict') `
-      'Migration scope terminal report template'
-    Test-MarkdownTableExactColumns $terminalTemplate 'Architecture Responsibility Handoff' `
-      @('Responsibility Contract Version', 'Tree Conformance', 'Responsibility Conformance', 'Verification Ownership', 'Architecture Conformance State', 'Evidence References') `
-      'Migration scope terminal report template'
-  }
-
-  foreach ($schemaRequirement in @(
-    'artifact_type: migration-scope-terminal-report',
-    'Work Item Terminal Evidence',
-    'Scope Completion Calculation',
-    'fresh human approval gate'
-  )) {
-    $schemaPath = Join-Path $root 'skills/aitoolkit-schemas/SKILL.md'
-    Require-Token (Get-Content -Raw -Encoding utf8 -LiteralPath $schemaPath) $schemaRequirement 'Migration terminal scope schema'
-  }
-  Test-FlexibleScopeFixtureEnvelope $FlexibleScopeFixturePath
 }
 
 function Test-IsAllowedCanonicalWordMatch([string]$Text, [Text.RegularExpressions.Match]$Match) {
@@ -2797,11 +1628,11 @@ function Get-ActivationSliceContractTableRules(
     'Step 10 resume evidence' { 3 }
     'Step 10 resume state' { 2 }
     'Step 10 native blocker eligibility' { 5 }
-    'Immediate predecessor roles and lifecycle' { 18 }
+    'Immediate predecessor roles and lifecycle' { 16 }
     'Bootstrap selected-unit handoff' { 3 }
     'Step 10 predecessor unit selection' { 3 }
     'Direct-plan foundation state' { 2 }
-    'Downstream selected-unit handoff' { 6 }
+    'Downstream selected-unit handoff' { 4 }
     'Regression parity handoff' { 1 }
     'Assurance task provenance handoff' { 3 }
     'Assurance verdict consistency' { 2 }
@@ -3032,9 +1863,7 @@ function Test-Templates {
     Get-ChildItem -Path $templateRoot -File -Filter '*.md' |
       ForEach-Object { $_.BaseName }
   )
-  $unexpectedTemplateNames = $actualTemplateNames | Where-Object {
-    $_ -notin ($templateNames + @('review-report', 'verification-report', 'master-spec', 'master-plan', 'scope-terminal-report'))
-  }
+  $unexpectedTemplateNames = $actualTemplateNames | Where-Object { $_ -notin ($templateNames + @('review-report', 'verification-report')) }
   $unexpectedTemplateNames | ForEach-Object {
     $errors.Add("Unexpected migration template: $_.md")
   }
@@ -3305,47 +2134,6 @@ function Test-Templates {
     }
   }
 
-  $responsibilityHandoffColumns = @(
-    'Responsibility Contract Version', 'Tree Conformance', 'Responsibility Conformance',
-    'Verification Ownership', 'Architecture Conformance State', 'Evidence References'
-  )
-  foreach ($handoffTemplatePath in @(
-    'templates/migration/review-report.md',
-    'templates/migration/verification-report.md',
-    'templates/migration/parity-report.md',
-    'templates/migration/regression-report.md',
-    'templates/kb-entry.md'
-  )) {
-    $fullHandoffTemplatePath = Join-Path $root $handoffTemplatePath
-    if (-not (Test-Path -LiteralPath $fullHandoffTemplatePath)) {
-      $errors.Add("Missing responsibility handoff template: $handoffTemplatePath")
-      continue
-    }
-    $handoffTemplateText = Get-Content -Raw -Encoding utf8 -LiteralPath $fullHandoffTemplatePath
-    @('responsibility_contract:', 'version: 1', 'applicability: required') | ForEach-Object {
-      Require-Token $handoffTemplateText $_ "Template $handoffTemplatePath responsibility contract"
-    }
-    Test-MarkdownTableExactColumns `
-      $handoffTemplateText `
-      'Architecture Responsibility Handoff' `
-      $responsibilityHandoffColumns `
-      "Template $handoffTemplatePath responsibility provenance"
-    if ($handoffTemplatePath -ceq 'templates/migration/review-report.md') {
-      @(
-        'step_id: 11-ai-review', 'status: <draft | approved>',
-        'result: <complete | blocked>', 'approval_source: <human | auto | auto-waive>',
-        'source-diff:<task-base SHA>..<final-tree SHA>#<WORK-*>'
-      ) | ForEach-Object {
-        Require-Token $handoffTemplateText $_ 'Template migration/review-report.md producer lifecycle and provenance'
-      }
-      Test-MarkdownTableExactColumns `
-        $handoffTemplateText `
-        'Task Provenance' `
-        @('Task / Unit', 'Task-base SHA', 'Final-tree SHA', 'Source Artifact') `
-        'Template migration/review-report.md task provenance'
-    }
-  }
-
   foreach ($templateName in @('parity-report', 'regression-report')) {
     $templatePath = Join-Path $templateRoot "$templateName.md"
     if (-not (Test-Path $templatePath)) { continue }
@@ -3488,18 +2276,9 @@ function Test-Templates {
     }
   }
 
-  $technicalDesignPath = Join-Path $templateRoot 'technical-design.md'
-  if (Test-Path $technicalDesignPath) {
-    $technicalDesignText = Get-Content -Raw -Encoding utf8 $technicalDesignPath
-    Require-Token $technicalDesignText 'revision: <DESIGN-SCOPE@positive integer>' 'Template technical-design.md approved design revision'
-  }
-
   $migrationPlanPath = Join-Path $templateRoot 'migration-plan.md'
   if (Test-Path $migrationPlanPath) {
     $migrationPlanText = Get-Content -Raw -Encoding utf8 $migrationPlanPath
-    Require-Token $migrationPlanText 'responsibility_contract:' 'Template migration-plan.md responsibility contract'
-    Require-Token $migrationPlanText 'version: 1' 'Template migration-plan.md responsibility contract'
-    Require-Token $migrationPlanText 'applicability: required' 'Template migration-plan.md responsibility contract'
     Test-MarkdownTableColumns `
       $migrationPlanText `
       $orderedUnitsSection `
@@ -3516,14 +2295,6 @@ function Test-Templates {
         'Approval Status', 'Evidence'
       ) `
       'Template migration-plan.md'
-    Test-MarkdownTableExactColumns `
-      $migrationPlanText `
-      'Responsibility Owner References' `
-      @(
-        'Work Item ID', 'Design Revision', 'Responsibility IDs', 'Shared Foundation IDs',
-        'Integration Responsibility IDs', 'Independent Boundary Evidence'
-      ) `
-      'Template migration-plan.md responsibility owner binding'
     $migrationUnitTable = Get-MarkdownSectionBody `
       $migrationPlanText `
       $orderedUnitsSection `
@@ -3638,7 +2409,7 @@ function Get-ActivationSliceContractDefinition {
       Columns = @(); Seams = @(); Applicability = @(); Dispositions = @(); Statuses = @(); ApprovalSources = @()
       IdentifierRules = @(); FieldRules = @(); RowRules = @(); FrontMatterRules = @(); LinkRules = @()
       DomainBlockerRules = @(); PlaceholderRules = @(); WaiverRules = @(); ResumeEvidenceRules = @(); ResumeStateRules = @(); NativeBlockerRules = @(); HandoffRules = @()
-      BootstrapUnitRules = @(); Step10UnitRules = @(); DirectPlanFoundationRules = @(); AdapterEvidenceRules = @()
+      BootstrapUnitRules = @(); Step10UnitRules = @(); DirectPlanFoundationRules = @()
       DownstreamUnitRules = @(); RegressionParityRules = @(); AssuranceProvenanceRules = @(); AssuranceVerdictRules = @()
       SourceReferenceRules = @(); RouterRules = @(); AsyncRules = @()
     }
@@ -3665,7 +2436,6 @@ function Get-ActivationSliceContractDefinition {
     BootstrapUnitRules = @(Get-ActivationSliceContractTableRules 'Bootstrap selected-unit handoff' $contractText)
     Step10UnitRules = @(Get-ActivationSliceContractTableRules 'Step 10 predecessor unit selection' $contractText)
     DirectPlanFoundationRules = @(Get-ActivationSliceContractTableRules 'Direct-plan foundation state' $contractText)
-    AdapterEvidenceRules = @(Get-ActivationSliceContractTableRules 'Delivery adapter evidence by artifact role' $contractText)
     DownstreamUnitRules = @(Get-ActivationSliceContractTableRules 'Downstream selected-unit handoff' $contractText)
     RegressionParityRules = @(Get-ActivationSliceContractTableRules 'Regression parity handoff' $contractText)
     AssuranceProvenanceRules = @(Get-ActivationSliceContractTableRules 'Assurance task provenance handoff' $contractText)
@@ -3800,7 +2570,7 @@ function Get-ActivationSliceImplementationLinkRules([string]$ContractText) {
 
   $sectionText = Get-MarkdownSectionBody $ContractText $sectionName $context
   $tableBlocks = @(Get-MarkdownTableBlocks $sectionText)
-  $expectedColumns = @('Record', 'Current step ID', 'Allowed predecessor step IDs', 'Adapter Kind Applicability', 'Section', 'Required columns')
+  $expectedColumns = @('Record', 'Current step ID', 'Allowed predecessor step IDs', 'Section', 'Required columns')
   $columnSeparator = ([char]0x001F).ToString()
   $expectedHeader = $expectedColumns -join $columnSeparator
   $matchingTables = @($tableBlocks | Where-Object {
@@ -3812,7 +2582,7 @@ function Get-ActivationSliceImplementationLinkRules([string]$ContractText) {
   }
 
   $rows = @(Get-MarkdownTableRows $ContractText $sectionName $context $expectedColumns)
-  foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence', 'work-item-changed-file', 'work-item-test-evidence')) {
+  foreach ($recordName in @('selected-unit', 'changed-file', 'test-evidence')) {
     $recordCount = @($rows | Where-Object {
       (Get-ActivationSliceCellValue $_ 'Record') -ceq $recordName
     }).Count
@@ -3820,8 +2590,8 @@ function Get-ActivationSliceImplementationLinkRules([string]$ContractText) {
       $errors.Add("$context must declare exactly one $recordName rule; found $recordCount")
     }
   }
-  if ($rows.Count -ne 5) {
-    $errors.Add("$context rule table must contain exactly five canonical rows; found $($rows.Count)")
+  if ($rows.Count -ne 3) {
+    $errors.Add("$context rule table must contain exactly three canonical rows; found $($rows.Count)")
   }
   return @($rows)
 }
@@ -4579,150 +3349,17 @@ function Test-ActivationSlicePostWaiverResumePredecessor(
     $state $Predecessor $selectedUnit $Definition $Context
 }
 
-function Get-ActivationSliceImplementationAdapterBinding(
-  [object]$Artifact,
-  [object]$Definition,
-  [string]$Role,
-  [string]$Context,
-  [object]$AdapterEvidence = $null
-) {
-  if ($null -eq $AdapterEvidence) {
-    $AdapterEvidence = Get-ActivationSliceCanonicalAdapterEvidenceRow `
-      $Artifact $Definition $Role $Context
-  }
-  if ($null -eq $AdapterEvidence) { return $null }
-  $adapterKind = Get-ActivationSliceCellValue $adapterEvidence 'Adapter Kind'
-  $modeConstraint = Get-ActivationSliceCellValue $adapterEvidence 'Mode Constraint'
-  if ($modeConstraint -cnotin @('incremental/preserve-existing', 'greenfield/design-new')) {
-    $errors.Add("$Context $Role Canonical Adapter Evidence has invalid Mode Constraint")
-  }
-  $workItemId = Get-ActivationSliceCellValue $adapterEvidence 'Work Item ID'
-  if ($workItemId -cnotmatch '^WORK-[A-Za-z0-9._-]+$') {
-    $errors.Add("$Context $Role Canonical Adapter Evidence Work Item ID must be canonical: $workItemId")
-  }
-  $scopeColumns = @(
-    'Master Spec Reference', 'Master Spec ID', 'Master Spec Revision',
-    'Master Plan Reference', 'Master Plan ID', 'Master Plan Revision',
-    'Work Item ID', 'Work Item Approval Reference'
-  )
-  $scopeRow = Get-ActivationSliceExactHandoffRow `
-    $Artifact.Text 'Master Scope Context' $scopeColumns $Role $Context
-  if (
-    $null -ne $scopeRow -and
-    (Get-ActivationSliceCellValue $scopeRow 'Work Item ID') -cne $workItemId
-  ) {
-    $errors.Add("$Context $Role Master Scope Context.Work Item ID must equal Canonical Adapter Evidence.Work Item ID")
-  }
-
-  $selectedUnit = $null
-  if ($adapterKind -ceq 'migration-unit') {
-    $selectedUnit = Get-ActivationSliceCanonicalSelectedUnitRow `
-      $Artifact $Definition $Role $Context
-    if ($null -eq $selectedUnit) { return $null }
-    [void](Test-ActivationSliceSelectedUnitIntrinsicState $selectedUnit $Definition $Context)
-    if (
-      (Get-ActivationSliceCellValue $adapterEvidence 'External ID') -cne
-        (Get-ActivationSliceCellValue $selectedUnit 'Migration Unit ID')
-    ) {
-      $errors.Add("$Context $Role Canonical Adapter Evidence External ID must equal Selected Migration Unit.Migration Unit ID")
-    }
-    $authority = Get-ActivationSliceCellValue $adapterEvidence 'Authority'
-    $authorityRevision = Get-ActivationSliceCellValue $adapterEvidence 'Authority Revision'
-    $authorityValid = -not [string]::IsNullOrWhiteSpace($authority) -and $authority.IndexOf('@', [StringComparison]::Ordinal) -lt 0
-    $authorityRevisionValid = $authorityRevision -cmatch '^[1-9][0-9]*$'
-    if (-not $authorityValid) {
-      $errors.Add("$Context $Role Canonical Adapter Evidence Authority must be unversioned")
-    }
-    if (-not $authorityRevisionValid) {
-      $errors.Add("$Context $Role Canonical Adapter Evidence Authority Revision must be a positive integer")
-    }
-    if (
-      $authorityValid -and
-      $authorityRevisionValid -and
-      (Get-ActivationSliceCellValue $selectedUnit 'Plan Reference') -cne "$authority@$authorityRevision"
-    ) {
-      $errors.Add("$Context $Role Selected Migration Unit.Plan Reference must equal Canonical Adapter Evidence Authority@Authority Revision")
-    }
-    foreach ($field in @('Approval Reference', 'Mode Constraint')) {
-      if (
-        (Get-ActivationSliceCellValue $adapterEvidence $field) -cne
-          (Get-ActivationSliceCellValue $selectedUnit $field)
-      ) {
-        $errors.Add("$Context $Role Canonical Adapter Evidence $field must equal Selected Migration Unit.$field")
-      }
-    }
-    if (
-      (Get-ActivationSliceCellValue $adapterEvidence 'Trace IDs') -cne
-        (Get-ActivationSliceCellValue $selectedUnit 'Trace IDs')
-    ) {
-      $errors.Add("$Context $Role Canonical Adapter Evidence Trace IDs must equal Selected Migration Unit.Trace IDs ordinally")
-    }
-  }
-  elseif ($adapterKind -cin @('task', 'story', 'package', 'phase', 'milestone', 'none')) {
-    $selectedUnitCount = @(Get-MarkdownSectionHeadings $Artifact.Text 'Selected Migration Unit').Count
-    if ($selectedUnitCount -ne 0) {
-      $errors.Add("$Context $Role generic adapter forbids Selected Migration Unit section; found $selectedUnitCount")
-    }
-  }
-  return [pscustomobject]@{
-    AdapterEvidence = $adapterEvidence
-    AdapterKind = $adapterKind
-    ModeConstraint = $modeConstraint
-    SelectedUnit = $selectedUnit
-  }
-}
-
 function Test-ActivationSliceImplementationPredecessorForReview(
   [object]$Predecessor,
   [object]$Definition,
   [string]$Context
 ) {
-  $binding = Get-ActivationSliceImplementationAdapterBinding `
+  $selectedUnit = Get-ActivationSliceCanonicalSelectedUnitRow `
     $Predecessor $Definition 'implementation predecessor' $Context
-  if ($null -eq $binding) { return }
-  if ($binding.AdapterKind -ceq 'migration-unit') {
-    Test-ActivationSliceImplementationEvidenceRecords `
-      $Predecessor $Predecessor $binding.SelectedUnit $Definition $Context
-  }
-  elseif ($binding.AdapterKind -cin @('task', 'story', 'package', 'phase', 'milestone', 'none')) {
-    Test-ActivationSliceWorkItemImplementationEvidenceRecords `
-      $Predecessor $Predecessor $binding.AdapterEvidence $binding.AdapterKind $Definition $Context
-  }
-}
-
-function Test-ActivationSliceApprovedAdapterSelectionBinding(
-  [object]$Predecessor,
-  [object]$Binding,
-  [string]$Role,
-  [string]$Context
-) {
-  if ($null -eq $Predecessor -or $null -eq $Binding) { return }
-  $selectorColumns = @(
-    'Work Item ID', 'Adapter Kind', 'External ID', 'Authority', 'Authority Revision',
-    'Approval Reference', 'Parent Selector', 'Acceptance', 'Trace IDs', 'Mode Constraint',
-    'Design Revision', 'Parent Work Item ID', 'Decomposition Decision Reference'
-  )
-  $selectorRows = @(Get-MarkdownTableRows `
-    $Predecessor.Text `
-    'Delivery Adapter Selection' `
-    "$Context approved predecessor adapter authority" `
-    $selectorColumns)
-  $workItemId = Get-ActivationSliceCellValue $Binding.AdapterEvidence 'Work Item ID'
-  $matchingRows = @($selectorRows | Where-Object {
-    (Get-ActivationSliceCellValue $_ 'Work Item ID') -ceq $workItemId
-  })
-  if ($matchingRows.Count -ne 1) {
-    $errors.Add("$Context $Role Canonical Adapter Evidence must match exactly one predecessor Delivery Adapter Selection row; found $($matchingRows.Count)")
-    return
-  }
-  foreach ($field in $selectorColumns) {
-    if (
-      (Get-ActivationSliceCellValue $Binding.AdapterEvidence $field) -cne
-        (Get-ActivationSliceCellValue $matchingRows[0] $field)
-    ) {
-      $errors.Add("$Context $Role Canonical Adapter Evidence field changed from approved predecessor: $field")
-    }
-  }
+  if ($null -eq $selectedUnit) { return }
+  [void](Test-ActivationSliceSelectedUnitIntrinsicState $selectedUnit $Definition $Context)
+  Test-ActivationSliceImplementationEvidenceRecords `
+    $Predecessor $Predecessor $selectedUnit $Definition $Context
 }
 
 function Test-ActivationSliceDomainBlockerAbsence(
@@ -5463,200 +4100,11 @@ function Test-ActivationSlicePreselectionArtifactState(
   }
 }
 
-function Test-ActivationSliceRuleListContains(
-  [object]$Rule,
-  [string]$Column,
-  [string]$Expected
-) {
-  $values = @(
-    (Get-ActivationSliceCellValue $Rule $Column).Split(',') |
-      ForEach-Object { Trim-AsciiSpaceTab $_ } |
-      Where-Object { $_ -ne '' }
-  )
-  return $values -ccontains $Expected
-}
-
-function Get-ActivationSliceVisibleBulletMatches(
-  [object]$Artifact,
-  [string]$Label
-) {
-  $visibleText = @(
-    Get-MarkdownLineStates $Artifact.Text |
-      Where-Object { -not $_.Excluded } |
-      ForEach-Object { $_.Text }
-  ) -join "`n"
-  return @([regex]::Matches(
-    $visibleText,
-    '(?m)^[ ]{0,3}-[ \t]+' + [regex]::Escape($Label) + ':[ \t]*(?<value>[^\r\n]+?)[ \t]*\r?$'
-  ))
-}
-
-function Get-ActivationSliceVisibleAdapterMatches([object]$Artifact) {
-  return @(Get-ActivationSliceVisibleBulletMatches $Artifact 'Delivery Adapter Kind')
-}
-
-function Get-ActivationSliceVisibleAdapterModeMatches([object]$Artifact) {
-  return @(Get-ActivationSliceVisibleBulletMatches $Artifact 'Delivery Adapter Mode Constraint')
-}
-
-function Get-ActivationSliceCanonicalAdapterEvidenceRow(
-  [object]$Artifact,
-  [object]$Definition,
-  [string]$Role,
-  [string]$Context
-) {
-  $rules = @($Definition.AdapterEvidenceRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Artifact step IDs' $Artifact.FrontMatter.StepId
-  })
-  if ($rules.Count -ne 1) {
-    $errors.Add("$Context $Role adapter evidence contract must resolve exactly one role rule; found $($rules.Count)")
-    return $null
-  }
-  $rule = $rules[0]
-  if (
-    (Get-ActivationSliceCellValue $rule 'Canonical source') -cne 'Canonical Adapter Evidence' -or
-    (Get-ActivationSliceCellValue $rule 'Cardinality') -cne 'exactly-one-visible-row'
-  ) {
-    $errors.Add("$Context $Role step-10 adapter evidence contract is invalid")
-    return $null
-  }
-  $columns = @(
-    (Get-ActivationSliceCellValue $rule 'Required schema').Split(',') |
-      ForEach-Object { Trim-AsciiSpaceTab $_ } |
-      Where-Object { $_ -ne '' }
-  )
-  $expectedColumns = @(
-    'Work Item ID', 'Adapter Kind', 'External ID', 'Authority', 'Authority Revision',
-    'Approval Reference', 'Parent Selector', 'Acceptance', 'Trace IDs', 'Mode Constraint',
-    'Design Revision', 'Parent Work Item ID', 'Decomposition Decision Reference', 'Canonical Match'
-  )
-  if (($columns -join [char]0x001F) -cne ($expectedColumns -join [char]0x001F)) {
-    $errors.Add("$Context $Role step-10 adapter evidence schema is invalid")
-    return $null
-  }
-  $row = Get-ActivationSliceExactHandoffRow `
-    $Artifact.Text `
-    (Get-ActivationSliceCellValue $rule 'Canonical source') `
-    $columns `
-    $Role `
-    $Context
-  if ($null -eq $row) { return $null }
-  foreach ($column in $columns) {
-    if ([string]::IsNullOrWhiteSpace((Get-ActivationSliceCellValue $row $column))) {
-      $errors.Add("$Context $Role Canonical Adapter Evidence requires non-empty $column")
-    }
-  }
-  $adapterKind = Get-ActivationSliceCellValue $row 'Adapter Kind'
-  if ($adapterKind -cnotin @('migration-unit', 'task', 'story', 'package', 'phase', 'milestone', 'none')) {
-    $errors.Add("$Context $Role has invalid Canonical Adapter Evidence Adapter Kind")
-  }
-  if ((Get-ActivationSliceCellValue $row 'Canonical Match') -cne 'PASS') {
-    $errors.Add("$Context $Role Canonical Adapter Evidence requires Canonical Match PASS")
-  }
-  $visibleBulletMatches = @(Get-ActivationSliceVisibleAdapterMatches $Artifact)
-  if ($visibleBulletMatches.Count -gt 0) {
-    $visibleBulletKind = if ($visibleBulletMatches.Count -eq 1) {
-      $visibleBulletMatches[0].Groups['value'].Value.Trim()
-    }
-    else { '' }
-    if ($visibleBulletMatches.Count -eq 1 -and $visibleBulletKind -cne $adapterKind) {
-      $errors.Add("$Context $Role Delivery Adapter Kind conflicts with Canonical Adapter Evidence")
-    }
-    else {
-      $errors.Add("$Context $Role must not declare Delivery Adapter Kind outside Canonical Adapter Evidence")
-    }
-  }
-  return $row
-}
-
-function Get-ActivationSliceArtifactAdapterKind(
-  [object]$Artifact,
-  [object]$Definition,
-  [string]$Role,
-  [string]$Context
-) {
-  $rules = @($Definition.AdapterEvidenceRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Artifact step IDs' $Artifact.FrontMatter.StepId
-  })
-  if ($rules.Count -ne 1) {
-    $errors.Add("$Context $Role adapter evidence contract must resolve exactly one role rule; found $($rules.Count)")
-    return ''
-  }
-  $rule = $rules[0]
-  if ($Artifact.FrontMatter.StepId -ceq '10-code-migration') {
-    $row = Get-ActivationSliceCanonicalAdapterEvidenceRow $Artifact $Definition $Role $Context
-    if ($null -eq $row) { return '' }
-    return Get-ActivationSliceCellValue $row 'Adapter Kind'
-  }
-  if (
-    (Get-ActivationSliceCellValue $rule 'Canonical source') -cne 'Delivery Adapter Kind, Delivery Adapter Mode Constraint' -or
-    (Get-ActivationSliceCellValue $rule 'Required schema') -cne 'Adapter Kind, Mode Constraint' -or
-    (Get-ActivationSliceCellValue $rule 'Cardinality') -cne 'exactly-one-visible-line-each'
-  ) {
-    $errors.Add("$Context $Role downstream adapter evidence contract is invalid")
-    return ''
-  }
-  $adapterMatches = @(Get-ActivationSliceVisibleAdapterMatches $Artifact)
-  if ($adapterMatches.Count -ne 1) {
-    $errors.Add("$Context $Role requires exact Delivery Adapter Kind")
-    return ''
-  }
-  $adapterKind = $adapterMatches[0].Groups['value'].Value.Trim()
-  if ($adapterKind -cnotin @('migration-unit', 'task', 'story', 'package', 'phase', 'milestone', 'none')) {
-    $errors.Add("$Context $Role has invalid Delivery Adapter Kind")
-    return ''
-  }
-  return $adapterKind
-}
-
-function Get-ActivationSliceArtifactAdapterModeConstraint(
-  [object]$Artifact,
-  [object]$Definition,
-  [string]$Role,
-  [string]$Context
-) {
-  $rules = @($Definition.AdapterEvidenceRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Artifact step IDs' $Artifact.FrontMatter.StepId
-  })
-  if ($rules.Count -ne 1) {
-    $errors.Add("$Context $Role adapter evidence contract must resolve exactly one role rule; found $($rules.Count)")
-    return ''
-  }
-  $rule = $rules[0]
-  if ($Artifact.FrontMatter.StepId -ceq '10-code-migration') {
-    $row = Get-ActivationSliceCanonicalAdapterEvidenceRow $Artifact $Definition $Role $Context
-    if ($null -eq $row) { return '' }
-    $modeConstraint = Get-ActivationSliceCellValue $row 'Mode Constraint'
-  }
-  else {
-    if (
-      (Get-ActivationSliceCellValue $rule 'Canonical source') -cne 'Delivery Adapter Kind, Delivery Adapter Mode Constraint' -or
-      (Get-ActivationSliceCellValue $rule 'Required schema') -cne 'Adapter Kind, Mode Constraint' -or
-      (Get-ActivationSliceCellValue $rule 'Cardinality') -cne 'exactly-one-visible-line-each'
-    ) {
-      $errors.Add("$Context $Role downstream adapter evidence contract is invalid")
-      return ''
-    }
-    $modeMatches = @(Get-ActivationSliceVisibleAdapterModeMatches $Artifact)
-    if ($modeMatches.Count -ne 1) {
-      $errors.Add("$Context $Role requires exact Delivery Adapter Mode Constraint")
-      return ''
-    }
-    $modeConstraint = $modeMatches[0].Groups['value'].Value.Trim()
-  }
-  if ($modeConstraint -cnotin @('incremental/preserve-existing', 'greenfield/design-new')) {
-    $errors.Add("$Context $Role has invalid Delivery Adapter Mode Constraint")
-    return ''
-  }
-  return $modeConstraint
-}
-
 function Test-ActivationSliceSelectedRoute(
   [object]$Artifact,
   [object]$Rule,
   [object]$Definition,
-  [string]$Context,
-  [object]$ImplementationBinding = $null
+  [string]$Context
 ) {
   $expectedMode = Get-ActivationSliceCellValue $Rule 'Selected Mode Constraint'
   $expectedScope = Get-ActivationSliceCellValue $Rule 'Selected Bootstrap Scope'
@@ -5667,73 +4115,6 @@ function Test-ActivationSliceSelectedRoute(
       return $false
     }
     return $true
-  }
-  if ($Artifact.FrontMatter.StepId -ceq '10-code-migration') {
-    if ($null -eq $ImplementationBinding) { return $false }
-    $adapterKind = [string]$ImplementationBinding.AdapterKind
-    if ($adapterKind -cin @('task', 'story', 'package', 'phase', 'milestone', 'none')) {
-      $route = Get-ActivationSliceCellValue $Rule 'Route'
-      $predecessorStepId = Get-ActivationSliceCellValue $Rule 'Predecessor step ID'
-      if ($route -cne 'initial' -or $predecessorStepId -cne '08-plan-waves') {
-        $errors.Add("$Context generic adapter requires initial predecessor step_id: 08-plan-waves")
-        return $false
-      }
-      $selectedUnitCount = @(Get-MarkdownSectionHeadings $Artifact.Text 'Selected Migration Unit').Count
-      if ($selectedUnitCount -ne 0) { return $false }
-      $declaredMode = [string]$ImplementationBinding.ModeConstraint
-      $actualScope = 'not-required'
-      $canonicalPair = $declaredMode -cin @('incremental/preserve-existing', 'greenfield/design-new')
-      $modeMatches = if ($expectedMode -ceq '<canonical>') { $canonicalPair } else { $declaredMode -ceq $expectedMode }
-      $scopeMatches = if ($expectedScope -ceq '<canonical>') { $canonicalPair } else { $actualScope -ceq $expectedScope }
-      if ($modeMatches -and $scopeMatches) { return $true }
-      $errors.Add("$Context adapter mode/bootstrap pair is invalid for route $route")
-      return $false
-    }
-    if ($adapterKind -cne 'migration-unit') { return $false }
-  }
-  $downstreamStepRules = @($Definition.DownstreamUnitRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Current step ID' $Artifact.FrontMatter.StepId
-  })
-  if ($downstreamStepRules.Count -gt 0) {
-    $adapterKind = Get-ActivationSliceArtifactAdapterKind $Artifact $Definition 'route current' $Context
-    if ([string]::IsNullOrWhiteSpace($adapterKind)) { return $false }
-    $declaredMode = Get-ActivationSliceArtifactAdapterModeConstraint $Artifact $Definition 'route current' $Context
-    if ([string]::IsNullOrWhiteSpace($declaredMode)) { return $false }
-    $adapterRules = @($downstreamStepRules | Where-Object {
-      Test-ActivationSliceRuleListContains $_ 'Adapter Kind Applicability' $adapterKind
-    })
-    if ($adapterRules.Count -ne 1) {
-      $errors.Add("$Context downstream adapter contract must resolve exactly one route rule; found $($adapterRules.Count)")
-      return $false
-    }
-    if ($adapterKind -cne 'migration-unit') {
-      $adapterRule = $adapterRules[0]
-      if (
-        (Get-ActivationSliceCellValue $adapterRule 'Section') -cne '<absent>' -or
-        (Get-ActivationSliceCellValue $adapterRule 'Required columns') -cne '<not-applicable>' -or
-        (Get-ActivationSliceCellValue $adapterRule 'Preservation') -cne 'ordinal-absence'
-      ) {
-        $errors.Add("$Context downstream generic-adapter contract must require ordinal-absence")
-        return $false
-      }
-      $sectionCount = @(Get-MarkdownSectionHeadings $Artifact.Text 'Selected Migration Unit').Count
-      if ($sectionCount -ne 0) {
-        $errors.Add("$Context route current generic adapter forbids Selected Migration Unit section; found $sectionCount")
-        return $false
-      }
-      $actualScope = 'not-required'
-      $canonicalPair = $declaredMode -cin @('incremental/preserve-existing', 'greenfield/design-new')
-      $modeMatches = if ($expectedMode -ceq '<canonical>') { $canonicalPair } else { $declaredMode -ceq $expectedMode }
-      $scopeMatches = if ($expectedScope -ceq '<canonical>') { $canonicalPair } else { $actualScope -ceq $expectedScope }
-      if ($modeMatches -and $scopeMatches) { return $true }
-      if ($Artifact.FrontMatter.StepId -ceq '14-verify-regression') {
-        $errors.Add("$Context regression route requires Delivery Adapter Mode Constraint incremental/preserve-existing")
-      }
-      else {
-        $errors.Add("$Context adapter mode/bootstrap pair is invalid for route $(Get-ActivationSliceCellValue $Rule 'Route')")
-      }
-      return $false
-    }
   }
   $route = Get-ActivationSliceCellValue $Rule 'Route'
   $role = switch -CaseSensitive ($route) {
@@ -5746,14 +4127,6 @@ function Test-ActivationSliceSelectedRoute(
   if ($null -eq $row) { return $false }
   $actualMode = Get-ActivationSliceCellValue $row 'Mode Constraint'
   $actualScope = Get-ActivationSliceCellValue $row 'Bootstrap Scope'
-  if (
-    $downstreamStepRules.Count -gt 0 -and
-    -not [string]::IsNullOrWhiteSpace($declaredMode) -and
-    $declaredMode -cne $actualMode
-  ) {
-    $errors.Add("$Context route current Delivery Adapter Mode Constraint must equal Selected Migration Unit.Mode Constraint")
-    return $false
-  }
   $canonicalPair =
     ($actualMode -ceq 'incremental/preserve-existing' -and $actualScope -ceq 'not-required') -or
     ($actualMode -ceq 'greenfield/design-new' -and $actualScope -cin @('required', 'not-required'))
@@ -5966,62 +4339,15 @@ function Test-ActivationSliceDownstreamSelectedUnitHandoff(
   [object]$Definition,
   [string]$Context
 ) {
-  $stepRules = @($Definition.DownstreamUnitRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Current step ID' $Successor.FrontMatter.StepId
+  $rules = @($Definition.DownstreamUnitRules | Where-Object {
+    (Get-ActivationSliceCellValue $_ 'Current step ID') -ceq $Successor.FrontMatter.StepId
   })
-  if ($stepRules.Count -eq 0) { return }
-  $currentAdapterKind = Get-ActivationSliceArtifactAdapterKind `
-    $Successor $Definition 'downstream current' $Context
-  $predecessorAdapterKind = Get-ActivationSliceArtifactAdapterKind `
-    $Predecessor $Definition 'downstream predecessor' $Context
-  $currentModeConstraint = Get-ActivationSliceArtifactAdapterModeConstraint `
-    $Successor $Definition 'downstream current' $Context
-  $predecessorModeConstraint = Get-ActivationSliceArtifactAdapterModeConstraint `
-    $Predecessor $Definition 'downstream predecessor' $Context
-  if (
-    [string]::IsNullOrWhiteSpace($currentAdapterKind) -or
-    [string]::IsNullOrWhiteSpace($predecessorAdapterKind) -or
-    [string]::IsNullOrWhiteSpace($currentModeConstraint) -or
-    [string]::IsNullOrWhiteSpace($predecessorModeConstraint)
-  ) { return }
-  if ($currentAdapterKind -cne $predecessorAdapterKind) {
-    $errors.Add("$Context downstream Delivery Adapter Kind changed from $predecessorAdapterKind to $currentAdapterKind")
-    return
-  }
-  if ($currentModeConstraint -cne $predecessorModeConstraint) {
-    $errors.Add("$Context downstream Delivery Adapter Mode Constraint changed from $predecessorModeConstraint to $currentModeConstraint")
-    return
-  }
-  $rules = @($stepRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Adapter Kind Applicability' $currentAdapterKind
-  })
+  if ($rules.Count -eq 0) { return }
   if ($rules.Count -ne 1) {
     $errors.Add("$Context downstream selected-unit contract must resolve exactly one rule; found $($rules.Count)")
     return
   }
   $rule = $rules[0]
-  if ($currentAdapterKind -cne 'migration-unit') {
-    if (
-      (Get-ActivationSliceCellValue $rule 'Section') -cne '<absent>' -or
-      (Get-ActivationSliceCellValue $rule 'Required columns') -cne '<not-applicable>' -or
-      (Get-ActivationSliceCellValue $rule 'Preservation') -cne 'ordinal-absence'
-    ) {
-      $errors.Add("$Context downstream generic-adapter contract must require ordinal-absence")
-      return
-    }
-    foreach ($artifactSpec in @(
-      [pscustomobject]@{ Artifact = $Successor; Role = 'current' },
-      [pscustomobject]@{ Artifact = $Predecessor; Role = 'predecessor' }
-    )) {
-      $sectionCount = @(
-        Get-MarkdownSectionHeadings $artifactSpec.Artifact.Text 'Selected Migration Unit'
-      ).Count
-      if ($sectionCount -ne 0) {
-        $errors.Add("$Context downstream $($artifactSpec.Role) generic adapter forbids Selected Migration Unit section; found $sectionCount")
-      }
-    }
-    return
-  }
   if ((Get-ActivationSliceCellValue $rule 'Preservation') -cne 'ordinal-exact-predecessor') {
     $errors.Add("$Context downstream selected-unit contract requires ordinal-exact-predecessor preservation")
     return
@@ -6137,32 +4463,18 @@ function Test-ActivationSliceAssuranceProvenanceHandoff(
       }
     }
     $intrinsicPredicates = Get-ActivationSliceCellValue $rule 'Intrinsic predicates'
-    if ($intrinsicPredicates -cne 'Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder') {
+    if ($intrinsicPredicates -cne 'Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder') {
       $errors.Add("$Context assurance provenance contract has invalid intrinsic predicates")
       continue
     }
-    $adapterKind = Get-ActivationSliceArtifactAdapterKind `
-      $rowSpec.Artifact `
-      $Definition `
-      "assurance provenance $($rowSpec.Role)" `
-      $Context
-    if ([string]::IsNullOrWhiteSpace($adapterKind)) { continue }
-    $expectedIdentity = ''
-    if ($adapterKind -ceq 'migration-unit') {
-      $selectedUnit = Get-ActivationSliceCanonicalSelectedUnitRow `
-        $rowSpec.Artifact $Definition "assurance $($rowSpec.Role)" $Context
-      if ($null -ne $selectedUnit) { $expectedIdentity = Get-ActivationSliceCellValue $selectedUnit 'Migration Unit ID' }
-    }
-    elseif ($adapterKind -cin @('task', 'story', 'package', 'phase', 'milestone', 'none')) {
-      $scopeColumns = @('Run ID', 'Master Spec Reference', 'Master Spec ID', 'Master Spec Revision', 'Master Plan Reference', 'Master Plan ID', 'Master Plan Revision', 'Work Item ID')
-      $scopeRows = @(Get-MarkdownTableRows $rowSpec.Artifact.Text 'Master Scope Context' "$Context assurance $($rowSpec.Role) scope" $scopeColumns)
-      if ($scopeRows.Count -eq 1) { $expectedIdentity = Get-ActivationSliceCellValue $scopeRows[0] 'Work Item ID' }
-    }
-    else {
-      $errors.Add("$Context assurance provenance $($rowSpec.Role) has invalid Delivery Adapter Kind")
-    }
-    if ([string]::IsNullOrWhiteSpace($expectedIdentity) -or (Get-ActivationSliceCellValue $rowSpec.Row 'Task / Unit') -cne $expectedIdentity) {
-      $errors.Add("$Context assurance provenance $($rowSpec.Role) Task / Unit must equal approved adapter identity")
+    $selectedUnit = Get-ActivationSliceCanonicalSelectedUnitRow `
+      $rowSpec.Artifact $Definition "assurance $($rowSpec.Role)" $Context
+    if (
+      $null -ne $selectedUnit -and
+      (Get-ActivationSliceCellValue $rowSpec.Row 'Task / Unit') -cne
+        (Get-ActivationSliceCellValue $selectedUnit 'Migration Unit ID')
+    ) {
+      $errors.Add("$Context assurance provenance $($rowSpec.Role) Task / Unit must equal Selected Migration Unit.Migration Unit ID")
     }
     foreach ($shaColumn in @('Task-base SHA', 'Final-tree SHA')) {
       if (Test-ActivationSlicePlaceholderValue (Get-ActivationSliceCellValue $rowSpec.Row $shaColumn) $Definition) {
@@ -6423,105 +4735,6 @@ function Test-ActivationSliceAssuranceVerdictConsistency(
   }
 }
 
-function Test-ActivationSliceWorkItemImplementationEvidenceRecords(
-  [object]$Artifact,
-  [object]$ApprovedEnvelope,
-  [object]$AdapterEvidence,
-  [string]$AdapterKind,
-  [object]$Definition,
-  [string]$Context
-) {
-  $workItemId = Get-ActivationSliceCellValue $AdapterEvidence 'Work Item ID'
-  if ($workItemId -cnotmatch '^WORK-[A-Za-z0-9._-]+$') {
-    $errors.Add("$Context Canonical Adapter Evidence Work Item ID must be canonical: $workItemId")
-  }
-  $scopeColumns = @(
-    'Master Spec Reference', 'Master Spec ID', 'Master Spec Revision',
-    'Master Plan Reference', 'Master Plan ID', 'Master Plan Revision',
-    'Work Item ID', 'Work Item Approval Reference'
-  )
-  $scopeRow = Get-ActivationSliceExactHandoffRow `
-    $Artifact.Text 'Master Scope Context' $scopeColumns 'implementation predecessor' $Context
-  if (
-    $null -ne $scopeRow -and
-    (Get-ActivationSliceCellValue $scopeRow 'Work Item ID') -cne $workItemId
-  ) {
-    $errors.Add("$Context implementation predecessor Master Scope Context.Work Item ID must equal Canonical Adapter Evidence.Work Item ID")
-  }
-  $canonicalTraceIds = @(
-    (Get-ActivationSliceCellValue $AdapterEvidence 'Trace IDs').Split(',') |
-      ForEach-Object { Trim-AsciiSpaceTab $_ } |
-      Where-Object { $_ -ne '' }
-  )
-  if ($canonicalTraceIds.Count -eq 0) {
-    $errors.Add("$Context Canonical Adapter Evidence requires non-empty Trace IDs")
-  }
-  $rules = @($Definition.LinkRules | Where-Object {
-    (Get-ActivationSliceCellValue $_ 'Record') -cin @('work-item-changed-file', 'work-item-test-evidence') -and
-    (Test-ActivationSliceRuleListContains $_ 'Adapter Kind Applicability' $AdapterKind)
-  })
-  if ($rules.Count -ne 2) {
-    $errors.Add("$Context implementation linkage contract must resolve exactly two generic Work Item rules; found $($rules.Count)")
-    return
-  }
-  foreach ($linkRule in $rules) {
-    $record = Get-ActivationSliceCellValue $linkRule 'Record'
-    $section = Get-ActivationSliceCellValue $linkRule 'Section'
-    $columns = @(
-      (Get-ActivationSliceCellValue $linkRule 'Required columns').Split(',') |
-        ForEach-Object { Trim-AsciiSpaceTab $_ } |
-        Where-Object { $_ -ne '' }
-    )
-    $headingCount = @(Get-MarkdownSectionHeadings $Artifact.Text $section).Count
-    if ($headingCount -ne 1) {
-      $errors.Add("$Context $record structured section must appear exactly once; found $headingCount")
-      continue
-    }
-    $rows = @(Get-MarkdownTableRows $Artifact.Text $section "$Context $record linkage" $columns)
-    if ($rows.Count -eq 0) {
-      $errors.Add("$Context $record linkage requires at least one structured record")
-      continue
-    }
-    foreach ($row in $rows) {
-      foreach ($column in $columns) {
-        if ([string]::IsNullOrWhiteSpace((Get-ActivationSliceCellValue $row $column))) {
-          $errors.Add("$Context $record record requires non-empty $column")
-        }
-      }
-      $rowWorkItemId = Get-ActivationSliceCellValue $row 'Work Item ID'
-      if ($rowWorkItemId -cne $workItemId) {
-        $errors.Add("$Context $record Work Item ID $rowWorkItemId does not match canonical Work Item ID $workItemId")
-      }
-      $sliceId = Get-ActivationSliceCellValue $row 'Activation Slice ID'
-      $seam = Get-ActivationSliceCellValue $row 'Seam'
-      $traceIds = @(
-        (Get-ActivationSliceCellValue $row 'Trace IDs').Split(',') |
-          ForEach-Object { Trim-AsciiSpaceTab $_ } |
-          Where-Object { $_ -ne '' }
-      )
-      if ([string]::IsNullOrWhiteSpace($sliceId) -or [string]::IsNullOrWhiteSpace($seam) -or $traceIds.Count -eq 0) {
-        continue
-      }
-      if (-not $ApprovedEnvelope.Slices.ContainsKey($sliceId)) {
-        $errors.Add("$Context $record link references unknown approved Activation Slice ID: $sliceId")
-        continue
-      }
-      $slice = $ApprovedEnvelope.Slices[$sliceId]
-      if ($slice.Seams -cnotcontains $seam) {
-        $errors.Add("$Context $record link $sliceId references unknown approved seam: $seam")
-        continue
-      }
-      $approvedTraceIds = @($slice.TraceIds[$seam])
-      $unapprovedTraceIds = @($traceIds | Where-Object {
-        $approvedTraceIds -cnotcontains $_ -or $canonicalTraceIds -cnotcontains $_
-      })
-      if ($unapprovedTraceIds.Count -gt 0) {
-        $errors.Add("$Context $record link $sliceId/$seam has unapproved Trace IDs: $($unapprovedTraceIds -join ', ')")
-      }
-    }
-  }
-}
-
 function Test-ActivationSliceImplementationEvidenceRecords(
   [object]$Artifact,
   [object]$ApprovedEnvelope,
@@ -6540,8 +4753,7 @@ function Test-ActivationSliceImplementationEvidenceRecords(
   $unitPattern = Get-ActivationSliceCellValue $identifierRules[0] 'Required format'
   $selectedUnitId = Get-ActivationSliceCellValue $SelectedUnit 'Migration Unit ID'
   foreach ($linkRule in @($Definition.LinkRules | Where-Object {
-    (Get-ActivationSliceCellValue $_ 'Record') -cne 'selected-unit' -and
-    (Test-ActivationSliceRuleListContains $_ 'Adapter Kind Applicability' 'migration-unit')
+    (Get-ActivationSliceCellValue $_ 'Record') -cne 'selected-unit'
   })) {
     $record = Get-ActivationSliceCellValue $linkRule 'Record'
     $section = Get-ActivationSliceCellValue $linkRule 'Section'
@@ -6681,16 +4893,12 @@ function Test-ActivationSliceImplementationLinks(
   [object]$Predecessor,
   [string]$Context,
   [object]$Definition,
-  [object]$HandoffRule,
-  [object]$ImplementationBinding = $null
+  [object]$HandoffRule
 ) {
   $linkRules = @($Definition.LinkRules)
   if ($linkRules.Count -eq 0) { return }
-  $migrationLinkRules = @($linkRules | Where-Object {
-    Test-ActivationSliceRuleListContains $_ 'Adapter Kind Applicability' 'migration-unit'
-  })
   $currentStepIds = @(Get-CaseSensitiveUniqueStrings @(
-    $migrationLinkRules | ForEach-Object { Get-ActivationSliceCellValue $_ 'Current step ID' }
+    $linkRules | ForEach-Object { Get-ActivationSliceCellValue $_ 'Current step ID' }
   ))
   if ($currentStepIds.Count -ne 1) {
     $errors.Add("$Context implementation linkage contract must declare exactly one current step ID")
@@ -6698,7 +4906,7 @@ function Test-ActivationSliceImplementationLinks(
   }
   $currentStepId = $currentStepIds[0]
   $linkSections = @(Get-CaseSensitiveUniqueStrings @(
-    $migrationLinkRules |
+    $linkRules |
       Where-Object { (Get-ActivationSliceCellValue $_ 'Record') -cne 'selected-unit' } |
       ForEach-Object { Get-ActivationSliceCellValue $_ 'Section' }
   ))
@@ -6767,59 +4975,7 @@ function Test-ActivationSliceImplementationLinks(
 
   $linkBlockingErrorStart = $errors.Count
   try {
-  if ($null -eq $ImplementationBinding) { return }
-  $adapterKind = [string]$ImplementationBinding.AdapterKind
-  if ($Predecessor.FrontMatter.StepId -ceq '08-plan-waves') {
-    Test-ActivationSliceApprovedAdapterSelectionBinding `
-      $Predecessor $ImplementationBinding 'current implementation' $Context
-  }
-  elseif ($Predecessor.FrontMatter.StepId -ceq '10-code-migration') {
-    $predecessorBinding = Get-ActivationSliceImplementationAdapterBinding `
-      $Predecessor $Definition 'resume predecessor' $Context
-    if ($null -ne $predecessorBinding) {
-      foreach ($field in @(
-        'Work Item ID', 'Adapter Kind', 'External ID', 'Authority', 'Authority Revision',
-        'Approval Reference', 'Parent Selector', 'Acceptance', 'Trace IDs', 'Mode Constraint',
-        'Design Revision', 'Parent Work Item ID', 'Decomposition Decision Reference', 'Canonical Match'
-      )) {
-        if (
-          (Get-ActivationSliceCellValue $ImplementationBinding.AdapterEvidence $field) -cne
-            (Get-ActivationSliceCellValue $predecessorBinding.AdapterEvidence $field)
-        ) {
-          $errors.Add("$Context resume Canonical Adapter Evidence field changed: $field")
-        }
-      }
-    }
-  }
-
-  if ($adapterKind -cin @('task', 'story', 'package', 'phase', 'milestone', 'none')) {
-    if ($invocation -cne 'initial' -or $Predecessor.FrontMatter.StepId -cne '08-plan-waves') {
-      $errors.Add("$Context generic adapter requires initial predecessor step_id: 08-plan-waves")
-      return
-    }
-    $genericLinkRules = @($linkRules | Where-Object {
-      Test-ActivationSliceRuleListContains $_ 'Adapter Kind Applicability' $adapterKind
-    })
-    $genericLinkSections = @($genericLinkRules | ForEach-Object {
-      Get-ActivationSliceCellValue $_ 'Section'
-    })
-    $hasGenericLinkSection = @($genericLinkSections | Where-Object {
-      @(Get-MarkdownSectionHeadings $Text $_).Count -gt 0
-    }).Count -gt 0
-    if ($Artifact.FrontMatter.Result -cne 'blocked' -or $hasGenericLinkSection) {
-      Test-ActivationSliceWorkItemImplementationEvidenceRecords `
-        $Artifact `
-        $Predecessor `
-        $ImplementationBinding.AdapterEvidence `
-        $adapterKind `
-        $Definition `
-        $Context
-    }
-    return
-  }
-  if ($adapterKind -cne 'migration-unit') { return }
-
-  $selectedUnitRules = @($migrationLinkRules | Where-Object {
+  $selectedUnitRules = @($linkRules | Where-Object {
     (Get-ActivationSliceCellValue $_ 'Record') -ceq 'selected-unit'
   })
   if ($selectedUnitRules.Count -ne 1) {
@@ -7144,25 +5300,14 @@ function Test-ApprovedFixtureArtifactRoute(
 
   $current = Test-ActivationSliceArtifact $currentText "$Context current" $definition
   $currentHasBlockingErrors = $current.HasBlockingErrors
-  $implementationBindingErrorStart = $errors.Count
-  $implementationBinding = if ($current.FrontMatter.StepId -ceq '10-code-migration') {
-    Get-ActivationSliceImplementationAdapterBinding `
-      $current $definition 'current implementation' $Context
-  }
-  else {
-    $null
-  }
-  $currentHasBlockingErrors = `
-    $currentHasBlockingErrors -or ($errors.Count -gt $implementationBindingErrorStart)
   $handoffErrorStart = $errors.Count
   $handoffRule = Get-ActivationSliceImmediatePredecessorRule `
     $predecessor $current $definition $Context
   if ($null -ne $handoffRule) {
     $routeErrorStart = $errors.Count
-    $routeIsValid = Test-ActivationSliceSelectedRoute `
-      $current $handoffRule $definition $Context $implementationBinding
+    [void](Test-ActivationSliceSelectedRoute $current $handoffRule $definition $Context)
     Test-ActivationSliceBootstrapHandoff $predecessor $current $definition $Context
-    if ($routeIsValid -and $errors.Count -eq $routeErrorStart) {
+    if ($errors.Count -eq $routeErrorStart) {
       Test-ActivationSliceHandoff $predecessor $current $definition
       Test-ActivationSliceDownstreamSelectedUnitHandoff `
         $predecessor $current $definition $Context
@@ -7172,7 +5317,7 @@ function Test-ApprovedFixtureArtifactRoute(
   }
   $currentHasBlockingErrors = $currentHasBlockingErrors -or ($errors.Count -gt $handoffErrorStart)
   Test-ActivationSliceImplementationLinks `
-    $currentText $current $predecessor $Context $definition $handoffRule $implementationBinding
+    $currentText $current $predecessor $Context $definition $handoffRule
   $currentHasBlockingErrors = `
     $currentHasBlockingErrors -or ($current.LinkBlockingErrorCount -gt 0)
   $assuranceErrorStart = $errors.Count
@@ -7622,17 +5767,6 @@ function Test-Skills {
     'Architecture-first review order' `
     $root `
     $conformanceContractText
-  $migrateSkillPath = Join-Path $root 'skills/aitoolkit/migrate/SKILL.md'
-  if (-not (Test-Path -LiteralPath $migrateSkillPath -PathType Leaf)) {
-    $errors.Add('Missing migration orchestrator responsibility rollout contract')
-  }
-  elseif ($null -eq $script:MigrationResponsibilityRolloutValidator) {
-    $errors.Add('Architecture review validator did not expose its private migration responsibility rollout validator')
-  }
-  else {
-    $migrateSkillText = Get-Content -Raw -Encoding utf8 -LiteralPath $migrateSkillPath
-    foreach ($diagnostic in @(& $script:MigrationResponsibilityRolloutValidator $migrateSkillText)) { $errors.Add($diagnostic) }
-  }
   $languageProducerSkills = @(
     'migration/validate-inputs', 'migration/discovery', 'migration/analyze-requirements-uiux',
     'migration/build-inventory', 'migration/feature-mapping', 'migration/analyze-gaps-conflicts',
@@ -8101,32 +6235,14 @@ function Test-Skills {
       'Approved migration-plan handoff'
   }
 
-  $technicalDesignSkillPath = Join-Path $skillRoot 'technical-design/SKILL.md'
-  if (Test-Path $technicalDesignSkillPath) {
-    $technicalDesignSkillText = Get-Content -Raw -Encoding utf8 $technicalDesignSkillPath
-    Require-Token $technicalDesignSkillText 'revision: DESIGN-*@<positive integer>' 'Skill technical-design/SKILL.md approved design revision'
-    Require-Token $technicalDesignSkillText 'sole authority plan-waves may cite' 'Skill technical-design/SKILL.md approved design revision'
-  }
-
   $planWavesPath = Join-Path $skillRoot 'plan-waves/SKILL.md'
   if (Test-Path $planWavesPath) {
     $planWavesText = Get-Content -Raw -Encoding utf8 $planWavesPath
     $planWavesProcedure = Get-MarkdownSectionBody $planWavesText 'Procedure' 'Skill plan-waves/SKILL.md policy'
-    $responsibilityOwnerBinding = Get-MarkdownSectionBody $planWavesText 'Responsibility owner binding' 'Skill plan-waves/SKILL.md responsibility owner binding'
     $foundationBaselineContract = Get-MarkdownSectionBody $planWavesText 'Foundation baseline contract' 'Skill plan-waves/SKILL.md foundation baseline contract'
     $planWavesOutput = Get-MarkdownSectionBody $planWavesText $outputContractToken 'Skill plan-waves/SKILL.md output'
     Require-Token $planWavesOutput '`Bootstrap Scope`' 'Skill plan-waves/SKILL.md output'
     Require-Token $planWavesOutput '`Foundation Baseline ID`' 'Skill plan-waves/SKILL.md output'
-    @(
-      'aitoolkit/contracts/file-responsibility-conformance.md', 'exactly one `Responsibility Owner References` row',
-      'exact ordered owner set', 'Shared Foundation IDs', 'Integration Responsibility IDs',
-      'VERIFY-OWNER-*', 'cross-work-item-reused', 'Independent Boundary Evidence',
-      'revision: DESIGN-*@<positive integer>', 'bidirectional one-to-one `Work Item ID` set',
-      'canonical rule, decision, or approval reference', 'independently implementable, reviewable, verifiable, and revertible', 'result: blocked',
-      'responsibility_contract:', '`version: 1`', '`applicability: required`'
-    ) | ForEach-Object {
-      Require-Token $responsibilityOwnerBinding $_ 'Skill plan-waves/SKILL.md responsibility owner binding'
-    }
     @(
       'exactly one approved `Foundation Baseline ID`', '`Bootstrap Scope = not-required`',
       'target baseline reference', 'approval reference', 'missing, stale, or mismatched', '`result: blocked`',
@@ -8613,15 +6729,10 @@ function Test-Orchestrators {
       $handoffColumns `
       $templateContract.Context
     if ($templateContract.Path -in 'templates/migration/review-report.md', 'templates/migration/verification-report.md') {
-      if ($templateContract.Path -ceq 'templates/migration/review-report.md') {
-        Require-Token $templateText 'result: <complete | blocked>' $templateContract.Context
-      }
-      else {
-        Require-Token `
-          $templateText `
-          (ConvertFrom-Utf8Base64 'Q2jhu4kgbWlncmF0aW9uOiB0aMOqbSBgcmVzdWx0OiBjb21wbGV0ZSB8IGJsb2NrZWRg') `
-          $templateContract.Context
-      }
+      Require-Token `
+        $templateText `
+        (ConvertFrom-Utf8Base64 'Q2jhu4kgbWlncmF0aW9uOiB0aMOqbSBgcmVzdWx0OiBjb21wbGV0ZSB8IGJsb2NrZWRg') `
+        $templateContract.Context
     }
   }
 
@@ -8649,26 +6760,6 @@ function Test-Orchestrators {
       '`result: complete | blocked`', '`result: blocked`'
     ) | ForEach-Object {
       Require-Token $extensionText $_ $skillContract.Context
-    }
-    if ($skillContract.Path -cne 'skills/shared/ai-review/SKILL.md') {
-      @(
-        'Architecture Responsibility Handoff', 'immediate', 'ordinally exact',
-        'Architecture Conformance State', 'Evidence References',
-        'cumulative artifacts', 'directory scans', 'result: blocked'
-      ) | ForEach-Object {
-        Require-Token $skillText $_ "$($skillContract.Context) responsibility provenance"
-      }
-    }
-    else {
-      @(
-        'responsibility handoff origin producer', 'bounded front matter', '`Task Provenance`',
-        '`Architecture Responsibility Handoff`',
-        'source-diff:<task-base SHA>..<final-tree SHA>#<WORK-*>',
-        '`approved/complete/human`', 'draft artifacts omit approval_source', 'implementation-report.md',
-        'cumulative artifacts', 'directory scan'
-      ) | ForEach-Object {
-        Require-Token $skillText $_ "$($skillContract.Context) responsibility producer seam"
-      }
     }
   }
 
@@ -8728,14 +6819,6 @@ function Test-Orchestrators {
       '`Verification Verdict: PASS`', (ConvertFrom-Utf8Base64 'cGFyaXR5IGV2aWRlbmNlIGPDuW5nIHJ1biDEkcOjIGR1eeG7h3Q=')
     ) | ForEach-Object {
       Require-Token $knowledgeVerdict $_ 'Knowledge Capture workflow-aware terminal verdict'
-    }
-    @(
-      'Architecture Responsibility Handoff', 'Evidence References',
-      'exact immutable `source-diff:', 'separate final responsibility-chain artifact',
-      'never place that artifact reference in the immutable handoff cell',
-      'Completion Verdict `blocked`', 'Runtime/`auto-waive`'
-    ) | ForEach-Object {
-      Require-Token $knowledgeSkillText $_ 'Knowledge Capture responsibility provenance'
     }
     $knowledgeFoundationProposal = Get-MarkdownSectionBody `
       $knowledgeSkillText `
@@ -10400,19 +8483,6 @@ if (-not [string]::IsNullOrWhiteSpace($ActivationSliceArtifactPath)) {
     $artifactText = Get-Content -Raw -Encoding utf8 -LiteralPath $ActivationSliceArtifactPath
     $artifact = Test-ActivationSliceArtifact $artifactText 'Activation Slice artifact' $activationSliceDefinition
     $artifactHasBlockingErrors = $artifact.HasBlockingErrors
-    $implementationBindingErrorStart = $errors.Count
-    $implementationBinding = if ($artifact.FrontMatter.StepId -ceq '10-code-migration') {
-      Get-ActivationSliceImplementationAdapterBinding `
-        $artifact `
-        $activationSliceDefinition `
-        'current implementation' `
-        'Activation Slice artifact'
-    }
-    else {
-      $null
-    }
-    $artifactHasBlockingErrors = `
-      $artifactHasBlockingErrors -or ($errors.Count -gt $implementationBindingErrorStart)
     $predecessor = $null
     $handoffRule = $null
     $discoveryOriginWithoutEnvelope = $false
@@ -10463,12 +8533,8 @@ if (-not [string]::IsNullOrWhiteSpace($ActivationSliceArtifactPath)) {
           'Activation Slice artifact'
         if ($null -ne $handoffRule) {
           $routeErrorStart = $errors.Count
-          $routeIsValid = Test-ActivationSliceSelectedRoute `
-            $artifact `
-            $handoffRule `
-            $activationSliceDefinition `
-            'Activation Slice artifact' `
-            $implementationBinding
+          [void](Test-ActivationSliceSelectedRoute `
+            $artifact $handoffRule $activationSliceDefinition 'Activation Slice artifact')
           Test-ActivationSliceBootstrapHandoff `
             $predecessor $artifact $activationSliceDefinition 'Activation Slice artifact'
           if (
@@ -10486,7 +8552,7 @@ if (-not [string]::IsNullOrWhiteSpace($ActivationSliceArtifactPath)) {
             [void](Test-ActivationSliceParityVerdictArtifact `
               $artifact $activationSliceDefinition 'current' 'Activation Slice artifact')
           }
-          if ($routeIsValid -and $errors.Count -eq $routeErrorStart) {
+          if ($errors.Count -eq $routeErrorStart) {
             if (
               (Get-ActivationSliceCellValue $handoffRule 'Route') -cne 'discovery-origin' -or
               -not $discoveryOriginWithoutEnvelope
@@ -10519,8 +8585,7 @@ if (-not [string]::IsNullOrWhiteSpace($ActivationSliceArtifactPath)) {
       $predecessor `
       'Activation Slice artifact' `
       $activationSliceDefinition `
-      $handoffRule `
-      $implementationBinding
+      $handoffRule
     $artifactHasBlockingErrors = $artifactHasBlockingErrors -or ($artifact.LinkBlockingErrorCount -gt 0)
     $assuranceErrorStart = $errors.Count
     Test-ActivationSliceAssuranceVerdictConsistency `
@@ -10545,249 +8610,6 @@ elseif (-not [string]::IsNullOrWhiteSpace($PredecessorActivationSliceArtifactPat
   $errors.Add('Activation Slice predecessor requires ActivationSliceArtifactPath')
 }
 
-function Test-ArcStaticCoverageLiteralValue([Management.Automation.Language.Ast]$Node) {
-  if ($null -eq $Node) { return $false }
-  $redirectionsProperty = $Node.PSObject.Properties['Redirections']
-  if ($null -ne $redirectionsProperty -and @($redirectionsProperty.Value).Count -ne 0) { return $false }
-  if ($Node -is [Management.Automation.Language.PipelineAst]) {
-    return $Node.PipelineElements.Count -eq 1 -and
-      $Node.PipelineElements[0] -is [Management.Automation.Language.CommandExpressionAst] -and
-      (Test-ArcStaticCoverageLiteralValue $Node.PipelineElements[0])
-  }
-  if ($Node -is [Management.Automation.Language.CommandExpressionAst]) {
-    return Test-ArcStaticCoverageLiteralValue $Node.Expression
-  }
-  if (
-    $Node -is [Management.Automation.Language.StringConstantExpressionAst] -or
-    $Node -is [Management.Automation.Language.ConstantExpressionAst]
-  ) { return $true }
-  if ($Node -is [Management.Automation.Language.ExpandableStringExpressionAst]) {
-    return @($Node.NestedExpressions).Count -eq 0
-  }
-  if ($Node -is [Management.Automation.Language.ArrayLiteralAst]) {
-    if ($Node.Elements.Count -eq 0) { return $false }
-    foreach ($element in $Node.Elements) {
-      if (-not (Test-ArcStaticCoverageLiteralValue $element)) { return $false }
-    }
-    return $true
-  }
-  if ($Node -is [Management.Automation.Language.ArrayExpressionAst]) {
-    return Test-ArcStaticCoverageLiteralValue $Node.SubExpression
-  }
-  if ($Node -is [Management.Automation.Language.StatementBlockAst]) {
-    if ($Node.Statements.Count -eq 0) { return $false }
-    foreach ($statement in $Node.Statements) {
-      if (-not (Test-ArcStaticCoverageLiteralValue $statement)) { return $false }
-    }
-    return $true
-  }
-  if ($Node -is [Management.Automation.Language.ConvertExpressionAst]) {
-    return $Node.Type.TypeName.FullName -ceq 'pscustomobject' -and
-      (Test-ArcStaticCoverageLiteralValue $Node.Child)
-  }
-  if ($Node -is [Management.Automation.Language.HashtableAst]) {
-    foreach ($pair in $Node.KeyValuePairs) {
-      if (
-        -not (Test-ArcStaticCoverageLiteralValue $pair.Item1) -or
-        -not (Test-ArcStaticCoverageLiteralValue $pair.Item2)
-      ) { return $false }
-    }
-    return $true
-  }
-  if ($Node -is [Management.Automation.Language.ParenExpressionAst]) {
-    return Test-ArcStaticCoverageLiteralValue $Node.Pipeline
-  }
-  return $false
-}
-
-function Test-ArcStaticNonEmptyCoverageCollection([Management.Automation.Language.Ast]$Condition) {
-  $conditionRedirectionsProperty = $Condition.PSObject.Properties['Redirections']
-  if ($null -ne $conditionRedirectionsProperty -and @($conditionRedirectionsProperty.Value).Count -ne 0) { return $false }
-  if (
-    $Condition -isnot [Management.Automation.Language.PipelineAst] -or
-    $Condition.PipelineElements.Count -ne 1 -or
-    $Condition.PipelineElements[0] -isnot [Management.Automation.Language.CommandExpressionAst]
-  ) { return $false }
-  $commandExpression = $Condition.PipelineElements[0]
-  if (@($commandExpression.Redirections).Count -ne 0) { return $false }
-  $expression = $commandExpression.Expression
-  if ($expression -is [Management.Automation.Language.ArrayExpressionAst] -or $expression -is [Management.Automation.Language.ArrayLiteralAst]) {
-    return Test-ArcStaticCoverageLiteralValue $expression
-  }
-  if ($expression -is [Management.Automation.Language.BinaryExpressionAst] -and $expression.Operator -eq [Management.Automation.Language.TokenKind]::DotDot) {
-    return (
-      $expression.Left -is [Management.Automation.Language.ConstantExpressionAst] -and
-      $expression.Right -is [Management.Automation.Language.ConstantExpressionAst] -and
-      $expression.Left.Value -is [int] -and
-      $expression.Right.Value -is [int]
-    )
-  }
-  return $false
-}
-
-function Test-ArcCoverageStatementIsReachable(
-  [Management.Automation.Language.Ast]$Block,
-  [Management.Automation.Language.StatementAst]$Statement
-) {
-  foreach ($candidate in $Block.Statements) {
-    if ([object]::ReferenceEquals($candidate, $Statement)) { return $true }
-    if (
-      $candidate -is [Management.Automation.Language.BreakStatementAst] -or
-      $candidate -is [Management.Automation.Language.ContinueStatementAst] -or
-      $candidate -is [Management.Automation.Language.ReturnStatementAst] -or
-      $candidate -is [Management.Automation.Language.ThrowStatementAst] -or
-      $candidate -is [Management.Automation.Language.ExitStatementAst]
-    ) { return $false }
-  }
-  return $false
-}
-
-function Test-ResponsibilitySourceIntegrity {
-  $reducedFixtureAllowed = $false
-  if ($AllowReducedResponsibilityFixture) {
-    $tempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd(
-      [IO.Path]::DirectorySeparatorChar,
-      [IO.Path]::AltDirectorySeparatorChar
-    )
-    $fixtureContainer = [IO.Path]::GetDirectoryName($root)
-    $reducedFixtureAllowed =
-      [IO.Path]::GetFileName($root) -ceq 'aitoolkit' -and
-      $root.StartsWith($tempRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -and
-      [IO.Path]::GetFileName($fixtureContainer) -cmatch '^aitoolkit-framework-tests-\d+-[0-9a-f]{32}$'
-    if (-not $reducedFixtureAllowed) {
-      $errors.Add('Reduced responsibility fixture flag is only valid for an isolated AIToolkit test fixture')
-    }
-  }
-
-  $requiredFiles = @(
-    'contracts/file-responsibility-conformance.md',
-    'tests/validation/responsibility-conformance.validation.ps1',
-    'tests/scenarios/responsibility-conformance.Tests.ps1',
-    'tests/scenarios/responsibility-handoff.Tests.ps1',
-    'tests/scenarios/target-conformance.Tests.ps1',
-    'tests/scenarios/structural-gate.Tests.ps1',
-    'tests/scenarios/architecture-review.Tests.ps1',
-    'tests/scenarios/scope-engine.Tests.ps1',
-    'tests/scenarios/flexible-scope-e2e.Tests.ps1'
-  )
-  foreach ($relativePath in $requiredFiles) {
-    $path = Join-Path $root $relativePath
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-      $errors.Add("Responsibility source-integrity file missing: $relativePath")
-      continue
-    }
-    if ($relativePath.EndsWith('.ps1', [StringComparison]::OrdinalIgnoreCase)) {
-      $parseTokens = $null
-      $parseErrors = $null
-      [void][Management.Automation.Language.Parser]::ParseFile($path, [ref]$parseTokens, [ref]$parseErrors)
-      if (@($parseErrors).Count -gt 0) {
-        $errors.Add("Responsibility source-integrity parse invalid: $relativePath")
-      }
-    }
-  }
-
-  $coverage = @(
-    [pscustomobject]@{ Name = 'contract version missing'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-Rejected 'discovery requires responsibility contract version'" }
-    [pscustomobject]@{ Name = 'contract version mixed'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-Rejected 'discovery rejects mixed responsibility contract versions'" }
-    [pscustomobject]@{ Name = 'capability and trace separation'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-DesignAccepted 'multiple trace IDs for one capability do not create multi-capability ownership'" }
-    [pscustomobject]@{ Name = 'classification authority loss'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-Rejected 'agent cannot self-declare legacy debt'" }
-    [pscustomobject]@{ Name = 'greenfield fake deviation'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-DesignRejected 'greenfield cannot be converted to fake deviation'" }
-    [pscustomobject]@{ Name = 'multi-capability approval removal'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-DesignRejected 'aggregate capabilities require approval'" }
-    [pscustomobject]@{ Name = 'extra public symbol while tree matches'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-ImplementationRejected 'actual matrix rejects public symbol drift even when tree path matches'" }
-    [pscustomobject]@{ Name = 'extra effect while tree matches'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-ImplementationRejected 'actual matrix rejects external-effect drift'" }
-    [pscustomobject]@{ Name = 'invalid verification not-applicable'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = "Assert-ImplementationRejected 'behavior owner cannot use not-applicable-approved verification'" }
-    [pscustomobject]@{ Name = 'fake production composition'; Path = 'tests/scenarios/responsibility-conformance.Tests.ps1'; Token = 'Assert-ReviewRejected "review rejects test-only fake production composition evidence' }
-    [pscustomobject]@{ Name = 'implementation self-attestation bypass'; Path = 'tests/scenarios/architecture-review.Tests.ps1'; Token = 'Assert-FailsLike "review independently rejects omitted actual owner' }
-    [pscustomobject]@{ Name = 'downstream sub-verdict loss'; Path = 'tests/scenarios/responsibility-handoff.Tests.ps1'; Token = "Assert-HandoffDiagnosticsExactly 'rejects a downstream artifact with no responsibility handoff table'" }
-    [pscustomobject]@{ Name = 'downstream sub-verdict mutation'; Path = 'tests/scenarios/responsibility-handoff.Tests.ps1'; Token = "Assert-HandoffRejected 'rejects a downstream aggregate PASS that hides responsibility BLOCKED'" }
-    [pscustomobject]@{ Name = 'runtime waiver override'; Path = 'tests/scenarios/responsibility-handoff.Tests.ps1'; Token = "Assert-HandoffRejected 'runtime waiver cannot overwrite a blocked responsibility handoff'" }
-    [pscustomobject]@{ Name = 'post-implementation queue advance'; Path = 'tests/scenarios/scope-engine.Tests.ps1'; Token = "Assert-Equal `$responsibilityChainSelection.work_item_id '' 'No dependent item may be selected after a responsibility mismatch'" }
-  )
-  $activeCoverageCommandsByPath = @{}
-  foreach ($requirement in $coverage) {
-    $path = Join-Path $root $requirement.Path
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { continue }
-    if (-not $activeCoverageCommandsByPath.ContainsKey($requirement.Path)) {
-      $parseTokens = $null
-      $parseErrors = $null
-      $ast = [Management.Automation.Language.Parser]::ParseFile($path, [ref]$parseTokens, [ref]$parseErrors)
-      $activeCoverageCommandsByPath[$requirement.Path] = @($ast.FindAll({
-        param($node)
-        if ($node -isnot [Management.Automation.Language.CommandAst]) { return $false }
-        $ancestor = $node.Parent
-        $containingStatement = $null
-        while ($null -ne $ancestor) {
-          if ($ancestor -is [Management.Automation.Language.PipelineAst]) {
-            $containingStatement = $ancestor
-            $ancestor = $ancestor.Parent
-            continue
-          }
-          if ($ancestor -is [Management.Automation.Language.StatementBlockAst]) {
-            if ($ancestor.Parent -isnot [Management.Automation.Language.ForEachStatementAst]) { return $false }
-            if (-not (Test-ArcCoverageStatementIsReachable $ancestor $containingStatement)) { return $false }
-            $ancestor = $ancestor.Parent
-            continue
-          }
-          if ($ancestor -is [Management.Automation.Language.ForEachStatementAst]) {
-            if (-not (Test-ArcStaticNonEmptyCoverageCollection $ancestor.Condition)) { return $false }
-            $containingStatement = $ancestor
-            $ancestor = $ancestor.Parent
-            continue
-          }
-          if ($ancestor -is [Management.Automation.Language.NamedBlockAst]) {
-            if (-not (Test-ArcCoverageStatementIsReachable $ancestor $containingStatement)) { return $false }
-            $ancestor = $ancestor.Parent
-            continue
-          }
-          if ($ancestor -is [Management.Automation.Language.ScriptBlockAst]) {
-            return $null -eq $ancestor.Parent
-          }
-          return $false
-        }
-        return $false
-      }, $true))
-    }
-    $commandNameSeparator = $requirement.Token.IndexOf(' ', [StringComparison]::Ordinal)
-    $expectedCommandName = if ($commandNameSeparator -gt 0) {
-      $requirement.Token.Substring(0, $commandNameSeparator)
-    }
-    else { $requirement.Token }
-    $hasActiveRegistration = @($activeCoverageCommandsByPath[$requirement.Path] | Where-Object {
-      $_.GetCommandName() -ceq $expectedCommandName -and
-        $_.Extent.Text.IndexOf($requirement.Token, [StringComparison]::Ordinal) -ge 0
-    }).Count -gt 0
-    if (-not $hasActiveRegistration) {
-      $errors.Add("Responsibility source-integrity coverage missing: $($requirement.Name)")
-    }
-  }
-
-  $registrationRequirements = @(
-    [pscustomobject]@{ Path = 'contracts/file-responsibility-conformance.md'; Token = 'version = 1'; Context = 'canonical contract' }
-    [pscustomobject]@{ Path = 'skills/aitoolkit-schemas/SKILL.md'; Token = 'contracts/file-responsibility-conformance.md'; Context = 'schema route' }
-    [pscustomobject]@{ Path = 'skills/migration/code-migration/SKILL.md'; Token = 'Actual File Responsibility Matrix'; Context = 'implementation skill' }
-    [pscustomobject]@{ Path = 'skills/shared/ai-review/SKILL.md'; Token = 'Responsibility Conformance Verdict'; Context = 'review skill' }
-    [pscustomobject]@{ Path = 'skills/aitoolkit/migrate/SKILL.md'; Token = 'approved design/master-plan revision required'; Context = 'orchestrator safe stop' }
-    [pscustomobject]@{ Path = 'templates/migration/technical-design.md'; Token = '## File Responsibility Matrix'; Context = 'design template' }
-    [pscustomobject]@{ Path = 'templates/migration/implementation-report.md'; Token = '## Actual File Responsibility Matrix'; Context = 'implementation template' }
-    [pscustomobject]@{ Path = 'templates/migration/review-report.md'; Token = '## Responsibility Review Evidence'; Context = 'review template' }
-    [pscustomobject]@{ Path = 'templates/migration/scope-terminal-report.md'; Token = '## Architecture Responsibility Handoff'; Context = 'terminal template' }
-    [pscustomobject]@{ Path = '../docs/superpowers/specs/2026-08-21-architecture-responsibility-conformance-design.md'; Token = 'aitoolkit/contracts/file-responsibility-conformance.md'; Context = 'design document'; ReducedFixtureOptional = $true }
-    [pscustomobject]@{ Path = '../docs/superpowers/plans/2026-08-21-architecture-responsibility-conformance-phase-1.md'; Token = '-ResponsibilityConformanceOnly'; Context = 'implementation plan'; ReducedFixtureOptional = $true }
-  )
-  foreach ($requirement in $registrationRequirements) {
-    $path = [IO.Path]::GetFullPath((Join-Path $root $requirement.Path))
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-      if ($null -ne $requirement.PSObject.Properties['ReducedFixtureOptional'] -and $requirement.ReducedFixtureOptional -and $reducedFixtureAllowed) { continue }
-      $errors.Add("Responsibility source-integrity registration file missing: $($requirement.Context)")
-      continue
-    }
-    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
-    if ($text.IndexOf($requirement.Token, [StringComparison]::Ordinal) -lt 0) {
-      $errors.Add("Responsibility source-integrity registration missing: $($requirement.Context)")
-    }
-  }
-}
-
 if ($Check -in 'Contracts', 'All') { Test-Contracts }
 if ($Check -in 'Encoding', 'All') { Test-Encoding }
 if ($Check -in 'Templates', 'All') { Test-Templates }
@@ -10796,9 +8618,6 @@ if ($Check -in 'Orchestrators', 'All') { Test-Orchestrators }
 if ($Check -in 'Onboarding', 'All') { Test-Onboarding }
 if ($Check -in 'Compatibility', 'All') { Test-Compatibility }
 if ($Check -in 'Docs', 'All') { Test-Docs }
-if ($Check -eq 'FlexibleScope') { Test-FlexibleScopeIntegration $true }
-if ($Check -eq 'All') { Test-FlexibleScopeIntegration $false }
-if ($Check -in 'SourceIntegrityOnly', 'All') { Test-ResponsibilitySourceIntegrity }
 if ($Check -in 'Skills', 'Templates', 'Compatibility', 'All') { Test-ReviewableChangeHygiene }
 
 if ($errors.Count -gt 0) {

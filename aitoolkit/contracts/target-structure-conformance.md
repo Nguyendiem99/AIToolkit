@@ -5,22 +5,13 @@ conformance, assurance-state, pre-edit gate, and architecture-first review
 semantics. Skills and schemas reference it instead of redefining its tables or
 enums.
 
-File responsibility, capability ownership, co-location, verification ownership,
-and their canonical enums are solely governed by
-`contracts/file-responsibility-conformance.md`. This contract does not redefine
-them.
-
 ## Comparable Target Exemplars
 
-| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| applicable structural concern | real target path | fully inspected symbols | observed working pattern | concrete reason-to-change | CAP-EXAMPLE | VERIFY-OWNER-EXAMPLE | why the exemplar is comparable | exact evidence reference | verified | preferred | factual-discovery-evidence | working-evidence:target/example.dart#Example |
+| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
+|---|---|---|---|---|---|---|
+| applicable structural concern | real target path | fully inspected symbols | observed working pattern | why the exemplar is comparable | exact evidence reference | exemplar status |
 
-`Inspection Status` and `Classification` are independent. Inspection Status:
-`verified | no-equivalent | unknown`. Classification:
-`preferred | compatibility-only | legacy-debt | no-equivalent`. Classification
-authority and immutable evidence follow
-`contracts/file-responsibility-conformance.md`; no seven-column discovery adapter is executable in responsibility contract v1.
+Exemplar status: `verified | no-equivalent | unknown`.
 
 Incremental discovery records exactly these eight concerns:
 
@@ -74,10 +65,6 @@ Before any target mutation, code migration verifies:
 
 The structural pre-edit gate blocks before target edit and is not waiver-eligible.
 
-```text
-Structural PASS = Tree PASS AND Responsibility PASS AND Verification Ownership PASS
-```
-
 The implementation report records `Master Scope Context`, `Conformance Matrix
 Reference`, `Actual File Tree vs Planned File Tree`, `Exemplar Deviations`, and
 `Production Activation Path Evidence`.
@@ -114,24 +101,9 @@ structural deviations before lower-level behavior analysis.
 ## Architecture review verdicts
 
 ```text
-Rule Resolution Verdict: RESOLVED | BLOCKED
 Architecture Conformance Verdict: PASS | BLOCKED
 Canonical Selector Verdict: PASS | BLOCKED
-Tree Conformance Verdict: PASS | BLOCKED
-Responsibility Conformance Verdict: PASS | BLOCKED
-Verification Ownership Verdict: PASS | BLOCKED
 Production Activation-path Verdict: PASS | BLOCKED | NOT_APPLICABLE
-Behavior Analysis State: NOT_RUN | COMPLETE
-Change Hygiene Verdict: PASS | BLOCKED
 ```
 
-An executable review also contains exact non-negative Critical and Major
-counts. Any `BLOCKED` verdict makes the overall verdict `Reject`.
-Any blocking gate or positive Critical count derives overall `Reject`;
-otherwise a positive Major count derives `Approve-with-fixes`, and only zero
-Critical plus zero Major with all gates resolved/pass and behavior complete
-derives `Approve`.
-The `Architecture Responsibility Handoff` Tree, Responsibility, Verification
-Ownership, and Architecture cells equal their visible verdicts exactly; the
-Architecture cell is the same Tree/Responsibility/Verification-derived state.
-A contradictory handoff is not executable producer authority.
+Any `BLOCKED` verdict makes the overall verdict `Reject`.

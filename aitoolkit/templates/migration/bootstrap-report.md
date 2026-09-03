@@ -13,8 +13,6 @@ Báo cáo này nhận `pending-bootstrap` từ đơn vị bắt buộc đã ch�
 
 ## Selected Migration Unit
 
-`Plan Reference`: `<selector authority>@<positive authority revision>` (exact canonical composite).
-
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
 |---|---|---|---|---|---|---|---|---|---|
 | <UNIT-001> | <tham chiếu migration-plan> | <tham chiếu duyệt đơn vị> | <greenfield/design-new> | <required> | <FOUNDATION-001> | <bản ghi target-baseline đã tạo> | <pending-step09-approval> | <not-applicable> | <trace IDs> |

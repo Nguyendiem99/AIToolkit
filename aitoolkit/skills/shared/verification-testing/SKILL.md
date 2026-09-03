@@ -51,15 +51,11 @@ The caller-provided `workflow_type` is authoritative for this run, including whe
 
 ## Migration-only handoff extension
 
-An executable step-12 migration artifact has the exact canonical front matter keys and lifecycle `status: approved`, `result: complete`, `approval_source: human`. Draft, blocked, automatic, duplicate-key, extra-key, or cross-run output is non-executable and cannot seed parity.
-
 Read `aitoolkit/contracts/activation-slice.md` as the sole canonical definition. Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
 
-Khi orchestrator gọi step này với `workflow_type: migration`, validate và copy nguyên vẹn `Master Scope Context`, exact `Delivery Adapter Kind`, và exact `Delivery Adapter Mode Constraint` từ immediate predecessor. Require và copy đúng một section `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-unit`; với mọi adapter khác, omit `Selected Migration Unit` và không phát minh `UNIT-*`. Khi có section, preserve `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, và trace IDs sang report mới trước khi chạy verification.
+Khi orchestrator gọi step này với `workflow_type: migration`, immediate predecessor phải chứa đúng một section `Selected Migration Unit`. Validate và copy nguyên vẹn `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, và trace IDs sang report mới trước khi chạy verification.
 
 Validate and copy the canonical `Activation Slice` section before running verification. Missing, added, reclassified, narrowed, or trace-losing slice evidence yields `status: draft` and `result: blocked`; do not infer it from the diff, source tree, or cumulative artifacts.
-
-Before matrix validation or any verification command, validate and copy exactly one `Architecture Responsibility Handoff` table from the immediate `review-report.md` predecessor. Preserve the ordinally exact contract version, Tree Conformance, Responsibility Conformance, Verification Ownership, Architecture Conformance State, and Evidence References; derive the aggregate state from the three sub-verdicts rather than accepting a caller value. Do not reconstruct this table from cumulative artifacts or directory scans. Missing, unsupported/mixed version, stale/cross-run provenance, altered evidence, or any `BLOCKED` sub-verdict yields `status: draft`, `result: blocked`, and stops the downstream handoff. A runtime/`auto-waive` decision may only describe runtime evidence; it never changes this responsibility table.
 
 - Ghi front matter migration là `result: complete | blocked` ngoài lifecycle `status: draft`.
 - Thiếu, mơ hồ, hoặc mismatch bất kỳ field nào thì ghi `result: blocked`; không chạy tiếp bằng selector/baseline tự suy từ source hoặc artifact cũ.
@@ -136,11 +132,10 @@ Report PHẢI có, đủ để người khác tin mà không cần chạy lại:
 5. **Gap/Risk**: gì chưa phủ, rủi ro còn lại.
 6. **Verdict**: native step verdict là `PASS` | `FAIL` | `BLOCKED` — kèm 1 câu bằng chứng.
 7. **Migration only**: thêm `Kết quả từng kiểm tra`; mỗi check ghi command role, required-command lifecycle, một cặp nguyên vẹn từ `Các cặp kết quả kiểm tra hợp lệ`, và evidence. Waiver hợp lệ dùng đúng `NOT_RUN + WAIVED`; `WAIVED` chỉ xuất hiện sau orchestrator-only transition và không đồng nghĩa `PASS`. Feature/bugfix giữ output hiện có.
-8. **Task Provenance**: derive exactly one row from the immediate review predecessor's `Change Hygiene`: preserve the adapter-aware assurance identity ordinally (`Selected Migration Unit.Migration Unit ID` for `migration-unit`, current `Master Scope Context.Work Item ID` for every generic adapter), task-base SHA, and final-tree SHA, while `Source Artifact` resolves to that exact review artifact path. Missing, unrelated-source, or mismatched lineage blocks.
-8. **Migration only**: preserve `Master Scope Context`, exact `Delivery Adapter Kind` and `Delivery Adapter Mode Constraint`, migration `result`, native blocker/evidence và mọi waiver đã được orchestrator ghi; preserve bảng `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-unit`, otherwise omit `Selected Migration Unit`; feature/bugfix bỏ qua các field này.
+8. **Task Provenance**: derive exactly one row from the immediate review predecessor's `Change Hygiene`: task/unit ID, task-base SHA, and final-tree SHA remain ordinally exact, while `Source Artifact` resolves to that exact review artifact path. Missing, unrelated-source, or mismatched lineage blocks.
+8. **Migration only**: preserve bảng `Selected Migration Unit`, migration `result`, native blocker/evidence và mọi waiver đã được orchestrator ghi; feature/bugfix bỏ qua field này.
 9. **Migration only**: preserve bảng `Activation Slice` with the identical slice set, Applicability, all nine canonical rows, Source Reference evidence, and Trace IDs from the review predecessor.
 10. **Migration blocked only**: when the routed output is `result: blocked` and Activation Slice/handoff validation is otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference`; omit it from non-blocked migration output. Feature/bugfix behavior is unchanged.
-11. **Migration only**: emit exactly one `Architecture Responsibility Handoff` table copied from the immediate review predecessor, including immutable evidence references.
 
 ## Ranh giới
 

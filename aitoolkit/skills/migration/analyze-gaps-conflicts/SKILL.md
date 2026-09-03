@@ -20,12 +20,6 @@ Orchestrator truyền `RUN_DIR`, đường dẫn project profile, project pack, 
 Preserve the immediate predecessor Activation Slice envelope without loss: keep the complete case-sensitive slice ID set, Applicability, all nine canonical seam rows, and every predecessor Source Reference and Trace ID. Source Reference enrichment is append-only, and predecessor Trace IDs remain a subset of successor Trace IDs. Never reconstruct it from cumulative artifacts.
 Truy vết inventory/requirements/discovery/input qua stable ID và source reference đã chuyển tiếp trong artifact trước; không dựng tên hoặc nạp danh sách artifact tích lũy.
 
-## Work item and decomposition trace
-
-Nhận và validate đúng một `Work Item Trace` row từ immediate predecessor bằng orchestrator-provided `work_item_id`, `master_plan_ref` và `master_plan_revision`. Preserve case-sensitively `Work Item ID`, `Parent Work Item ID`, `Master Plan Reference`, `Master Plan Revision`, `Acceptance`, `Mode Constraint` và `Decomposition Decision Reference`; predecessor Trace IDs phải là subset của successor và chỉ bổ sung gap/conflict IDs có evidence. `Design Revision` vẫn có thể là `pending-step07`.
-
-Nếu child decomposition chưa có canonical trace liên tục từ steps 04 và 05, dùng `result: blocked`; không cho child xuất hiện lần đầu ở gaps, technical design hoặc plan-waves. Không phát minh `UNIT-*` trong bước này.
-
 ## Activation Slice responsibilities
 
 Đọc `aitoolkit/contracts/activation-slice.md` làm nguồn định nghĩa duy nhất; giữ nguyên stable Activation Slice ID, mọi seam row và trace IDs từ immediate predecessor. Mở gap cho mỗi missing seam, và mở conflict cho ownership hoặc async lifecycle mâu thuẫn; chỉ bổ sung gap/conflict evidence thuộc step này, không sao chép canonical schema.
@@ -57,7 +51,6 @@ Unresolved router ownership is a blocking conflict and requires `result: blocked
 - Giữ section `Activation Slice` với cùng ID, toàn bộ seam rows và trace IDs; phản ánh gap/conflict đã phân tích mà không thu hẹp slice.
 - For a routed `result: blocked` artifact whose Activation Slice and immediate-predecessor handoff are otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference` values; omit that section for non-blocked output.
 - Mỗi row có stable ID, `Requirement IDs`, `Inventory IDs`, `Mapping IDs`, `Discovery IDs`, evidence, impact, options, owner và decision/approval rõ ràng; không dùng ô trống để ngầm hiểu “không có conflict”.
-- Giữ đúng một section `Work Item Trace`; preserve master revision, acceptance và decomposition trace, đồng thời chỉ append gap/conflict Trace IDs.
 
 ## Quick reference
 

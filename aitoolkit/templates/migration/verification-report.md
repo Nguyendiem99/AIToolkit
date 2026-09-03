@@ -1,51 +1,21 @@
 ---
 step_id: <shared: orchestrator truyền>
 status: draft
-result: <complete | blocked>
 # Chỉ migration: thêm `result: complete | blocked`
-approval_source: <human | auto | auto-waive>
 produced_at: <yyyy-mm-dd>
-responsibility_contract:
-  version: 1
-  applicability: required
 ---
-
-Migration executable output renders exactly `status: approved`, `result: complete`, and `approval_source: human`; draft, blocked, or automatic output is non-executable.
 
 <!-- artifact_language: vi -->
 
 # Báo cáo Verification & Testing — <tên module>
 
-## Master Scope Context
-
-| Run ID | Master Spec Reference | Master Spec ID | Master Spec Revision | Master Plan Reference | Master Plan ID | Master Plan Revision | Work Item ID |
-|---|---|---|---|---|---|---|---|
-| <RUN-*> | <master spec reference> | <SPEC-*> | <revision> | <master plan reference> | <PLAN-*> | <revision> | <WORK-*> |
-
-- Delivery Adapter Kind: <migration-unit | task | story | package | phase | milestone | none>
-- Delivery Adapter Mode Constraint: <incremental/preserve-existing | greenfield/design-new>
-
 ## Task Provenance
 
 | Task / Unit | Task-base SHA | Final-tree SHA | Source Artifact |
 |---|---|---|---|
-| <UNIT-* for migration-unit; WORK-* otherwise> | <sha> | <sha> | <review-report path> |
-
-Preserve the approved adapter-aware assurance identity ordinally.
-
-## Architecture Responsibility Handoff
-
-Chép nguyên văn đúng một bảng từ `review-report.md` là artifact ngay trước. Xác thực version trước mọi matrix, giữ thứ tự sub-verdict/evidence và trạng thái aggregate suy diễn; không dựng lại từ artifact tích lũy hoặc quét thư mục.
-
-| Responsibility Contract Version | Tree Conformance | Responsibility Conformance | Verification Ownership | Architecture Conformance State | Evidence References |
-|---|---|---|---|---|---|
-| 1 | PASS | PASS | PASS | PASS | source-diff:<task-base SHA>..<final-tree SHA>#<WORK-*> |
+| <UNIT-001> | <sha> | <sha> | <review-report path> |
 
 ## Selected Migration Unit
-
-`Plan Reference`: `<selector authority>@<positive authority revision>` (exact canonical composite).
-
-Keep `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-unit`; otherwise omit it.
 
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
 |---|---|---|---|---|---|---|---|---|---|

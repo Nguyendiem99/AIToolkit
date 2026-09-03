@@ -1,7 +1,7 @@
 # Tiến độ Flexible Migration Scope Orchestration
 
 **Cập nhật:** 2026-08-19
-**Trạng thái tổng thể:** implementation và whole-branch review hoàn tất; final branch verification PASS, local merge đang được kiểm chứng
+**Trạng thái tổng thể:** đang triển khai, chưa hoàn tất
 **Spec:** `docs/superpowers/specs/2026-08-19-flexible-migration-scope-orchestration-design-vi.md`
 **Plan:** `docs/superpowers/plans/2026-08-19-flexible-migration-scope-orchestration.md`
 
@@ -21,15 +21,15 @@
 |---|---|---|
 | Task 1 — baseline và isolated mutation tests | `complete` | Full mutation suite exit `0` trong 63m32s; main validator `All` và source-integrity PASS; commit `test: isolate migration framework mutations` |
 | Task 2 — contracts/schema/interfaces | `complete` | Hai canonical contracts, schema shapes, sáu validator modules và public routing đã kiểm chứng; full mutation suite exit `0` trong 67m29.6s |
-| Task 3 — master artifacts | `complete` | Commit integration `9606198`; scope-artifact scenarios, Contracts, Templates và All PASS; review cuối APPROVE |
-| Task 4 — scope orchestrator | `complete` | Commit integration `b3380af`; scope-engine và Orchestrators PASS; review cuối APPROVE |
-| Task 5 — canonical adapters | `complete` | Commit integration `d6c4ef9`; adapter scenarios, Skills, Templates, Contracts và All PASS; review cuối APPROVE |
-| Task 6 — target conformance | `complete` | Commit integration `b5880f3`; conformance scenarios và All PASS; review cuối APPROVE sau các seam-fix TDD |
-| Task 7 — structural pre-edit gate | `complete` | Commit integration `5127e63`; 130 structural scenarios, Skills/Templates/Contracts/All PASS; seam review APPROVE |
-| Task 8 — architecture-first review/KB | `complete` | Commit integration `f478243`; 58 architecture-review cases và Wave 3 integration seam PASS; review APPROVE |
-| Task 9 — integration/compatibility/E2E | `complete` | Commit `25228be`; đúng 21 behavioral E2E, six focused suites, All, source integrity và final full mutation PASS; whole-branch review APPROVE |
+| Task 3 — master artifacts | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
+| Task 4 — scope orchestrator | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
+| Task 5 — canonical adapters | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
+| Task 6 — target conformance | `pending` | Foundation Task 2 sẵn sàng; có thể bắt đầu Wave 2 sau review gate |
+| Task 7 — structural pre-edit gate | `pending` | Chờ Task 5 và 6 |
+| Task 8 — architecture-first review/KB | `pending` | Chờ Task 6 |
+| Task 9 — integration/compatibility/E2E | `pending` | Chờ toàn bộ task trước |
 
-Tasks 1–9 đã complete trên `fmso/integration`. Người dùng đã chọn merge cục bộ vào `master`; repository không có remote nên không push.
+Task 2 hoàn tất không có nghĩa feature tổng thể hoặc Wave 2 hoàn tất. Tasks 3–6 mới chỉ `pending/ready`, chưa triển khai.
 
 ## Task 1 đã hiện thực
 
@@ -145,13 +145,12 @@ full suite 67 phút không chạy lại theo fix-round ruling vì exact mutation
 ## Cách tiếp tục
 
 1. Giữ commit Task 1 và Task 2 làm baseline đã kiểm chứng; không lặp lại helper/root override hoặc định nghĩa lại canonical contracts.
-2. Giữ `fmso/integration` tại final implementation tree; không merge `master` hoặc push nếu chưa có chỉ thị.
-3. Final full mutation trên exact final branch tree `25228be` exit `0` trong `4,832,385 ms`; original process chain được giữ nguyên qua lần gián đoạn monitor và cleanup còn `0` owned process.
-4. Fresh final gates trên cùng tree: đúng 21 E2E PASS, sáu focused suites PASS, `All`, `Docs`, source integrity, AST và diff-check PASS.
-5. Chỉ tuyên hoàn tất sau whole-branch review cuối và kiểm tra hygiene/handoff.
+2. Tasks 3–6 đang `pending/ready` và có thể bắt đầu Wave 2 trong các worktree tách biệt sau review gate của Task 2.
+3. Task 7 vẫn chờ Tasks 5 và 6; Task 8 vẫn chờ Task 6; Task 9 vẫn chờ toàn bộ task trước.
+4. Không tuyên feature hoàn tất, scope complete hoặc Wave 2 complete chỉ dựa trên Tasks 1–2.
 
 ## Điều kiện không được tuyên bố
 
-- Không được nói local merge đã hoàn tất cho tới khi merge commit và merged-result verification thành công.
-- Không được nói đã push remote hoặc release; repository không có remote và các thao tác đó chưa thực hiện.
-- Không được suy `scope-complete` của một migration run chỉ từ việc feature framework đã triển khai xong.
+- Không được nói feature Flexible Migration Scope Orchestration đã hoàn tất.
+- Không được nói Tasks 3–9 đã triển khai hoặc Wave 2 đã hoàn tất.
+- Không được chạy Wave 2 song song nếu chưa thỏa dependency/review gate trong plan; Task 2 chỉ làm các task này sẵn sàng.
