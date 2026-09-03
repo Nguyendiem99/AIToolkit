@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "aitoolkit-local",
+  "description": "Marketplace local cho AIToolKit — agentic SDLC kit của dự án LGE.",
+  "owner": {
+    "name": "LGE Team"
+  },
+  "plugins": [
+    {
+      "name": "aitoolkit",
+      "description": "Agentic SDLC kit cho dự án LGE — điều phối pipeline migration bằng manifest khai báo, human gate, và knowledge base. Thuần prompt.",
+      "source": "./aitoolkit",
+      "category": "development"
+    }
+  ]
+}

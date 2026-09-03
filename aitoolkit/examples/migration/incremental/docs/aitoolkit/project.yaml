@@ -1,0 +1,52 @@
+schema_version: 1
+project:
+  id: migration-incremental-example
+
+automation:
+  mode: interactive
+
+output:
+  artifact_language: vi
+
+migration:
+  mode: incremental
+  unit: feature
+  architecture_policy: preserve-existing
+  example_units:
+    incremental:
+      migration_unit_id: UNIT-001
+      bootstrap_scope: not-required
+      foundation_baseline_id: not-applicable
+
+legacy:
+  path: legacy
+  language: unknown
+  framework: unknown
+
+target:
+  path: target
+  language: unknown
+  framework: unknown
+
+documents:
+  requirements: []
+  migration: []
+  uiux: []
+  architecture: []
+
+base_branch: main
+test_cmd: null
+lint_cmd: null
+build_cmd: null
+coverage_cmd: null
+review_focus: []
+
+verification:
+  behavior_parity: required
+  regression: required
+  visual_fidelity: optional
+
+project_pack:
+  path: docs/aitoolkit/migration-project
+  reviewed_at: null
+  review_evidence: null

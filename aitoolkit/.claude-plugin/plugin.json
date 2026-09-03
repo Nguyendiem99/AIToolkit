@@ -1,0 +1,9 @@
+{
+  "name": "aitoolkit",
+  "description": "Agentic SDLC kit điều phối migration, bugfix và feature bằng orchestrator skill, human gate và artifact có bằng chứng. Thuần prompt, chạy trên Claude Code.",
+  "version": "0.7.0",
+  "author": { "name": "LGE Team" },
+  "license": "MIT",
+  "keywords": ["sdlc", "migration", "agentic", "workflow"],
+  "skills": "./skills/"
+}

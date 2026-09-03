@@ -1,0 +1,53 @@
+schema_version: 1
+project:
+  id: migration-greenfield-example
+
+automation:
+  mode: interactive
+
+output:
+  artifact_language: vi
+
+migration:
+  mode: greenfield
+  unit: feature
+  architecture_policy: design-new
+
+fixture_scenarios:
+  foundation_plan: docs/aitoolkit/fixture-artifacts/08-foundation-migration-plan.md
+  later_plan: docs/aitoolkit/fixture-artifacts/08-later-migration-plan.md
+  foundation_approval: docs/aitoolkit/fixture-artifacts/09-bootstrap-report.md
+  approved_target_baseline: docs/aitoolkit/migration-project/references/target-baseline.md
+
+legacy:
+  path: legacy
+  language: unknown
+  framework: unknown
+
+target:
+  path: target
+  language: unknown
+  framework: unknown
+
+documents:
+  requirements: []
+  migration: []
+  uiux: []
+  architecture: []
+
+base_branch: null
+test_cmd: null
+lint_cmd: null
+build_cmd: null
+coverage_cmd: null
+review_focus: []
+
+verification:
+  behavior_parity: required
+  regression: optional
+  visual_fidelity: optional
+
+project_pack:
+  path: docs/aitoolkit/migration-project
+  reviewed_at: null
+  review_evidence: null
