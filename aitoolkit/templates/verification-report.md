@@ -1,38 +1,43 @@
 ---
-step_id: <shared: orchestrator truyền>
+step_id: <shared: orchestrator provided>
 status: draft
 produced_at: <yyyy-mm-dd>
 ---
 
-# Verification & Testing Report — <tên module>
+# Verification & Testing Report — <module name>
 
-## Lệnh đã chạy (verbatim)
-| Loại | Lệnh | Nguồn (profile/tự dò/gate) |
+## Task Provenance
+
+| Task / Unit | Task-base SHA | Final-tree SHA | Source Artifact |
+|---|---|---|---|
+| <task> | <sha> | <sha> | <review-report path> |
+
+## Commands Run (verbatim)
+| Type | Command | Source (profile/detection/gate) |
 |---|---|---|
 | test |  |  |
 | lint |  |  |
 | build |  |  |
 
-## Kết quả thô
+## Raw Results
 - Test: <pass/fail count>, exit code:
 - Lint: <error count>, exit code:
-- Build: exit code: <hoặc "N/A" nếu hệ sinh thái không có bước build>
-- Trích đoạn output khi fail:
+- Build: exit code: <or "N/A" when the ecosystem has no build step>
+- Failure output excerpt:
 
-## Behavior-check
-| Yêu cầu / Kịch bản | Lệnh chứng minh | Kết quả thật |
+## Behavior Checks
+| Requirement / Scenario | Proof command | Actual result |
 |---|---|---|
 
-<!-- Bugfix: ghi rõ chứng minh red-green (revert→FAIL→restore→PASS).
-     Migration: mỗi hàng là 1 kịch bản, cột kết quả nêu cũ==mới hay chênh lệch. -->
+<!-- Bugfix: record red-green proof (revert→FAIL→restore→PASS). -->
 
-## Coverage (nếu có coverage_cmd)
-| Thành phần | % | Nhận xét chất lượng phủ |
+## Coverage (when coverage_cmd exists)
+| Component | % | Coverage quality notes |
 |---|---|---|
 
-## Gap / Risk
-- Chưa phủ:
-- Rủi ro còn lại:
+## Gaps / Risks
+- Not covered:
+- Remaining risks:
 
 ## Verdict
-`PASS` | `FAIL` | `BLOCKED` — <một câu bằng chứng>
+`PASS` | `FAIL` | `BLOCKED` — <one evidence-backed sentence>

@@ -37,9 +37,10 @@ aitoolkit/
 ├── commands/
 │   ├── migrate.md  bugfix.md  feature.md   # LAUNCHER mỏng (2 dòng): mỗi cái chỉ gọi
 │   │                                       # đúng skill orchestrator tương ứng, KHÔNG chứa logic
+│   └── migration-onboarding.md             # launcher khảo sát profile + project pack
 ├── skills/
 │   ├── aitoolkit-schemas/         # ★ HỢP ĐỒNG DỮ LIỆU (artifact front-matter + project-profile). Đọc TRƯỚC
-│   ├── aitoolkit/{migrate,bugfix,feature}/   # ★ ORCHESTRATOR thật — Bảng bước + giao thức chạy/gate
+│   ├── aitoolkit/{migration-onboarding,migrate,bugfix,feature}/ # ★ ORCHESTRATOR thật
 │   │                                          #   nằm trong SKILL.md, không phải ở commands/
 │   ├── migration/{discovery,feature-mapping,technical-design,code-migration}/   # nửa đầu migration
 │   ├── bugfix/{reproduce,root-cause,fix}/                                       # nửa đầu bugfix
@@ -48,13 +49,15 @@ aitoolkit/
 │   │           ccc-automation,release,knowledge-base}/                          #   (mọi workflow xài lại)
 │   └── lge-rules/                 # rule LGE (khung rỗng, team điền)
 ├── templates/                     # khung .md rỗng cho từng artifact
+├── examples/migration/            # profile fixture greenfield + incremental
+├── examples/project-packs/        # knowledge tương thích tách khỏi migration core
 └── CONTRIBUTING.md                # bạn đang đọc
 
 # Khi CHẠY trên dự án thật, artifact sinh trong repo đích (KHÔNG nằm trong plugin):
 <project>/docs/aitoolkit/<date>-<workflow>-<slug>/{01-....md, review-report.md, …}
 ```
 
-Slash command bị namespace theo tên plugin: `/aitoolkit:migrate`, `/aitoolkit:bugfix`, `/aitoolkit:feature` — ba lệnh riêng biệt, mỗi lệnh map 1:1 vào orchestrator skill cùng tên (`skills/aitoolkit/{migrate,bugfix,feature}`). Tham số gõ sau là **tên/slug tính năng hoặc bug** đang xử lý (vd `/aitoolkit:migrate <tên-tính-năng>`), KHÔNG phải tên workflow — workflow đã cố định theo lệnh.
+Slash command bị namespace theo tên plugin. Migration bắt đầu với `/aitoolkit:migration-onboarding`, sau đó `/aitoolkit:migrate <feature-slug>`; bugfix và feature dùng launcher riêng. Mỗi launcher map 1:1 vào orchestrator skill cùng tên. Tham số migrate là **tên/slug tính năng**, KHÔNG phải tên workflow.
 
 ---
 
@@ -86,7 +89,7 @@ Slash command bị namespace theo tên plugin: `/aitoolkit:migrate`, `/aitoolkit
 Ví dụ thêm `hotfix`. KHÔNG đụng `commands/migrate.md`.
 
 1. **Viết skill nửa đầu** đặc thù, vd `skills/hotfix/triage/SKILL.md` (xem §7 cho chuẩn chất lượng). Tái dùng superpowers khi hợp (bảng §8).
-2. **Viết orchestrator skill** (Bảng bước + tái dùng `shared/*`): liệt kê bước nửa đầu rồi **tái dùng `shared/*`** cho nửa sau. Mỗi dòng Bảng bước ghi `id, skill, optional?, gate?`. (Tùy chọn ghi `change_type: bugfix|feature|migration` để verification chọn đúng chiến lược test.)
+2. **Viết orchestrator skill** (Bảng bước + tái dùng `shared/*`): liệt kê bước nửa đầu rồi **tái dùng `shared/*`** cho nửa sau. Mỗi dòng Bảng bước ghi `id, skill, optional?, gate?`; orchestrator phải truyền `workflow_type: bugfix|feature|migration` cho từng shared step để chọn đúng chiến lược theo run hiện tại.
 3. **Thêm template** cho artifact nửa đầu vào `templates/`.
 4. **Wrapper command** (tùy chọn) `commands/hotfix.md`: delegate sang orchestrator skill, ép `workflow = hotfix` — copy `bugfix.md` làm mẫu. Nhớ **quote** frontmatter (I6).
 5. `claude plugin validate ./aitoolkit` → **PASS mới merge**.
@@ -99,7 +102,7 @@ Xem orchestrator có sẵn (`skills/aitoolkit/bugfix/SKILL.md`) làm mẫu chu�
 
 Shared skill lấy lệnh test/lint/build và mốc diff của repo theo thứ tự ưu tiên (định nghĩa ở `aitoolkit-schemas` §2):
 
-1. **Khai báo** — file tùy chọn `<project>/docs/aitoolkit/project.yaml` (`test_cmd`, `lint_cmd`, `build_cmd`, `base_branch`, `review_focus`, `change_type`…). Team điền 1 lần.
+1. **Khai báo** — file tùy chọn `<project>/docs/aitoolkit/project.yaml` (`test_cmd`, `lint_cmd`, `build_cmd`, `base_branch`, `review_focus`…). Team điền 1 lần. Workflow hiện tại không phải metadata bền vững trong profile; caller/orchestrator truyền `workflow_type` theo từng run và giá trị đó luôn authoritative.
 2. **Tự dò** — theo marker file (bảng ở `skills/shared/verification-testing/command-detection.md`: `package.json`→npm, `Cargo.toml`→cargo, `pubspec.yaml`→flutter…).
 3. **Hỏi gate / BLOCKED** — không dò được thì ghi rõ, để người xác nhận; **TUYỆT ĐỐI không bịa lệnh** rồi coi như đã chạy.
 
@@ -144,6 +147,52 @@ Skill "vỏ điều phối" (chỉ "đọc template → điền → ghi") là **
 
 ---
 
+## 8.5. Phát triển migration framework
+
+`migration core` chỉ đọc project profile, project pack, artifact trước và evidence; không hardcode language, framework, architecture hay command. Knowledge theo stack/dự án phải nằm trong project pack. Không thêm workflow manifest, state engine, private run store hoặc resume flag.
+
+Khi sửa onboarding, mode policy hoặc tài liệu:
+
+1. Giữ hai fixture đồng bộ với contract:
+   - `examples/migration/greenfield/docs/aitoolkit/project.yaml` dùng `greenfield` + `design-new`.
+   - `examples/migration/incremental/docs/aitoolkit/project.yaml` dùng `incremental` + `preserve-existing` và regression required.
+2. Viết assertion trước trong `tests/validate-migration-framework.ps1`, chạy RED, rồi sửa docs/fixture/metadata tới GREEN.
+3. Chạy cả selector docs và full suite:
+
+   ```powershell
+   & .\aitoolkit\tests\validate-migration-framework.ps1 -Check Docs
+   & .\aitoolkit\tests\validate-migration-framework.ps1 -Check All
+   claude plugin validate .\aitoolkit
+   git diff --check
+   ```
+
+4. Manual walkthrough phải ghi runtime, ngày, gate và artifact quan sát được. Runtime không khả dụng thì ghi `BLOCKED` cùng lý do; không suy PASS từ static validator.
+
+Hướng dẫn người dùng, mode walkthrough và acceptance matrix nằm tại `docs/MIGRATION-FRAMEWORK.md`.
+
+---
+
+## Migration user workflow
+
+1. Prepare migration sources and documents.
+2. Run `/aitoolkit:migration-onboarding` with `--legacy`, `--target`, the repeatable `--requirements`, `--uiux`, `--migration-docs`, and `--architecture-docs` flags, or let it read the optional inbox.
+3. Review the generated profile at `<RUN_DIR>/project-draft/project.yaml`, generated pack at `<RUN_DIR>/project-draft/migration-project`, and review artifact at `<RUN_DIR>/04-project-pack-review.md`.
+4. Obtain explicit Tech Lead approval; the HARD gate publishes those exact staged bytes to canonical `docs/aitoolkit/project.yaml` and `docs/aitoolkit/migration-project`.
+5. Run `/aitoolkit:migrate <feature-slug>`.
+6. Migration ends at Knowledge Capture after the mode-specific verification path.
+7. Gerrit, CCC, and Release are separate delivery skills invoked only by explicit calls after migration.
+
+## Tự động hóa và ngôn ngữ artifact
+
+- Profile mới mặc định `automation.mode: interactive` và `output.artifact_language: vi`; profile cũ thiếu hai field dùng fallback tương ứng `interactive` và `vi`. Vì vậy artifact migration được sinh mặc định tiếng Việt UTF-8, còn key/enums/ID/path/command/log và cột bảng machine-readable giữ nguyên.
+- Thứ tự phân giải mode là CLI flag → `automation.mode` trong profile → `interactive`. `--auto` tự duyệt soft gate không bị blocked, không hỏi và không waiver; gặp blocker hoặc HARD gate thì dừng.
+- `--auto-waive` cũng không hỏi ở soft gate và chỉ waiver blocker `environment-unavailable` có bằng chứng thật. Lỗi correctness, schema, path, selector, regression, scope và HARD gate luôn dừng.
+- Evidence giữ nghĩa thật: `PASS`, `FAIL`, `BLOCKED`, `WAIVED`, `NOT_RUN`. Check được waiver phải là `NOT_RUN + WAIVED`, có `result: partial` và không phải `PASS`; không ghi giả test đã chạy.
+- Tài liệu nguồn luôn read-only: workflow không dịch, di chuyển hoặc rewrite source document.
+
+
+---
+
 ## 9. Vòng lặp phát triển & cạm bẫy
 
 ```
@@ -168,7 +217,7 @@ Repo là git; làm trên **nhánh riêng**, `validate` xanh rồi merge `--no-ff
 
 ## 10. Trạng thái & việc còn mở (cho người đóng góp)
 
-**Đã xong (v0.5.0):** orchestrator skill (Bảng bước + gate + chạy tiếp một run dở dang) chắc; 3 workflow (migration/bugfix/feature) chạy thật; `shared/ai-review` + `shared/verification-testing` đã sâu tới chuẩn superpowers + language-agnostic qua project-profile.
+**Đã xong (v0.7.0):** migration onboarding, mode-aware greenfield/incremental orchestration, generic migration core, project pack compatibility và static docs/fixture validation. Feature/bugfix tiếp tục dùng shared rule resolution tương thích.
 
 **Việc mở — hợp để người mới nhận:**
 1. **Nâng các shared skill còn "vỏ mỏng"**: `gerrit-automation`, `ccc-automation`, `release`, `knowledge-base` — theo đúng checklist §7 (Iron Law + checklist + hợp đồng đầu ra + language-agnostic).

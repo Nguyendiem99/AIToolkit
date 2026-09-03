@@ -1,9 +1,13 @@
 ---
 name: lge-rules
-description: Rule review & quy ước LGE cho migration Flutter (convention, performance, security, null-safety, Gerrit, CCC). Bước AI Review / Code Migration / Gerrit / CCC đọc skill này. Mục còn dòng «LGE team điền» ⇒ chưa có rule, bỏ qua mục đó.
+description: Use when a legacy AIToolKit workflow still references the transitional LGE rule placeholder during its deprecation window.
 ---
 
-# LGE Rules (khung — team điền)
+# LGE Rules — Deprecated Compatibility Shim
+
+**Deprecated:** retained for one release cycle as a compatibility shim. New and shared workflows read `docs/aitoolkit/project.yaml` and its `project_pack.path`; migrate approved content to the project pack references before this shim is removed.
+
+Legacy consumers may continue reading the sections below during the transition. Shared skills do not depend on this file. A remaining placeholder is not an approved rule and must not be invented.
 
 Mỗi mục dưới đây: thay dòng `«LGE team điền: ...»` bằng rule thật. Khi còn nguyên mốc, coi như mục đó KHÔNG áp rule bổ sung nào (degrade gracefully).
 

@@ -1,0 +1,32 @@
+schema_version: 1
+project: { id: unknown }
+migration: { mode: unknown, unit: feature, architecture_policy: unknown }
+automation:
+  mode: interactive
+output:
+  artifact_language: vi
+legacy: { path: null, language: unknown, framework: unknown }
+target: { path: null, language: unknown, framework: unknown }
+documents:
+  requirements: []
+  uiux: []
+  migration: []
+  architecture: []
+# Each non-empty documents list entry has exactly these keys and no others:
+# - path: <canonical path from Canonical Path>
+#   input_source: <explicit or inbox>
+#   format: <detected format>
+#   readability: readable
+#   evidence_id: <unique Evidence ID>
+base_branch: null
+test_cmd: null
+lint_cmd: null
+build_cmd: null
+coverage_cmd: null
+review_focus: []
+verification: { behavior_parity: required, regression: optional, visual_fidelity: optional }
+project_pack:
+  path: docs/aitoolkit/migration-project
+  reviewed_at: null
+  review_evidence: null
+# invariants: greenfield => design-new; incremental => preserve-existing

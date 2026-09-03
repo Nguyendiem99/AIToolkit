@@ -12,7 +12,8 @@ Bạn là **orchestrator**, chạy inline (cùng context người dùng), điề
 ## Chuẩn bị run
 1. Xác định `<slug>` = tên bug đang xử lý (hỏi người dùng nếu chưa rõ); `<date>` = ngày hôm nay (YYYY-MM-DD).
 2. `RUN_DIR = <project>/docs/aitoolkit/<date>-bugfix-<slug>/`. Tạo thư mục nếu chưa có.
-3. Tạo todo list (TodoWrite): mỗi bước trong Bảng bước là một mục.
+3. Đặt per-run `workflow_type: bugfix`. Giá trị orchestrator-provided này là authoritative even when the onboarding-generated profile contains a `migration` section; không đọc workflow hiện tại từ profile.
+4. Tạo todo list (TodoWrite): mỗi bước trong Bảng bước là một mục.
 
 ## Bảng bước (bugfix)
 | # | skill | approver | gate | prompt |
@@ -31,7 +32,7 @@ Bạn là **orchestrator**, chạy inline (cùng context người dùng), điề
 Với mỗi bước theo thứ tự Bảng bước:
 1. TodoWrite bước → `in_progress`.
 2. **Optional (07, 08):** nếu người dùng đã yêu cầu bỏ, hoặc bạn hỏi "Chạy bước này không?" và họ từ chối → todo `completed` ghi "skipped", bỏ qua, KHÔNG gọi skill.
-3. Gọi step-skill (Skill tool, chạy inline). Truyền: `RUN_DIR`; đường dẫn artifact **bước ngay trước** (nếu có); input đặc thù (bước 01: mô tả bug / link issue do người dùng cung cấp). Skill làm việc và ghi artifact vào `RUN_DIR` với front-matter `status: draft` (tên file do skill quy định).
+3. Gọi step-skill (Skill tool, chạy inline). Truyền: `RUN_DIR`; authoritative `workflow_type: bugfix`; đường dẫn artifact **bước ngay trước** (nếu có); input đặc thù (bước 01: mô tả bug / link issue do người dùng cung cấp). Khi gọi Knowledge Capture, truyền thêm `knowledge_step_id: 09-knowledge-base`. Skill làm việc và ghi artifact vào `RUN_DIR` với front-matter `status: draft` (tên file do skill quy định).
 4. Trình cho người dùng: tóm tắt ngắn + đường dẫn artifact.
 5. **Gate:**
    - `none` (09) → todo `completed`, xong.

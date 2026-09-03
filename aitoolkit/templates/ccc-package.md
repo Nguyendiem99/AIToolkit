@@ -6,6 +6,11 @@ produced_at: <yyyy-mm-dd>
 
 # CCC Package — <tên module>
 
+## Rule Resolution
+- **State:** `RESOLVED | BLOCKED`
+- **Mandatory rule gaps:** <none or exact blocking gaps>
+- **Optional gaps/degraded coverage:** <none or recorded degraded coverage>
+
 ## Checklist
 | Hạng mục CCC | Đạt? | Evidence |
 |---|---|---|

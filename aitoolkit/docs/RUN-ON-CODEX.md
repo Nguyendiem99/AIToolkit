@@ -60,12 +60,42 @@ Dùng `ln -sf` (symlink) để kit cập nhật thì skill tự theo; muốn b�
 
 ```
 $aitoolkit bugfix
-$aitoolkit migration, bỏ qua bước 08 CCC và 09 Release
+$aitoolkit migrate <feature-slug>
 ```
 
 > **Lưu ý namespace:** các step-skill có tên khá chung (`fix`, `design`, `implement`, `reproduce`…). Đăng ký toàn cục nghĩa là chúng nằm chung namespace với skill khác của bạn. Nếu ngại, chỉ cần cài mỗi orchestrator `aitoolkit` — pipeline vẫn chạy đủ.
 >
 > **Route "chuẩn" (nâng cao):** Codex cũng có hệ plugin/marketplace giống Claude Code (`codex plugin marketplace add` + `codex plugin add`, manifest `plugin.json` + `.agents/plugins/marketplace.json`). Có thể đóng gói AIToolkit thành Codex plugin để cài/gỡ gọn hơn — xem `codex plugin --help`.
+
+---
+
+## Migration user workflow
+
+1. Prepare migration sources and documents.
+2. Run `$aitoolkit migration-onboarding` with `--legacy`, `--target`, the repeatable `--requirements`, `--uiux`, `--migration-docs`, and `--architecture-docs` flags, or let it read the optional inbox.
+3. Review the generated profile at `<RUN_DIR>/project-draft/project.yaml`, generated pack at `<RUN_DIR>/project-draft/migration-project`, and review artifact at `<RUN_DIR>/04-project-pack-review.md`.
+4. Obtain explicit Tech Lead approval; the HARD gate publishes those exact staged bytes to canonical `docs/aitoolkit/project.yaml` and `docs/aitoolkit/migration-project`.
+5. Run `$aitoolkit migrate <feature-slug>`.
+6. Migration ends at Knowledge Capture after the mode-specific verification path.
+7. Gerrit, CCC, and Release are separate delivery skills invoked only by explicit calls after migration.
+
+## Tự động hóa và ngôn ngữ artifact
+
+- Profile mới mặc định `automation.mode: interactive` và `output.artifact_language: vi`; profile cũ thiếu hai field dùng fallback tương ứng `interactive` và `vi`. Vì vậy artifact migration được sinh mặc định tiếng Việt UTF-8, còn key/enums/ID/path/command/log và cột bảng machine-readable giữ nguyên.
+- Thứ tự phân giải mode là CLI flag → `automation.mode` trong profile → `interactive`. `--auto` tự duyệt soft gate không bị blocked, không hỏi và không waiver; gặp blocker hoặc HARD gate thì dừng.
+- `--auto-waive` cũng không hỏi ở soft gate và chỉ waiver blocker `environment-unavailable` có bằng chứng thật. Lỗi correctness, schema, path, selector, regression, scope và HARD gate luôn dừng.
+- Evidence giữ nghĩa thật: `PASS`, `FAIL`, `BLOCKED`, `WAIVED`, `NOT_RUN`. Check được waiver phải là `NOT_RUN + WAIVED`, có `result: partial` và không phải `PASS`; không ghi giả test đã chạy.
+- Tài liệu nguồn luôn read-only: workflow không dịch, di chuyển hoặc rewrite source document.
+
+
+Project root luôn lấy từ context hiện tại; không truyền project root dưới dạng positional argument. Explicit document flags được ưu tiên, còn inbox `docs/aitoolkit/inputs/{requirements,uiux,migration,architecture}/` là fallback tùy chọn. Onboarding tự sinh staged profile/project-pack drafts từ evidence và chỉ publish sau Tech Lead HARD gate; người dùng không tự viết pack đầu vào.
+
+- `greenfield` phải đi cùng `design-new`; Codex dừng ở Tech Lead design gate, bootstrap chỉ cho selected foundation unit `required`, và dùng approved foundation baseline cho later unit `not-required`.
+- `incremental` phải đi cùng `preserve-existing`; Codex giữ target architecture, không bootstrap, capture pre-change baseline và chạy regression verification.
+- Nếu profile còn `unknown` hoặc thiếu evidence bắt buộc, artifact ghi `result: blocked` và Codex dừng trước approval gate/downstream execution.
+- Nếu phiên bị gián đoạn, gọi lại cùng workflow và slug. Orchestrator đọc artifact `status: approved` trong `RUN_DIR`; không có state store riêng.
+
+Slash command Claude tương đương là `/aitoolkit:migration-onboarding` và `/aitoolkit:migrate <feature-slug>`, nhưng trên Codex phải dùng wrapper/câu lệnh tự nhiên như trên.
 
 ---
 

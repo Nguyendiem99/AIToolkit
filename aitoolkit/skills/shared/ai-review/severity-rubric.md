@@ -20,7 +20,7 @@ Phân loại theo **blast radius** — hậu quả nếu lỗi lọt ra sản xu
 - Thiếu xử lý lỗi/edge (null, empty, biên, input xấu) trên đường phụ.
 - **Thiếu test cho hành vi mới**, hoặc **bugfix không có regression test**.
 - Hồi quy hiệu năng đáng kể (độ phức tạp xấu, leak tài nguyên, N+1).
-- Vi phạm **rule cứng** của LGE (khi `lge-rules` đã điền và đánh dấu bắt buộc).
+- Vi phạm **mandatory review rule** đã resolve từ approved project profile/project pack.
 - Ranh giới/trách nhiệm sai khiến dễ hỏng về sau.
 
 ## Minor — ghi nhận, không chặn
@@ -32,10 +32,16 @@ Phân loại theo **blast radius** — hậu quả nếu lỗi lọt ra sản xu
 
 *Ngoại lệ:* một vấn đề "trông Minor" nhưng **che giấu lỗi thật** (vd tên hàm nói dối về hành vi dẫn tới dùng sai) → nâng lên Major.
 
-## Áp lên gate
+## Verdict gate
 
-- Còn ≥1 **Critical** → verdict `Reject`; orchestrator không nên qua gate cho tới khi hết.
-- Còn **Major** (0 Critical) → `Approve-with-fixes`; ghi rõ để bước sau/dev xử lý.
-- 0 Critical, 0 Major → `Approve`.
+Evaluate Rule Resolution first. Chỉ khi state là `RESOLVED` mới xét severity counts. `BLOCKED` là rule-resolution gate độc lập, không phải Critical finding giả.
 
-`Critical count` phải xuất hiện dạng số trong `review-report.md` để bước/gate quyết định dựa vào nó.
+| Rule Resolution | Critical count | Major count | Verdict |
+|---|---|---|---|
+| BLOCKED | 0 | 0 | Reject |
+| BLOCKED | any | any | Reject |
+| RESOLVED | >=1 | any | Reject |
+| RESOLVED | 0 | >=1 | Approve-with-fixes |
+| RESOLVED | 0 | 0 | Approve |
+
+`Critical count` phải xuất hiện dạng số trong `review-report.md`, nhưng severity counts không được override `Rule Resolution: BLOCKED`.
