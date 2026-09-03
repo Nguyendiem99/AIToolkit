@@ -1,0 +1,295 @@
+%% AIToolKit master workflow — generated from the orchestrator skill contracts.
+%% Source of truth: aitoolkit/skills/aitoolkit/{migration-onboarding,migrate,feature,bugfix}/SKILL.md
+flowchart TB
+
+    START(["HUMAN<br/>Yêu cầu migration, feature hoặc bugfix"])
+    ROUTE{"HUMAN<br/>Chọn workflow và phạm vi"}
+    START --> ROUTE
+
+    subgraph PRINCIPLES["Nguyên tắc xuyên suốt"]
+        direction LR
+        P1["ARTIFACT<br/>Tiến độ nằm trong Markdown front matter<br/>draft → approved"]
+        P2["ORCHESTRATOR<br/>Điều phối tuần tự và handoff<br/>không có state engine tập trung"]
+        P3["GATE<br/>Soft gate: human hoặc automation policy<br/>HARD gate: luôn cần xác nhận tường minh"]
+        P4["EVIDENCE<br/>PASS · FAIL · BLOCKED · WAIVED · NOT_RUN<br/>không ghi giả test đã chạy"]
+    end
+
+    ROUTE -. "quy tắc chung" .-> PRINCIPLES
+
+    %% ---------------------------------------------------------------------
+    %% Migration onboarding
+    %% ---------------------------------------------------------------------
+    subgraph ONBOARDING["A · MIGRATION ONBOARDING — tạo profile và project pack"]
+        direction TB
+        OB1["01 · ORCHESTRATOR<br/>Validate project root, legacy, target và documents<br/>Artifact: 01-onboarding-input.md"]
+        OBG1{"GATE<br/>Input hợp lệ và đọc được?"}
+        OBSTOP(["BLOCKED<br/>Sửa path / quyền đọc / ambiguity<br/>rồi chạy lại onboarding"])
+        OB2["02 · AI — inspect-project<br/>Khảo sát legacy, target, docs và toolchain<br/>Artifact: 02-project-inspection.md"]
+        OBG2{"HUMAN · PM / Tech Lead<br/>Duyệt inspection evidence và Unknowns?"}
+        OB3["03 · AI — classify-mode<br/>Đề xuất mode + architecture policy + commands<br/>greenfield / incremental / unknown"]
+        OBG3{"HUMAN · Tech Lead<br/>Duyệt mode và architecture policy?"}
+        OB4["04 · AI — create-project-pack<br/>Stage project.yaml và migration-project pack<br/>Artifact: 04-project-pack-review.md"]
+        OBH{"HARD GATE · Tech Lead<br/>Xác nhận đúng staged bytes<br/>của profile và toàn bộ project pack?"}
+        OBCANON["ARTIFACT APPROVED<br/>docs/aitoolkit/project.yaml<br/>docs/aitoolkit/migration-project/"]
+
+        OB1 --> OBG1
+        OBG1 -- "Không" --> OBSTOP
+        OBG1 -- "Có" --> OB2
+        OB2 --> OBG2
+        OBG2 -- "Từ chối + feedback" --> OB2
+        OBG2 -- "Duyệt" --> OB3
+        OB3 --> OBG3
+        OBG3 -- "Từ chối + feedback" --> OB3
+        OBG3 -- "Duyệt" --> OB4
+        OB4 --> OBH
+        OBH -- "Chưa xác nhận" --> OB4
+        OBH -- "Xác nhận tường minh" --> OBCANON
+    end
+
+    ROUTE -- "Migration chưa onboarding" --> OB1
+
+    %% ---------------------------------------------------------------------
+    %% Migration scope plane and execution plane
+    %% ---------------------------------------------------------------------
+    subgraph MIGRATION["B · MIGRATION — scope plane + execution plane"]
+        direction TB
+
+        subgraph SCOPE["B1 · Scope plane — không sửa target source"]
+            direction TB
+            MS1["Resolve requested scope<br/>explicit-item / module / project / unresolved"]
+            MSG0{"GATE<br/>Scope đã rõ?"}
+            MSQ["HUMAN<br/>Trả lời đúng một câu hỏi scope có stable ID"]
+            MS2["Create / resolve immutable revisions<br/>master-spec.md + master-plan.md"]
+            MSH{"HUMAN · Approval gate<br/>Revision chain fresh, linear và approved?"}
+            MS3["Validate dependency graph và assurance<br/>architecture + selector schema phải PASS"]
+            MSG1{"GATE<br/>Queue hợp lệ và có item eligible?"}
+            MSBLOCK(["SCOPE BLOCKED<br/>Không mutation target source"])
+            MS4["Select / resume đúng 1 work item<br/>dependency depth → Plan Order → Work Item ID<br/>max_concurrency: 1"]
+            MS5["Resolve adapter<br/>none hoặc migration-unit<br/>tạo immutable attempt ID"]
+
+            MS1 --> MSG0
+            MSG0 -- "Không" --> MSQ --> MS1
+            MSG0 -- "Có" --> MS2 --> MSH
+            MSH -- "Từ chối / stale / fork" --> MS2
+            MSH -- "Duyệt" --> MS3 --> MSG1
+            MSG1 -- "Không" --> MSBLOCK
+            MSG1 -- "Có" --> MS4 --> MS5
+        end
+
+        subgraph EXEC["B2 · Execution plane — một immutable attempt"]
+            direction TB
+            M01["01 · AI — validate-inputs<br/>Profile, project pack, scope envelope"]
+            M02["02 · AI — discovery<br/>Behavior, structure, dependency, state, services, UI"]
+            M03["03 · AI — analyze-requirements-uiux<br/>Journey, states, acceptance criteria"]
+            M04["04 · AI — build-inventory<br/>Source + requirements + target baseline"]
+            M05["05 · AI — feature-mapping<br/>Source-to-target strategy và trace"]
+            M06["06 · AI — analyze-gaps-conflicts<br/>Missing coverage, conflict, ownership, decisions"]
+            M07["07 · AI — technical-design<br/>Mode-aware target design + conformance"]
+            M08["08 · AI — plan-waves<br/>Dependency-ordered migration units"]
+            MGDESIGN{"HUMAN · Soft gates 01–08<br/>Duyệt artifact của từng bước?"}
+            MREDESIGN["AI<br/>Chạy lại đúng step bị từ chối với feedback<br/>không sửa artifact đã approved"]
+
+            MMODE{"GATE<br/>Mode và Bootstrap Scope?"}
+            M09["09 · AI — bootstrap-target<br/>Chỉ greenfield + bootstrap required<br/>Tạo foundation baseline"]
+            M10G["10 · AI — code-migration<br/>Greenfield: implement từ approved design/baseline"]
+            M10I["10 · AI — code-migration<br/>Incremental: capture pre-edit baseline<br/>rồi implement, không bootstrap"]
+            MGIMPL{"HUMAN · Developer<br/>Duyệt implementation của selected work item?"}
+
+            M11["11 · AI — ai-review<br/>Review intent, failure mode và severity"]
+            MG11{"HUMAN · Reviewer<br/>Duyệt review?"}
+            M12["12 · AI — verification-testing<br/>Fresh tests + evidence verdict"]
+            MG12{"HUMAN · Dev / QA<br/>Duyệt verification evidence?"}
+            MDEBUG["SUPERPOWERS<br/>Systematic debugging → root cause → fix<br/>rồi chạy lại implementation theo đúng mode"]
+            M13["13 · AI — verify-parity<br/>So sánh source baseline và migrated behavior"]
+            MG13{"HUMAN · Product / UX / QA<br/>Duyệt parity verdict?"}
+            M14["14 · AI — verify-regression<br/>Incremental only · mandatory<br/>So với pre-change target baseline"]
+            MG14{"HUMAN · QA<br/>Duyệt regression verdict?"}
+            M15["15 · AI — knowledge-base<br/>Capture knowledge + evidence links<br/>không có gate"]
+            MATOMIC["SCOPE PLANE<br/>Apply atomic work-item transition<br/>và ghi terminal attempt artifact"]
+            MSCOMP{"GATE<br/>Mọi required item terminal-success,<br/>graph hợp lệ, assurance PASS, không blocker?"}
+            MQUEUE["scope-in-progress<br/>Chọn / resume item kế tiếp<br/>không hỏi lại soft-scope prompt"]
+            MDONE(["SCOPE COMPLETE<br/>Terminal scope report liệt kê đủ evidence"])
+
+            M01 --> M02 --> M03 --> M04 --> M05 --> M06 --> M07 --> M08 --> MGDESIGN
+            MGDESIGN -- "Từ chối + feedback" --> MREDESIGN --> MGDESIGN
+            MGDESIGN -- "Duyệt từng artifact" --> MMODE
+            MMODE -- "greenfield + required" --> M09 --> M10G
+            MMODE -- "greenfield + not-required" --> M10G
+            MMODE -- "incremental" --> M10I
+            M10G --> MGIMPL
+            M10I --> MGIMPL
+            MGIMPL -- "Từ chối + feedback" --> MMODE
+            MGIMPL -- "Duyệt" --> M11 --> MG11
+            MG11 -- "Từ chối + feedback" --> M11
+            MG11 -- "Duyệt" --> M12 --> MG12
+            MG12 -- "FAIL / BLOCKED" --> MDEBUG --> MMODE
+            MG12 -- "Duyệt" --> M13 --> MG13
+            MG13 -- "Từ chối + feedback" --> M13
+            MG13 -- "Greenfield: duyệt" --> M15
+            MG13 -- "Incremental: duyệt" --> M14 --> MG14
+            MG14 -- "Từ chối + feedback" --> M14
+            MG14 -- "Duyệt" --> M15
+            M15 --> MATOMIC --> MSCOMP
+            MSCOMP -- "Chưa" --> MQUEUE
+            MSCOMP -- "Có" --> MDONE
+        end
+
+        MS5 --> M01
+        MQUEUE -. "deterministic queue" .-> MS4
+    end
+
+    ROUTE -- "Migration đã có approved profile + pack" --> MS1
+    OBCANON --> MS1
+
+    %% ---------------------------------------------------------------------
+    %% Feature and bugfix entry paths
+    %% ---------------------------------------------------------------------
+    subgraph FEATURE["C · FEATURE — 3 bước chuyên biệt"]
+        direction TB
+        F1["01 · AI — requirements<br/>Problem, users, stories, scope, constraints"]
+        FG1{"HUMAN · PM / Client<br/>Duyệt yêu cầu?"}
+        F2["02 · AI — design<br/>Kiến trúc, folder, sequence, data flow, impact"]
+        FG2{"HUMAN · Tech Lead<br/>Duyệt thiết kế kỹ thuật?"}
+        F3["03 · AI — implement<br/>Worktree + plan execution + TDD"]
+        FG3{"HUMAN · Developer<br/>Test xanh, duyệt implementation?"}
+        F1 --> FG1
+        FG1 -- "Từ chối + feedback" --> F1
+        FG1 -- "Duyệt" --> F2 --> FG2
+        FG2 -- "Từ chối + feedback" --> F2
+        FG2 -- "Duyệt" --> F3 --> FG3
+        FG3 -- "Từ chối + feedback" --> F3
+    end
+
+    subgraph BUGFIX["D · BUGFIX — 3 bước chuyên biệt"]
+        direction TB
+        B1["01 · AI — reproduce<br/>Steps, expected vs actual, environment, logs"]
+        BG1{"HUMAN · Dev / QA<br/>Xác nhận tái hiện bug?"}
+        B2["02 · AI — root-cause<br/>Giả thuyết → kiểm chứng → blast radius"]
+        BG2{"HUMAN · Tech Lead<br/>Duyệt nguyên nhân gốc?"}
+        B3["03 · AI — fix<br/>Worktree + regression test + TDD"]
+        BG3{"HUMAN · Developer<br/>Test xanh, duyệt fix?"}
+        B1 --> BG1
+        BG1 -- "Từ chối + feedback" --> B1
+        BG1 -- "Duyệt" --> B2 --> BG2
+        BG2 -- "Từ chối + feedback" --> B2
+        BG2 -- "Duyệt" --> B3 --> BG3
+        BG3 -- "Từ chối + feedback" --> B3
+    end
+
+    ROUTE -- "Feature" --> F1
+    ROUTE -- "Bugfix" --> B1
+
+    %% ---------------------------------------------------------------------
+    %% Shared feature/bugfix tail
+    %% ---------------------------------------------------------------------
+    subgraph SHARED["E · SHARED PIPELINE — Feature và Bugfix"]
+        direction TB
+        S4["04 · AI — ai-review<br/>Critical / Major / Minor; gate theo blast radius"]
+        SG4{"HUMAN · Reviewer<br/>Duyệt review?"}
+        S5["05 · AI — verification-testing<br/>Fresh tests, regression và evidence verdict"]
+        SG5{"HUMAN · Dev / QA<br/>Duyệt kết quả test?"}
+        SDEBUG["SUPERPOWERS<br/>Reproduce → isolate layer → root cause → fix<br/>giữ nguyên workflow_type"]
+        SWTYPE{"GATE<br/>workflow_type?"}
+        S6["06 · AI — gerrit-automation<br/>Chuẩn bị commit message + change description"]
+        SH6{"HARD GATE · Reviewer<br/>Xác nhận tường minh trước khi upload Gerrit?"}
+        SO7{"HUMAN<br/>Chạy CCC optional?"}
+        S7["07 · AI — ccc-automation<br/>Checklist, evidence, draft release notes, impact"]
+        SG7{"HUMAN · PM / QA<br/>Duyệt CCC?"}
+        SO8{"HUMAN<br/>Chạy Release optional?"}
+        S8["08 · AI — release<br/>Go / No-Go và release notes"]
+        SH8{"HARD GATE · PM<br/>Xác nhận tường minh để release?"}
+        S9["09 · AI — knowledge-base<br/>Tóm tắt run, artifact links và bài học"]
+        SDONE(["PIPELINE COMPLETE<br/>Danh sách artifact trong RUN_DIR"])
+
+        S4 --> SG4
+        SG4 -- "Từ chối + feedback" --> S4
+        SG4 -- "Duyệt" --> S5 --> SG5
+        SG5 -- "FAIL / BLOCKED" --> SDEBUG --> SWTYPE
+        SWTYPE -- "feature" --> F3
+        SWTYPE -- "bugfix" --> B3
+        SG5 -- "Duyệt" --> S6 --> SH6
+        SH6 -- "Chưa xác nhận" --> S6
+        SH6 -- "Xác nhận tường minh" --> SO7
+        SO7 -- "Có" --> S7 --> SG7
+        SG7 -- "Từ chối + feedback" --> S7
+        SG7 -- "Duyệt" --> SO8
+        SO7 -- "Bỏ qua" --> SO8
+        SO8 -- "Có" --> S8 --> SH8
+        SH8 -- "Chưa xác nhận" --> S8
+        SH8 -- "Xác nhận tường minh" --> S9
+        SO8 -- "Bỏ qua" --> S9
+        S9 --> SDONE
+    end
+
+    FG3 -- "Duyệt" --> S4
+    BG3 -- "Duyệt" --> S4
+
+    %% Migration delivery is intentionally separate from migration completion.
+    subgraph MDELIVERY["F · MIGRATION DELIVERY — chỉ khi được gọi rõ ràng sau migration"]
+        direction TB
+        MD0{"HUMAN<br/>Explicitly invoke delivery skill?"}
+        MD1["AI — gerrit-automation"]
+        MDH1{"HARD GATE<br/>Xác nhận upload Gerrit?"}
+        MD2["AI — ccc-automation · optional"]
+        MDG2{"HUMAN · soft gate<br/>Duyệt CCC?"}
+        MD3["AI — release · optional"]
+        MDH3{"HARD GATE<br/>Xác nhận release?"}
+        MDDONE(["DELIVERY COMPLETE"])
+
+        MD0 -- "Gerrit" --> MD1 --> MDH1
+        MDH1 -- "Chưa xác nhận" --> MD1
+        MDH1 -- "Xác nhận" --> MD2 --> MDG2
+        MDG2 -- "Duyệt / bỏ qua" --> MD3 --> MDH3
+        MDH3 -- "Chưa xác nhận" --> MD3
+        MDH3 -- "Xác nhận / bỏ qua optional" --> MDDONE
+    end
+
+    MDONE -. "không tự chạy delivery" .-> MD0
+
+    %% ---------------------------------------------------------------------
+    %% Legend and styling
+    %% ---------------------------------------------------------------------
+    subgraph LEGEND["Chú giải"]
+        direction LR
+        LAI["AI / step-skill"]
+        LH{"Human soft gate"}
+        LHARD{"HARD gate"}
+        LG{"Technical gate"}
+        LART["Artifact / state"]
+        LEND(["Terminal state"])
+    end
+
+    MDDONE ~~~ LAI
+
+    classDef start fill:#fff7ed,stroke:#fb923c,stroke-width:2px,color:#7c2d12;
+    classDef ai fill:#eaf2ff,stroke:#6b9cff,stroke-width:1.5px,color:#173a72;
+    classDef human fill:#fff0e8,stroke:#ff8f70,stroke-width:1.5px,color:#7c2d12;
+    classDef hard fill:#f2eaff,stroke:#9b70e8,stroke-width:2px,color:#4c1d95;
+    classDef superpower fill:#f5efff,stroke:#9b70e8,stroke-width:1.5px,color:#4c1d95;
+    classDef gate fill:#e8f8ef,stroke:#55b987,stroke-width:1.5px,color:#14532d;
+    classDef artifact fill:#eef7f1,stroke:#55a86f,stroke-width:1.5px,color:#14532d;
+    classDef terminal fill:#f7f7f8,stroke:#737373,stroke-width:2px,color:#262626;
+    classDef blocked fill:#fff1f2,stroke:#e11d48,stroke-width:2px,color:#881337;
+    classDef principle fill:#f8fafc,stroke:#94a3b8,stroke-width:1px,color:#334155;
+
+    class START start;
+    class OB1,OB2,OB3,OB4,M01,M02,M03,M04,M05,M06,M07,M08,MREDESIGN,M09,M10G,M10I,M11,M12,M13,M14,M15,F1,F2,F3,B1,B2,B3,S4,S5,S6,S7,S8,S9,MD1,MD2,MD3,LAI ai;
+    class ROUTE,OBG2,OBG3,MGDESIGN,MGIMPL,MG11,MG12,MG13,MG14,FG1,FG2,FG3,BG1,BG2,BG3,SG4,SG5,SO7,SG7,SO8,MD0,MDG2,LH human;
+    class OBH,SH6,SH8,MDH1,MDH3,LHARD hard;
+    class OBG1,MSG0,MSG1,MMODE,MSCOMP,SWTYPE,LG gate;
+    class OBCANON,MS1,MS2,MS3,MS4,MS5,MATOMIC,MQUEUE,LART artifact;
+    class OBSTOP,MSBLOCK blocked;
+    class MDONE,SDONE,MDDONE,LEND terminal;
+    class P1,P2,P3,P4 principle;
+    class MDEBUG,SDEBUG superpower;
+
+    style ONBOARDING fill:#fff9d9,stroke:#e7a900,stroke-width:2px
+    style MIGRATION fill:#fff9d9,stroke:#e7a900,stroke-width:2px
+    style SCOPE fill:#fffdf0,stroke:#d9a300,stroke-width:1px
+    style EXEC fill:#fffdf0,stroke:#d9a300,stroke-width:1px
+    style FEATURE fill:#fff9d9,stroke:#e7a900,stroke-width:2px
+    style BUGFIX fill:#fff9d9,stroke:#e7a900,stroke-width:2px
+    style SHARED fill:#fff9d9,stroke:#e7a900,stroke-width:2px
+    style MDELIVERY fill:#fff9d9,stroke:#e7a900,stroke-width:2px
+    style PRINCIPLES fill:#f8fafc,stroke:#94a3b8,stroke-width:1px
+    style LEGEND fill:#ffffff,stroke:#94a3b8,stroke-width:1px
