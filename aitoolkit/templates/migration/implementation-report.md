@@ -3,6 +3,9 @@ step_id: <orchestrator-provided>
 status: draft
 result: complete
 produced_at: <yyyy-mm-dd>
+responsibility_contract:
+  version: 1
+  applicability: required
 ---
 
 <!-- artifact_language: vi -->
@@ -17,19 +20,19 @@ produced_at: <yyyy-mm-dd>
 
 ## Canonical Adapter Evidence
 
-Mỗi work item có đúng một row. `Canonical Match` chỉ là `PASS` khi selector khớp canonical Task 5; adapter `none` dùng `not-applicable` cho bốn field selector.
+Mỗi work item có đúng một row. `Canonical Match` chỉ là `PASS` khi toàn bộ 13 field selector khớp ordinal với canonical Task 5 và các field Acceptance/Trace/Delivery Adapter liên quan khớp Work Item authority; adapter `none` giữ exact sentinel theo contract.
 
-| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Canonical Match |
-|---|---|---|---|---|---|---|
-| <WORK-*> | <migration-unit, task, story, package, phase, milestone hoặc none> | <external ID hoặc not-applicable> | <authority hoặc not-applicable> | <revision hoặc not-applicable> | <approval hoặc not-applicable> | <PASS hoặc BLOCKED> |
+| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference | Canonical Match |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| <WORK-*> | <migration-unit, task, story, package, phase, milestone hoặc none> | <external ID hoặc not-applicable> | <authority hoặc not-applicable> | <revision hoặc not-applicable> | <approval hoặc not-applicable> | <parent selector hoặc not-applicable> | <exact Work Item acceptance> | <exact Work Item trace IDs> | <mode constraint> | <DESIGN-ID@revision> | <WORK-* hoặc not-applicable> | <DEC-* hoặc not-applicable> | <PASS hoặc BLOCKED> |
 
 ## Conformance Matrix Reference
 
-`Matrix Approval Reference` resolves to the canonical approved master-plan Work Item authority. Task 6 remains in its actual canonical `draft/complete` lifecycle; do not invent technical-design approval front matter or approval tables.
+`Design Reference` phải giữ nguyên exact canonical Task 6 `draft/complete`; không mutate Task 6 thành approved và không thêm `approval_source`. `Design Approval Evidence Reference` là explicit safe relative path tới external approval artifact có bounded front matter schema `step_id`, `status: approved`, `result: complete`, `approval_source: human`, `produced_at` và đúng một `Technical Design Approval` row. Row đó bind exact design ID/revision, SHA-256 content digest, Tech Lead decision, approval reference và approved status; report không được tự khai hoặc derive approval.
 
-| Work Item ID | Discovery Reference | Design Reference | Design Revision | Matrix Approval Reference | Matrix Status |
-|---|---|---|---|---|---|
-| <WORK-*> | <02-discovery.md> | <07-technical-design.md> | <revision> | <approval:TECH-LEAD-*> | <approved hoặc blocked> |
+| Work Item ID | Discovery Reference | Design Reference | Design Revision | Design Approval Evidence Reference | Matrix Approval Reference | Matrix Status |
+|---|---|---|---|---|---|---|
+| <WORK-*> | <02-discovery.md> | <07-technical-design.md> | <revision> | <external approval artifact path> | <approval:TECH-LEAD-*> | <approved hoặc blocked> |
 
 ## Exemplar Read Evidence
 
@@ -57,13 +60,13 @@ Ghi đúng một row cho `provider`, `router`, `localization`, `subscription` v�
 
 Nếu không có deviation, ghi một row `not-applicable`. Mọi abstraction mới phải có resolved decision và Tech Lead approval.
 
-| Deviation Reference | Concern | Actual Abstraction | Resolved Decision | Tech Lead Approval | Status |
-|---|---|---|---|---|---|
-| <DEV-* hoặc not-applicable> | <canonical concern hoặc not-applicable> | <abstraction hoặc not-applicable> | <resolved:DECISION-*: ... hoặc not-applicable> | <approval:TECH-LEAD-* hoặc not-applicable> | <approved, blocked hoặc not-applicable> |
+| Deviation Reference | Concern | Conflict Reference | Actual Abstraction | Resolved Decision | Tech Lead Approval | Status |
+|---|---|---|---|---|---|---|
+| <DEV-* hoặc not-applicable> | <canonical concern hoặc not-applicable> | <CONFLICT-* hoặc not-applicable> | <abstraction hoặc not-applicable> | <resolved:DECISION-*: ... hoặc not-applicable> | <approval:TECH-LEAD-* hoặc not-applicable> | <approved, blocked hoặc not-applicable> |
 
 ## Production Activation Path Evidence
 
-For an applicable slice, `Registration` and `Production Evidence` come from the external approved Activation Slice `construct.Source Reference` and `test.Source Reference`; report prose cannot create this authority.
+Với slice applicable, `Registration` được derive chính xác thành `<router Owner Path/Symbol> @ <construct.Output>` từ boundary và `Activation Slice` Task 6. `Production Evidence` được derive chính xác thành `<test.Output> @ <test.Source Reference>`. Không thêm private key-value evidence vào Task 6.
 
 | Applicability | Decision Reference | Entry Point | Registration | Runtime Path | Production Evidence | Verdict |
 |---|---|---|---|---|---|---|
@@ -77,7 +80,47 @@ Ba state độc lập; runtime waiver không thay đổi architecture hay select
 |---|---|---|
 | <PASS, FAIL, NOT_RUN hoặc WAIVED> | <PASS hoặc BLOCKED> | <PASS hoặc BLOCKED> |
 
+## Responsibility Plan Reference
+
+| Work Item ID | Plan Reference | Plan Revision | Design Revision |
+|---|---|---|---|
+| <WORK-*> | <explicit approved step-08 plan path> | <positive approved revision> | <DESIGN-*@revision> |
+
+## Responsibility Owner References
+
+Copy the selected work-item row exactly from the approved plan. These IDs scope the actual matrices; do not include unrelated design owners.
+
+| Work Item ID | Design Revision | Responsibility IDs | Shared Foundation IDs | Integration Responsibility IDs | Independent Boundary Evidence |
+|---|---|---|---|---|---|
+| <WORK-*> | <DESIGN-*@revision> | <ordered RESP-* or not-applicable> | <ordered RESP-* or not-applicable> | <ordered RESP-* or not-applicable> | <exact approved immutable evidence> |
+
+## Actual File Responsibility Matrix
+
+Copy every approved `File Responsibility Matrix` field exactly and add source or final-diff evidence for the observed owner, public symbols and effects. This actual inventory is not a self-attestation that can create semantic PASS.
+
+For real source and verification files, emit every contract payload with the language-valid semantic marker documented by the responsibility contract: exact whole-line `// arc:<payload>` for slash-comment languages or `# arc:<payload>` for hash-comment/PowerShell languages. Every owner has a same-ID `@ownership-begin RESP-*` / `@ownership-end RESP-*` pair. Put all imports, re-exports, directives, module declarations, shared wiring, and owned symbols inside one non-nesting range; content outside is unowned. Apply the sentinel to `@...`, `route ...`, and `scenario ...`; bare language-invalid pseudo-statements and inferred brace/indent/first-symbol boundaries are not producer formats.
+
+| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference | Actual Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| <RESP-*> | <path> | <symbol> | <approved value> | <approved value> | <CAP-*> | <trace IDs> | <approved value> | <symbols> | <effects> | <approved value> | <approved value> | <approved value> | <approved value> | <approved value> | <approved value> | <approved value> | <VERIFY-OWNER-*> | <yes or no> | <DEV-* or not-applicable> | <source/diff evidence> |
+
+## Actual Verification Ownership Matrix
+
+| Verification Owner ID | Production Responsibility ID | Capability ID | Evidence Path | Evidence Symbol or Scenario | Evidence Kind | Verification Disposition | Production Binding Evidence | Decision Reference | Verdict | Deviation Reference | Actual Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| <VERIFY-OWNER-*> | <RESP-*> | <CAP-*> | <path> | <symbol/scenario> | <approved kind> | <required or not-applicable-approved> | <production binding> | <decision or not-applicable> | <PASS or BLOCKED> | <DEV-* or not-applicable> | <source/diff evidence> |
+
+## Architecture Responsibility Verdicts
+
+`Architecture Conformance State` is derived only: PASS iff Tree Conformance, Responsibility Conformance and Verification Ownership are all PASS; runtime or auto-waive cannot alter these verdicts.
+
+| Responsibility Contract Version | Tree Conformance | Responsibility Conformance | Verification Ownership | Architecture Conformance State | Evidence References |
+|---|---|---|---|---|---|
+| 1 | <PASS or BLOCKED> | <PASS or BLOCKED> | <PASS or BLOCKED> | <PASS or BLOCKED> | <design/diff/review evidence> |
+
 ## Selected Migration Unit
+
+`Plan Reference`: `<selector authority>@<positive authority revision>` (exact canonical composite).
 
 Chỉ giữ section này khi `Adapter Kind = migration-unit`; với adapter khác, xóa toàn bộ section và không phát minh `migration_unit_id`.
 
@@ -131,9 +174,11 @@ Required for normal `draft/complete` and `approved/complete` implementation outp
 
 ## Change Hygiene
 
+List every pinned `task-base..final-tree` changed Git path exactly once from the NUL-delimited Git inventory; duplicate, surplus, stale, or omitted rows are blocking. Normalize repository path separators to `/` and Unicode to NFC before writing the row. Embedded spaces and Unicode are valid; absolute paths, empty or dot segments, traversal, control characters, and contract-delimiter ambiguity are invalid. Use exact `File Kind`: `A/C = new`, `M/R = existing`, `D = deleted`. `Edited Region / Symbol` is one exact identifier or an exact comma-and-space-separated identifier list, never a placeholder, wildcard, whole-file, or repository-wide claim. `Formatter Command` is exact `none` or a safe command containing and scoped to the row's canonical path; `.`, `*`, and `--all` repository-wide operands are forbidden. `Unrelated Diff` is exact `none` or `confirmed:MAJOR-*`; a confirmed disposition must be independently reviewed as a blocking Major. Every deleted path is resolved from task-base whether or not it contains an owner and does not need to exist in final-tree; set `Checkpoint History` to exact `source:<task-base SHA>:<deleted path>; diff:<task-base SHA>..<final-tree SHA>:<deleted path>`. For a removed responsibility block in a surviving file, use `existing` and the same base-source/removal-diff evidence for that owner symbol. A rename keeps the destination in `File`, preserves old/new authority, and requires exact `source:<task-base SHA>:<old path>; diff:<task-base SHA>..<final-tree SHA>:<old path>-><new path>`. Omitted, duplicate, surplus, stale, foreign, or status-mismatched rows are blocking.
+
 | Task / Unit | File | File Kind | Edited Region / Symbol | Formatter Command | Unrelated Diff | Checkpoint History | Task-base SHA | Final-tree SHA |
 |---|---|---|---|---|---|---|---|---|
-| <WORK-*> | <path> | <new or existing> | <region or symbol> | <command or none> | none | <checkpoint SHAs or none> | <sha> | <sha> |
+| <WORK-*> | <path> | <new, existing, or deleted> | <canonical region or symbol identifiers> | <path-scoped command or none> | <none or confirmed:MAJOR-*> | <checkpoint SHAs, deletion evidence, or none> | <sha> | <sha> |
 
 ## Lệnh và kết quả
 

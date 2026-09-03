@@ -24,7 +24,9 @@ Confirmed unrelated formatting, whole-file churn in an existing file, mixed task
 
 ## Delivery evidence
 
-Record the task/unit ID, base and final commit, changed files/symbols, file kind (`new` or `existing`), formatter commands, final diff-scope verdict, and any project-required ancestry and verification evidence.
+Record the task/unit ID, base and final commit, every changed Git path/symbol, file kind (`new`, `existing`, or `deleted`), formatter commands, final diff-scope verdict, and any project-required ancestry and verification evidence. Reconcile the table against the pinned `task-base..final-tree` `A/C`, `M/R`, and `D` path inventory: `A/C = new`, `M/R = existing`, and `D = deleted`. Omitted, stale, foreign, or status-mismatched rows block review.
+
+A deleted path has no final-tree file requirement. Its `Checkpoint History` must instead contain the exact immutable pair `source:<task-base SHA>:<deleted path>; diff:<task-base SHA>..<final-tree SHA>:<deleted path>`, proving base content and the removal diff. If a responsibility block is removed while its file survives, record the surviving path as `existing` and use the same base-source/removal-diff pair for the removed owner symbol.
 
 ## Non-waivable failures
 
@@ -36,6 +38,7 @@ Ancestry, commit-integrity, correctness, and diff-scope failures are not waiver-
 |---|---|
 | Existing source file | Keep formatting within the edited region or minimum adjacent syntax. |
 | New source file | Full-file formatting is allowed. |
+| Deleted source file | Record `deleted` plus exact task-base source and removal-diff evidence; do not require a final-tree path. |
 | Formatter rewrites unrelated code | Stop and separate the formatting work. |
 | Multiple local checkpoints | Consolidate only this task into one final delivery commit. |
 | Upstream synchronization | Follow the reviewed ancestry-preserving project policy; never squash-copy upstream. |

@@ -39,6 +39,8 @@ Tạo hoặc resolve `<RUN_DIR>/master-spec.md` và `<RUN_DIR>/master-plan.md`. 
 
 Executable input requires explicit `master_spec_ref` and `master_plan_ref` that resolve exact immutable current artifact type, ID and revision; blank, `pending`, `none` and `not-applicable` references or evidence are invalid. `status: approved` không đủ nếu approval/freshness reference là placeholder; resolved master plan phải bind exact master-spec reference, ID và revision.
 
+Before a master-plan revision becomes executable, its producer must emit exactly one bounded `responsibility_contract` block with `version: 1` and `applicability: required`, followed by complete order-aligned `Delivery Adapter Selection` and `Responsibility Owner References` rows for the entire Work Item set. Missing, pre-v1, unsupported, duplicate, or mixed plan discriminators block before queue selection, resume, dependency unlock, or production mutation. Each owner row copies the exact owner categories and independent-boundary evidence from the approved technical-design revision named by its selector row. The queue resolves that exact approved design and its verification-owner bindings; it does not wait for, infer, or synthesize a post-review handoff artifact.
+
 Approved revision là immutable: do not edit an approved master artifact in place. Scope, requirement, success criterion, required disposition, work-item set, dependency, order, acceptance, adapter, selector hoặc structural decision thay đổi phải tạo revision kế tiếp đúng `+1`, giữ stable master ID, trỏ `supersedes` tới immediate predecessor, ghi change summary/affected items, giữ valid completed evidence của item không bị ảnh hưởng và đưa approval của item bị ảnh hưởng về `pending`. Chỉ revision mới đã duyệt được phép tiếp tục mutation.
 
 Every work-item structural change must be declared in `affected_work_items`, including added or removed items, and every affected item in the new revision has `approval_reference: pending`. Structural comparison bao gồm title, required disposition, dependencies, Plan Order, acceptance, trace, adapter và toàn bộ selector fields; revision chain giữ nguyên master-spec/master-plan artifact ID.
@@ -49,7 +51,7 @@ Every affected_work_items ID resolves in the current/proposed canonical union; u
 
 ### Queue, eligibility và deterministic selection
 
-Validate graph trước selection; missing dependency hoặc cycle làm plan invalid và `scope-blocked`. Version đầu giữ `max_concurrency: 1`; nhiều hơn một item `in-progress` là invalid. Công thức eligibility bắt buộc là: required-or-approved-optional AND pending-or-ready AND dependencies-terminal-success AND current approval AND no blocker AND adapter-valid AND assurance-pass. Không có eligible item nhưng còn required blocker thì kết luận `scope-blocked`.
+Validate graph trước selection; missing dependency hoặc cycle làm plan invalid và `scope-blocked`. Version đầu giữ `max_concurrency: 1`; nhiều hơn một item `in-progress` là invalid. Công thức eligibility bắt buộc là: required-or-approved-optional AND pending-or-ready AND dependencies-terminal-success AND current approval AND no blocker AND adapter-valid AND assurance-pass. `assurance-pass` yêu cầu Tree Conformance, Responsibility Conformance, Verification Ownership, derived `architecture_conformance_state`, và `selector_schema_state` đều `PASS`. Không có eligible item nhưng còn required blocker thì kết luận `scope-blocked`, `next eligible item: none`; không chọn dependent item.
 
 Executable operations validate requested scope, then current approved master spec, then current approved linked master plan before queue or transition logic. Gate dùng canonical artifact rows, approval/freshness evidence và executable linear-chain validation; không nhận boolean “approved/current” thay artifact evidence.
 
@@ -77,13 +79,61 @@ Successful completion cần immutable terminal artifact khớp attempt/work item
 
 Step 15 completes only the current execution attempt and work item; nó không kết luận module, project hoặc requested scope hoàn tất. Sau atomic work-item transition, tính lại queue trên current approved master-plan revision. Khi còn required item non-terminal, verdict là `scope-in-progress` và tiếp tục deterministic selection mà không hỏi lại soft-scope question.
 
-Only the approved master plan may conclude `scope-complete`, và chỉ sau khi canonical completion formula đạt đủ: mọi required item terminal-success, graph hợp lệ, không blocker, completed-item architecture/selector-schema đều `PASS`, và terminal scope report liệt kê toàn bộ evidence. Attempt completion, work-item completion và requested-scope completion luôn là ba quyết định riêng.
+Only the approved master plan may conclude `scope-complete`, và chỉ sau khi canonical completion formula đạt đủ: mọi required item terminal-success, graph hợp lệ, không blocker, completed-item Tree Conformance, Responsibility Conformance, Verification Ownership, derived architecture và selector-schema đều `PASS`, và terminal scope report liệt kê toàn bộ immutable evidence. Attempt completion, work-item completion và requested-scope completion luôn là ba quyết định riêng.
 
 Scope completion calculates the dependency graph and validates every required terminal-report row; it never trusts caller-provided graph-valid or report-complete booleans. Terminal report phải immutable, có exact work-item status, terminal evidence và assurance fields khớp master-plan rows.
 
 Terminal scope report resolves from the artifact registry, binds the current master-plan reference/revision and enumerates the exact approved plan rows. Caller-provided report object hoặc subset không có exact registry binding không được dùng để kết luận scope.
 
 Terminal scope report Work Item IDs have bidirectional exact set and cardinality equality with current approved plan rows; duplicate, missing or extra IDs block.
+
+### Assurance-state separation
+
+Đọc `contracts/target-structure-conformance.md` và `contracts/file-responsibility-conformance.md` làm authority. Mọi attempt, work-item transition và terminal scope report phải giữ nguyên ba field `runtime_evidence_state`, `architecture_conformance_state` và `selector_schema_state`; không gộp chúng thành một verdict chung và không sao chép enum ra taxonomy riêng của orchestrator. `architecture_conformance_state` luôn được derive từ ba structural sub-verdict, không nhận caller assertion.
+
+Chỉ runtime evidence đủ điều kiện mới được `auto-waive`: native runtime check chưa chạy vì blocker môi trường đã được chứng minh có thể chuyển đúng từ `NOT_RUN + BLOCKED` thành `NOT_RUN + WAIVED`. `FAIL` không bao giờ được đổi thành waiver. `architecture_conformance_state: BLOCKED` hoặc `selector_schema_state: BLOCKED` luôn dừng queue trước target mutation, kể cả khi runtime evidence là `WAIVED`; master approval, exemplar inspection, conformance matrix, canonical selector, schema validation và static architecture review không waiver-eligible.
+
+### Compatibility conversion gate
+
+Historical unit-only artifacts chỉ read-only cho đến khi conversion hoàn tất. Conversion phải dùng approved historical evidence và canonical legacy plan authority để tạo immutable `master-spec` revision 1 cùng `master-plan` revision 1, tạo đúng một generic work item cho mỗi canonical legacy unit, và gắn exact `migration-unit` adapter reference đã được phê duyệt. Không phát minh selector, không nhận external-only unit, không giữ terminal evidence thiếu contract binding, và không suy module/project/requested-scope completion từ một unit đã complete.
+
+Conversion output luôn quay qua một approval gate mới cho toàn bộ master spec, master plan, work-item set, selector và preserved terminal evidence. Trước khi approval này thành công, queue giữ `planned` hoặc `scope-blocked` và tuyệt đối không production mutation/resume execution. Sau approval, selection/resume dùng cùng deterministic queue, conformance và structural gates như migration mới.
+
+### Terminal scope report
+
+Sau mỗi atomic work-item transition, render `templates/migration/scope-terminal-report.md` thành immutable artifact tham chiếu current approved master spec/plan revisions. Báo cáo phải enumerate bidirectionally exact mọi required và optional work item của plan, với status, terminal evidence, ba assurance states, blocker/disposition và plan revision; không nhận caller subset, duplicate hoặc extra row.
+
+Calculated Terminal Verdict phải được tính từ canonical completion formula, không sao chép caller assertion. `scope-complete` chỉ hợp lệ khi graph valid, mọi required item terminal-success, mọi required terminal evidence resolve bất biến, từng immutable terminal artifact có đúng v1 `Architecture Responsibility Handoff`, Tree/Responsibility/Verification/derived architecture và selector-schema đều `PASS`, không còn blocker, handoff evidence vẫn là exact source-diff, và Evidence Index bind exact final chain/KB artifact đã resolve. Nếu còn required item non-terminal thì giữ `scope-in-progress`; bất kỳ structural hoặc selector blocker nào cho `scope-blocked` và `next eligible item: none`.
+
+## Responsibility v1 rollout and safe post-implementation stop
+
+After implementation review creates the handoff, resolve exactly one immediate-predecessor `Architecture Responsibility Handoff` with responsibility contract version `1` and immutable source-diff `Evidence References` before verification, parity, regression, delivery, Knowledge Base completion, or terminal completion. Pre-edit queue selection and resume instead use the approved master-plan/design authority below.
+
+Queue selection, resume, and dependency unlock use pre-edit planned authority: exactly one current approved master-plan `Delivery Adapter Selection` row and one `Responsibility Owner References` row for the Work Item, plus the exact approved immutable technical-design revision whose responsibility and verification-owner rows resolve bidirectionally with PASS conformance. Missing, stale, foreign, duplicate, overlapping-category, cross-work-item, or caller-attested rows derive `planned-responsibility-authority-invalid` before production. This authority is not an `Architecture Responsibility Handoff`; the first work item never depends on an unproduced post-review artifact.
+
+Terminal authority must resolve the explicit immutable ordered responsibility chain for each terminal-success work item. Incremental uses `11-ai-review -> 12-verification-testing -> 13-verify-parity -> 14-verify-regression -> 15-knowledge-base`; greenfield uses `11-ai-review -> 12-verification-testing -> 13-verify-parity -> 15-knowledge-base`. Validate every adjacent pair as an immediate-predecessor handoff and preserve exact `Delivery Adapter Kind` plus exact `Delivery Adapter Mode Constraint` from step-10 canonical authority through step 15. Preserve the exact v1 row and independent source/diff evidence, and bind the terminal report Evidence Index to the final chain artifact. A missing, reordered, skipped, duplicate, stale, cross-run, or caller-synthesized chain is not terminal authority.
+
+The terminal chain uses the approved `Delivery Adapter Mode Constraint` preserved from its step-8 selector through step-10 canonical authority, never a terminal or chain self-label; the initial review is approved/complete/human, every chain artifact stays in the current run and binds the current master spec/plan/work item, and each source-diff SHA pair exactly equals immutable Task Provenance.
+
+Work Item Terminal Evidence references only the immutable work-item terminal artifact. Its exact v1 handoff `Evidence References` remains the immutable `source-diff:<task-base>..<final-tree>#<WORK-*>` copied ordinally from review through Knowledge Base. A separate `Terminal Chain Reference` equals the final artifact of the mode-aware ordered chain, and the terminal report Evidence Index binds that final chain/KB artifact for each terminal-success item only; aggregation never mutates or overloads the handoff evidence cell.
+
+After that handoff, emit exactly one `## Terminal Chain Reference` table with columns `Work Item ID | Artifact Reference`; its only row binds the same Work Item to the immutable final chain artifact. The terminal report preserves master-plan order for work-item rows, aggregated source-diffs, and Evidence Index rows.
+
+`architecture_conformance_state` is derived: it is `PASS` only when Tree Conformance, Responsibility Conformance, and Verification Ownership are all `PASS`; otherwise it is `BLOCKED`.
+
+| Input / condition | Compatibility disposition | Derived architecture state | Queue and selection | Downstream boundary | Required resume authority |
+|---|---|---|---|---|---|
+| v1 exact handoff; Tree PASS; Responsibility PASS; Verification PASS; immutable evidence resolves | executable | PASS | current approved work item only | normal gates | current approved design/master-plan |
+| any structural sub-verdict BLOCKED or missing or mismatched immutable evidence link | blocked | BLOCKED | scope-blocked; next eligible item: none; no dependent selection | stop before parity, regression, delivery, KB, and terminal completion | approved design/master-plan revision required |
+| completed pre-v1 artifact | historical-only | not executable | no selection or resume from artifact | no downstream completion authority | approved v1 backfill before future executable work |
+| in-progress pre-v1 artifact | blocked | BLOCKED | no resume; no production mutation; no dependent selection | stop before parity, regression, delivery, KB, and terminal completion | approved design/master-plan revision with v1 backfill required |
+| mixed v1/v2 or cross-run evidence | blocked | BLOCKED | scope-blocked; next eligible item: none; no dependent selection | stop before parity, regression, delivery, KB, and terminal completion | approved design/master-plan revision required |
+
+Khi actual responsibility khác approved responsibility sau implementation, giữ isolated task tree làm evidence và áp dụng nguyên chuỗi: implementation `draft/blocked` -> AI review `Reject` -> work item `blocked` -> dependent item non-eligible -> parity/regression/delivery/KB/terminal completion blocked -> approved design/master-plan revision required. Không amend rời rạc rejected tree và không tiếp tục dependent work.
+
+Runtime `auto-waive` never changes Tree, Responsibility, or Verification Ownership sub-verdicts.
+
+Do not create a Phase 2 remediation artifact or work item automatically.
 
 ## Chuẩn bị run
 

@@ -3,6 +3,10 @@ step_id: <orchestrator-provided>
 status: draft
 result: complete
 produced_at: <yyyy-mm-dd>
+revision: <DESIGN-SCOPE@positive integer>
+responsibility_contract:
+  version: 1
+  applicability: required
 ---
 
 <!-- artifact_language: vi -->
@@ -61,6 +65,22 @@ Unique `Planned Path` set phải khớp chính xác path set từ mọi matrix `
 | Planned Path | Planned Symbol | Responsibility | Exemplar or Deviation Reference |
 |---|---|---|---|
 | <đường dẫn file sẽ tạo hoặc sửa> | <symbol dự kiến> | <trách nhiệm cấu trúc> | <exemplar hoặc DEV-*> |
+
+## File Responsibility Matrix
+
+Use `aitoolkit/contracts/file-responsibility-conformance.md` as the sole authority for column meanings, enums, approvals, and controlled sentinels. Every `(Planned Path, Planned Symbol)` has exactly one row. `Owner Symbol` is the primary public owner/module export; list feature-local public symbols in `Public Symbols`, while private helpers do not receive their own row.
+
+| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| <RESP-*> | <planned path> | <primary public symbol/module export> | <boundary kind> | <one concrete reason to change> | <CAP-*> | <REQ/AC/WORK trace IDs> | <ATOM-* or not-applicable> | <public symbols or none> | <concrete effects or none> | <path#symbol or no-equivalent> | <canonical classification> | <exact authority> | <immutable evidence> | <canonical architecture authority> | <canonical policy> | <exact evidence/rationale> | <VERIFY-OWNER-* or not-applicable> | <yes/no/blocked> | <DEV-* or not-applicable> |
+
+## Verification Ownership Matrix
+
+Use one row per production responsibility/capability binding. `Evidence Kind` and `Verification Disposition` are separate fields. A controlled `not-applicable-approved` route is limited by the canonical contract; behavior, routing, lifecycle, external effects, destructive actions, and production composition require production-bound verification.
+
+| Verification Owner ID | Production Responsibility ID | Capability ID | Evidence Path | Evidence Symbol or Scenario | Evidence Kind | Verification Disposition | Production Binding Evidence | Decision Reference | Verdict | Deviation Reference |
+|---|---|---|---|---|---|---|---|---|---|---|
+| <VERIFY-OWNER-*> | <RESP-*> | <CAP-*> | <test/artifact path> | <test/scenario/evidence ID> | <canonical evidence kind> | <required/not-applicable-approved> | <production owner binding or approved rationale> | <not-applicable or approval> | <PASS/BLOCKED> | <DEV-* or not-applicable> |
 
 ## Provider/Router/Localization/Subscription Boundaries
 

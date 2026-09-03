@@ -71,6 +71,8 @@ function New-RenderedArtifactFixture {
     $text = $text.Replace('max_concurrency: sample-value', 'max_concurrency: 1')
     $text = $text.Replace('plan_order: sample-value', 'plan_order: 1')
     $text = $text.Replace('| WORK-ADMIN-LOCKS | sample-value | sample-value | none | sample-value | sample-value | sample-value | none | in-progress | ATTEMPT-WORK-ADMIN-LOCKS-01 | none | pending |', '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | in-progress | ATTEMPT-WORK-ADMIN-LOCKS-01 | none | pending |')
+    $text = $text.Replace('| WORK-ADMIN-LOCKS | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | sample-value | sample-value | sample-value | sample-value | not-applicable | not-applicable |', '| WORK-ADMIN-LOCKS | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1 | not-applicable | not-applicable |')
+    $text = $text.Replace('| WORK-ADMIN-LOCKS | sample-value | sample-value | sample-value | sample-value | sample-value |', '| WORK-ADMIN-LOCKS | DESIGN-ADMIN@1 | RESP-ADMIN-LOCKS | not-applicable | not-applicable | approval:OWNER-ADMIN-LOCKS: independently implementable, reviewable, verifiable, and revertible |')
     $text = $text.Replace('| sample-value | sample-value | pending | sample-value |', '| human | approval:scope-admin | approved | 2026-08-19 |')
     $text = $text.Replace('| sample-value | pending | sample-value |', '| approval:plan-admin | approved | 2026-08-19 |')
     $text = $text.Replace('| REQ-001 | sample-value | sample-value | sample-value |', '| REQ-001 | Stable requirement | source:ticket | measurable acceptance |')
@@ -107,6 +109,151 @@ try {
     }
     $lfErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
     Assert-True ($lfErrors.Count -eq 0) ("LF-rendered master artifacts must validate: " + ($lfErrors -join '; '))
+
+    $contractPlanPath = Join-Path $fixtureRoot 'templates/migration/master-plan.md'
+    $contractPlanOriginal = Get-Content -Raw -Encoding utf8 -LiteralPath $contractPlanPath
+    $normalizedContractPlan = $contractPlanOriginal.Replace("`r`n", "`n").Replace("`r", "`n")
+    foreach ($lineEndingCase in @(
+      [pscustomobject]@{ Name = 'LF'; Value = "`n" },
+      [pscustomobject]@{ Name = 'CRLF'; Value = "`r`n" }
+    )) {
+      $lineEnding = $lineEndingCase.Value
+      $renderedContractPlan = $normalizedContractPlan.Replace("`n", $lineEnding)
+      $canonicalContract = "responsibility_contract:${lineEnding}  version: 1${lineEnding}  applicability: required"
+      if (-not $renderedContractPlan.Contains($canonicalContract)) {
+        $testFailures.Add("$($lineEndingCase.Name) rendered master-plan producer must contain the canonical responsibility contract block")
+        continue
+      }
+      try {
+        [IO.File]::WriteAllText($contractPlanPath, $renderedContractPlan, [Text.UTF8Encoding]::new($false))
+        $canonicalContractErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+        Assert-True ($canonicalContractErrors.Count -eq 0) ("$($lineEndingCase.Name) canonical master-plan responsibility contract must validate: " + ($canonicalContractErrors -join '; '))
+
+        foreach ($contractMutation in @(
+          [pscustomobject]@{ Name = 'missing'; Text = $renderedContractPlan.Replace("${canonicalContract}${lineEnding}", '') },
+          [pscustomobject]@{ Name = 'pre-v1'; Text = $renderedContractPlan.Replace("  version: 1${lineEnding}", "  version: 0${lineEnding}") },
+          [pscustomobject]@{ Name = 'unsupported'; Text = $renderedContractPlan.Replace("  version: 1${lineEnding}", "  version: 2${lineEnding}") },
+          [pscustomobject]@{ Name = 'duplicate'; Text = $renderedContractPlan.Replace($canonicalContract, "${canonicalContract}${lineEnding}${canonicalContract}") },
+          [pscustomobject]@{ Name = 'extra-child'; Text = $renderedContractPlan.Replace($canonicalContract, "${canonicalContract}${lineEnding}  authority: caller") }
+        )) {
+          if ($contractMutation.Text -ceq $renderedContractPlan) {
+            throw "$($lineEndingCase.Name) $($contractMutation.Name) responsibility contract mutation was a silent no-op"
+          }
+          [IO.File]::WriteAllText($contractPlanPath, $contractMutation.Text, [Text.UTF8Encoding]::new($false))
+          $contractMutationErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+          Assert-True ($contractMutationErrors -contains 'responsibility-contract-version-invalid') ("$($lineEndingCase.Name) $($contractMutation.Name) master-plan responsibility contract must be rejected before rows; got: " + ($contractMutationErrors -join '; '))
+        }
+      }
+      finally {
+        [IO.File]::WriteAllText($contractPlanPath, $contractPlanOriginal, [Text.UTF8Encoding]::new($false))
+      }
+    }
+
+    $semanticPlanPath = Join-Path $fixtureRoot 'templates/migration/master-plan.md'
+    $semanticPlanOriginal = Get-Content -Raw -Encoding utf8 -LiteralPath $semanticPlanPath
+    foreach ($semanticDecoy in @(
+      [pscustomobject]@{ Name = 'fenced'; Text = "~~~markdown`n## Work Items`n| decoy |`n|---|`n| ignored |`n~~~" },
+      [pscustomobject]@{ Name = 'commented'; Text = "<!--`n## Work Items`n| decoy |`n|---|`n| ignored |`n-->" },
+      [pscustomobject]@{ Name = 'indented'; Text = "    ## Work Items`n    | decoy |`n    |---|`n    | ignored |" }
+    )) {
+      [IO.File]::WriteAllText($semanticPlanPath, "$semanticPlanOriginal`n$($semanticDecoy.Text)`n", [Text.UTF8Encoding]::new($false))
+      $semanticErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($semanticErrors.Count -eq 0) ("$($semanticDecoy.Name) Markdown examples must not inflate scope authority: " + ($semanticErrors -join '; '))
+    }
+    [IO.File]::WriteAllText($semanticPlanPath, $semanticPlanOriginal, [Text.UTF8Encoding]::new($false))
+
+    $selectorPlanPath = Join-Path $fixtureRoot 'templates/migration/master-plan.md'
+    $selectorPlanOriginal = Get-Content -Raw -Encoding utf8 -LiteralPath $selectorPlanPath
+    try {
+      $workRow = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | in-progress | ATTEMPT-WORK-ADMIN-LOCKS-01 | none | pending |'
+      $secondWorkRow = '| WORK-ADMIN-OTHER | Complete Other Mode | no | none | 2 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | ready | none | none | pending |'
+      $selectorRow = '| WORK-ADMIN-LOCKS | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1 | not-applicable | not-applicable |'
+      $ownerRow = '| WORK-ADMIN-LOCKS | DESIGN-ADMIN@1 | RESP-ADMIN-LOCKS | not-applicable | not-applicable | approval:OWNER-ADMIN-LOCKS: independently implementable, reviewable, verifiable, and revertible |'
+      $secondOwnerRow = '| WORK-ADMIN-OTHER | DESIGN-ADMIN@1 | RESP-ADMIN-OTHER | not-applicable | not-applicable | approval:OWNER-ADMIN-OTHER: independently implementable, reviewable, verifiable, and revertible |'
+      $secondDependencyRow = '| WORK-ADMIN-OTHER | none | no-dependency | decision:graph-admin |'
+      $mutatedPlan = $selectorPlanOriginal.Replace($workRow, "$workRow`n$secondWorkRow")
+      $mutatedPlan = $mutatedPlan.Replace($selectorRow, "$selectorRow`n$selectorRow")
+      $mutatedPlan = $mutatedPlan.Replace($ownerRow, "$ownerRow`n$secondOwnerRow")
+      $mutatedPlan = $mutatedPlan.Replace('| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |', "| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |`n$secondDependencyRow")
+      Assert-True ($mutatedPlan -cne $selectorPlanOriginal) 'duplicate-one/missing-another selector mutation must alter the rendered master plan'
+      [IO.File]::WriteAllText($selectorPlanPath, $mutatedPlan, [Text.UTF8Encoding]::new($false))
+      $selectorSetErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($selectorSetErrors -contains 'master plan Delivery Adapter Selection must contain exactly one row per Work Item') ("duplicate-one/missing-another selector set must be rejected; got: " + ($selectorSetErrors -join '; '))
+    }
+    finally { [IO.File]::WriteAllText($selectorPlanPath, $selectorPlanOriginal, [Text.UTF8Encoding]::new($false)) }
+
+    try {
+      $workRow = '| WORK-ADMIN-LOCKS | Complete Lock Mode | yes | none | 1 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | in-progress | ATTEMPT-WORK-ADMIN-LOCKS-01 | none | pending |'
+      $secondWorkRow = '| WORK-ADMIN-OTHER | Complete Other Mode | no | none | 2 | REQ-001; SC-001; measurable outcome | TRACE-001 | none | ready | none | none | pending |'
+      $selectorRow = '| WORK-ADMIN-LOCKS | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1 | not-applicable | not-applicable |'
+      $secondSelectorRow = '| WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1 | not-applicable | not-applicable |'
+      $ownerRow = '| WORK-ADMIN-LOCKS | DESIGN-ADMIN@1 | RESP-ADMIN-LOCKS | not-applicable | not-applicable | approval:OWNER-ADMIN-LOCKS: independently implementable, reviewable, verifiable, and revertible |'
+      $secondOwnerRow = '| WORK-ADMIN-OTHER | DESIGN-ADMIN@1 | RESP-ADMIN-OTHER | not-applicable | not-applicable | approval:OWNER-ADMIN-OTHER: independently implementable, reviewable, verifiable, and revertible |'
+      $dependencyRow = '| WORK-ADMIN-LOCKS | none | no-dependency | decision:graph-admin |'
+      $secondDependencyRow = '| WORK-ADMIN-OTHER | none | no-dependency | decision:graph-admin |'
+      $wholePlan = $selectorPlanOriginal.Replace($workRow, "$workRow`n$secondWorkRow").Replace($selectorRow, "$selectorRow`n$secondSelectorRow").Replace($ownerRow, "$ownerRow`n$secondOwnerRow").Replace($dependencyRow, "$dependencyRow`n$secondDependencyRow")
+      [IO.File]::WriteAllText($selectorPlanPath, $wholePlan, [Text.UTF8Encoding]::new($false))
+      $wholePlanErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($wholePlanErrors.Count -eq 0) ("canonical whole-plan selector authority must validate: " + ($wholePlanErrors -join '; '))
+
+      $parentWorkRow = $workRow.Replace('| none | in-progress |', '| task:TASK-ADMIN-LOCKS | in-progress |')
+      $childWorkRow = $secondWorkRow.Replace('| none | ready |', '| story:STORY-ADMIN-OTHER | ready |')
+      $parentSelectorRow = '| WORK-ADMIN-LOCKS | task | TASK-ADMIN-LOCKS | jira:ADMIN-LOCKS | 1 | approval:TASK-ADMIN-LOCKS | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1 | not-applicable | not-applicable |'
+      $childSelectorRow = '| WORK-ADMIN-OTHER | story | STORY-ADMIN-OTHER | ado:ADMIN-OTHER | 1 | approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1 | WORK-ADMIN-LOCKS | DEC-ADMIN-OTHER |'
+      $parentChildPlan = $wholePlan.Replace($workRow, $parentWorkRow).Replace($secondWorkRow, $childWorkRow).Replace($selectorRow, $parentSelectorRow).Replace($secondSelectorRow, $childSelectorRow)
+      [IO.File]::WriteAllText($selectorPlanPath, $parentChildPlan, [Text.UTF8Encoding]::new($false))
+      $parentChildErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($parentChildErrors.Count -eq 0) ("generic child Parent Selector must bind its exact parent selector: " + ($parentChildErrors -join '; '))
+
+      $caseDistinctParentChildPlan = $parentChildPlan.Replace('| story | STORY-ADMIN-OTHER |', '| story | task-admin-locks |').Replace('story:STORY-ADMIN-OTHER', 'story:task-admin-locks')
+      if ($caseDistinctParentChildPlan -ceq $parentChildPlan) { throw 'case-distinct scope selector fixture mutation was a silent no-op' }
+      [IO.File]::WriteAllText($selectorPlanPath, $caseDistinctParentChildPlan, [Text.UTF8Encoding]::new($false))
+      $caseDistinctParentChildErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($caseDistinctParentChildErrors.Count -eq 0) ("scope selector identities differing only by case remain ordinally distinct: " + ($caseDistinctParentChildErrors -join '; '))
+
+      $parentSelectorMutations = @(
+        [pscustomobject]@{ Name = 'missing parent selector'; Text = $parentChildPlan.Replace('| approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS |', '| approval:STORY-ADMIN-OTHER | not-applicable |'); Expected = 'master plan Parent Selector must bind exact parent selector authority: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'foreign parent selector'; Text = $parentChildPlan.Replace('| approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS |', '| approval:STORY-ADMIN-OTHER | STORY-ADMIN-OTHER |'); Expected = 'master plan Parent Selector must bind exact parent selector authority: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'mismatched parent selector authority'; Text = $parentChildPlan.Replace('| approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS |', '| approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS@1 |'); Expected = 'master plan Parent Selector must bind exact parent selector authority: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'case-only parent selector mismatch'; Text = $parentChildPlan.Replace('| approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS |', '| approval:STORY-ADMIN-OTHER | task-admin-locks |'); Expected = 'master plan Parent Selector must bind exact parent selector authority: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'missing parent Work Item'; Text = $parentChildPlan.Replace('| WORK-ADMIN-LOCKS | DEC-ADMIN-OTHER |', '| WORK-ADMIN-MISSING | DEC-ADMIN-OTHER |'); Expected = 'master plan Parent Selector must bind exact parent selector authority: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'duplicate selector identity'; Text = $parentChildPlan.Replace('| story | STORY-ADMIN-OTHER |', '| story | TASK-ADMIN-LOCKS |').Replace('story:STORY-ADMIN-OTHER', 'story:TASK-ADMIN-LOCKS'); Expected = 'master plan selector identity must be unique: TASK-ADMIN-LOCKS' },
+        [pscustomobject]@{ Name = 'unsupported parent adapter kind'; Text = $parentChildPlan.Replace('| task | TASK-ADMIN-LOCKS |', '| generic | TASK-ADMIN-LOCKS |').Replace('task:TASK-ADMIN-LOCKS', 'generic:TASK-ADMIN-LOCKS'); Expected = 'master plan selector must match Work Item authority: WORK-ADMIN-LOCKS' },
+        [pscustomobject]@{ Name = 'parent external-ID sentinel'; Text = $parentChildPlan.Replace('| task | TASK-ADMIN-LOCKS |', '| task | not-applicable |').Replace('task:TASK-ADMIN-LOCKS', 'task:not-applicable').Replace('| approval:STORY-ADMIN-OTHER | TASK-ADMIN-LOCKS |', '| approval:STORY-ADMIN-OTHER | not-applicable |'); Expected = 'master plan selector must match Work Item authority: WORK-ADMIN-LOCKS' },
+        [pscustomobject]@{ Name = 'missing parent authority'; Text = $parentChildPlan.Replace('| jira:ADMIN-LOCKS | 1 |', '| not-applicable | 1 |'); Expected = 'master plan selector must match Work Item authority: WORK-ADMIN-LOCKS' },
+        [pscustomobject]@{ Name = 'stale parent authority revision'; Text = $parentChildPlan.Replace('| jira:ADMIN-LOCKS | 1 |', '| jira:ADMIN-LOCKS | 0 |'); Expected = 'master plan selector must match Work Item authority: WORK-ADMIN-LOCKS' },
+        [pscustomobject]@{ Name = 'unresolved parent approval authority'; Text = $parentChildPlan.Replace('| approval:TASK-ADMIN-LOCKS | not-applicable |', '| approval:TASK-ADMIN-LOCKS-PENDING | not-applicable |'); Expected = 'master plan selector must match Work Item authority: WORK-ADMIN-LOCKS' }
+      )
+      foreach ($case in $parentSelectorMutations) {
+        [IO.File]::WriteAllText($selectorPlanPath, $case.Text, [Text.UTF8Encoding]::new($false))
+        $mutationErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+        Assert-True ($mutationErrors -contains $case.Expected) ("$($case.Name) must be rejected; got: " + ($mutationErrors -join '; '))
+      }
+      $reorderedParentChildPlan = $parentChildPlan.Replace("$parentWorkRow`n$childWorkRow", "$childWorkRow`n$parentWorkRow").Replace("$parentSelectorRow`n$childSelectorRow", "$childSelectorRow`n$parentSelectorRow")
+      [IO.File]::WriteAllText($selectorPlanPath, $reorderedParentChildPlan, [Text.UTF8Encoding]::new($false))
+      $reorderedParentChildErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($reorderedParentChildErrors -contains 'master plan Parent Selector parent must precede child: WORK-ADMIN-OTHER') ("reordered parent selector must be rejected; got: " + ($reorderedParentChildErrors -join '; '))
+
+      $wholePlanMutations = @(
+        [pscustomobject]@{ Name = 'stale sibling mode'; From = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1'; To = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | greenfield/design-new | DESIGN-ADMIN@1'; Expected = 'master plan selector immutable fields are invalid: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'fabricated sibling mode'; From = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1'; To = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/design-new | DESIGN-ADMIN@1'; Expected = 'master plan selector immutable fields are invalid: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'stale sibling design'; From = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1'; To = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@2'; Expected = 'master plan selector immutable fields are invalid: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'fabricated sibling design'; From = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-ADMIN@1'; To = 'WORK-ADMIN-OTHER | none | not-applicable | not-applicable | not-applicable | not-applicable | not-applicable | REQ-001; SC-001; measurable outcome | TRACE-001 | incremental/preserve-existing | DESIGN-FOREIGN@9'; Expected = 'master plan selector immutable fields are invalid: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'fabricated sibling parent'; From = 'DESIGN-ADMIN@1 | not-applicable | not-applicable |'; To = 'DESIGN-ADMIN@1 | WORK-ADMIN-MISSING | DEC-ADMIN-OTHER |'; Expected = 'master plan selector immutable fields are invalid: WORK-ADMIN-OTHER' },
+        [pscustomobject]@{ Name = 'unbound sibling decision'; From = 'DESIGN-ADMIN@1 | not-applicable | not-applicable |'; To = 'DESIGN-ADMIN@1 | not-applicable | DEC-ADMIN-OTHER |'; Expected = 'master plan selector immutable fields are invalid: WORK-ADMIN-OTHER' }
+      )
+      foreach ($case in $wholePlanMutations) {
+        $mutated = $wholePlan.Replace($case.From, $case.To)
+        [IO.File]::WriteAllText($selectorPlanPath, $mutated, [Text.UTF8Encoding]::new($false))
+        $mutationErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+        Assert-True ($mutationErrors -contains $case.Expected) ("$($case.Name) must be rejected; got: " + ($mutationErrors -join '; '))
+      }
+      $reordered = $wholePlan.Replace("$selectorRow`n$secondSelectorRow", "$secondSelectorRow`n$selectorRow")
+      [IO.File]::WriteAllText($selectorPlanPath, $reordered, [Text.UTF8Encoding]::new($false))
+      $reorderedErrors = Invoke-ScopeArtifactsValidation $fixtureRoot
+      Assert-True ($reorderedErrors -contains 'master plan Delivery Adapter Selection order must match Work Items order') ("reordered selector authority must be rejected; got: " + ($reorderedErrors -join '; '))
+    }
+    finally { [IO.File]::WriteAllText($selectorPlanPath, $selectorPlanOriginal, [Text.UTF8Encoding]::new($false)) }
 
     $specPath = Join-Path $fixtureRoot 'templates/migration/master-spec.md'
     $originalSpec = Get-Content -Raw -Encoding utf8 $specPath

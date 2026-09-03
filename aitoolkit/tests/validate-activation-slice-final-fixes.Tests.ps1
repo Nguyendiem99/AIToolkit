@@ -80,6 +80,110 @@ function Remove-MarkdownSection([string]$Text, [string]$SectionName) {
   return ($Text.Substring(0, $start) + $Text.Substring($next)).TrimEnd()
 }
 
+function New-ImplementationMasterScopeSection([string]$WorkItemId = 'WORK-001') {
+  return @"
+## Master Scope Context
+
+| Master Spec Reference | Master Spec ID | Master Spec Revision | Master Plan Reference | Master Plan ID | Master Plan Revision | Work Item ID | Work Item Approval Reference |
+|---|---|---|---|---|---|---|---|
+| master-spec.md | SPEC-001 | 1 | master-plan.md | PLAN-001 | 1 | $WorkItemId | approval:$WorkItemId |
+"@
+}
+
+function Get-TestAdapterAuthority(
+  [string]$AdapterKind,
+  [string]$WorkItemId = 'WORK-001',
+  [string]$ModeConstraint = 'incremental/preserve-existing'
+) {
+  $externalId = switch -CaseSensitive ($AdapterKind) {
+    'migration-unit' { 'UNIT-001' }
+    'none' { 'not-applicable' }
+    default { "$($AdapterKind.ToUpperInvariant())-001" }
+  }
+  $authority = switch -CaseSensitive ($AdapterKind) {
+    'migration-unit' { 'plan-001' }
+    'none' { 'not-applicable' }
+    default { "$AdapterKind-authority-001" }
+  }
+  $authorityRevision = if ($AdapterKind -ceq 'none') { 'not-applicable' } else { '1' }
+  $approvalReference = switch -CaseSensitive ($AdapterKind) {
+    'migration-unit' { 'approval-001' }
+    'none' { 'not-applicable' }
+    default { "approval-$AdapterKind-001" }
+  }
+  return [pscustomobject][ordered]@{
+    'Work Item ID' = $WorkItemId
+    'Adapter Kind' = $AdapterKind
+    'External ID' = $externalId
+    Authority = $authority
+    'Authority Revision' = $authorityRevision
+    'Approval Reference' = $approvalReference
+    'Parent Selector' = 'not-applicable'
+    Acceptance = 'approved-acceptance-001'
+    'Trace IDs' = 'TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001'
+    'Mode Constraint' = $ModeConstraint
+    'Design Revision' = 'DESIGN-001@1'
+    'Parent Work Item ID' = 'not-applicable'
+    'Decomposition Decision Reference' = 'not-applicable'
+  }
+}
+
+function ConvertTo-TestAdapterSelectionRow([object]$Authority) {
+  $columns = @(
+    'Work Item ID', 'Adapter Kind', 'External ID', 'Authority', 'Authority Revision',
+    'Approval Reference', 'Parent Selector', 'Acceptance', 'Trace IDs', 'Mode Constraint',
+    'Design Revision', 'Parent Work Item ID', 'Decomposition Decision Reference'
+  )
+  return '| ' + (($columns | ForEach-Object { [string]$Authority.$_ }) -join ' | ') + ' |'
+}
+
+function New-CanonicalAdapterEvidenceSection(
+  [string]$AdapterKind,
+  [string]$WorkItemId = 'WORK-001',
+  [string]$ModeConstraint = 'incremental/preserve-existing'
+) {
+  $authority = Get-TestAdapterAuthority $AdapterKind $WorkItemId $ModeConstraint
+  return @"
+## Canonical Adapter Evidence
+
+| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference | Canonical Match |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| $($authority.'Work Item ID') | $($authority.'Adapter Kind') | $($authority.'External ID') | $($authority.Authority) | $($authority.'Authority Revision') | $($authority.'Approval Reference') | $($authority.'Parent Selector') | $($authority.Acceptance) | $($authority.'Trace IDs') | $($authority.'Mode Constraint') | $($authority.'Design Revision') | $($authority.'Parent Work Item ID') | $($authority.'Decomposition Decision Reference') | PASS |
+"@
+}
+
+function New-DeliveryAdapterSelectionSection(
+  [string]$AdapterKind,
+  [string]$WorkItemId = 'WORK-001',
+  [string]$ModeConstraint = 'incremental/preserve-existing'
+) {
+  $authority = Get-TestAdapterAuthority $AdapterKind $WorkItemId $ModeConstraint
+  $row = ConvertTo-TestAdapterSelectionRow $authority
+  return @"
+## Delivery Adapter Selection
+
+| Work Item ID | Adapter Kind | External ID | Authority | Authority Revision | Approval Reference | Parent Selector | Acceptance | Trace IDs | Mode Constraint | Design Revision | Parent Work Item ID | Decomposition Decision Reference |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+$row
+"@
+}
+
+function New-WorkItemImplementationEvidenceSections([string]$WorkItemId = 'WORK-001') {
+  return @"
+## Work Item Changed Files
+
+| Work Item ID | Activation Slice ID | Seam | File | Change | Trace IDs |
+|---|---|---|---|---|---|
+| $WorkItemId | ACT-001 | render | target/render.dart | render approved work item | TR-REQ-001, TR-RENDER-001 |
+
+## Work Item Test Evidence
+
+| Work Item ID | Activation Slice ID | Seam | Test | Command | Result | Trace IDs |
+|---|---|---|---|---|---|---|
+| $WorkItemId | ACT-001 | test | activation lifecycle | test activation | PASS | TR-REQ-001, TR-LIFECYCLE-001 |
+"@
+}
+
 $completeActivationSlice = @'
 ---
 step_id: 01-validate-inputs
@@ -282,7 +386,7 @@ waiver:
 
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
 |---|---|---|---|---|---|---|---|---|---|
-| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | capability-evidence-001 | TR-REQ-001, TR-RENDER-001 |
+| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | capability-evidence-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |
 '@
   $implementationLinks = @"
 ## $changedFilesSectionName
@@ -296,6 +400,8 @@ waiver:
 | Migration Unit ID | Activation Slice ID | Seam | Test | Command | Result | Trace IDs |
 |---|---|---|---|---|---|---|
 | UNIT-001 | ACT-001 | test | activation lifecycle | test activation | PASS | TR-REQ-001, TR-LIFECYCLE-001 |
+
+$(New-WorkItemImplementationEvidenceSections)
 "@
   $resumePredecessorState = @'
 ## Step 10 Waiver Resume State
@@ -314,25 +420,44 @@ waiver:
   $step10ResumeEnvelope = $completeActivationSlice.Replace(
     "step_id: 01-validate-inputs`nstatus: approved`nresult: complete`napproval_source: human`nproduced_at: 2026-08-18",
     "$waiverFrontMatter`nproduced_at: 2026-08-18"
-  ).TrimEnd() + "`n`n$selectedUnitSection`n`n$nativeBlockerSection`n`n$approvedWaiverBody"
+  ).TrimEnd() + "`n`n$(New-ImplementationMasterScopeSection)`n`n$(New-CanonicalAdapterEvidenceSection 'migration-unit')`n`n$selectedUnitSection`n`n$nativeBlockerSection`n`n$approvedWaiverBody"
   $waiverResumePredecessor = "$step10ResumeEnvelope`n`n$resumePredecessorState"
   $waiverResumeCurrent = "$step10ResumeEnvelope`n`n$implementationLinks`n`n$resumeCurrentState"
 
   $validResumeResult = Invoke-ActivationSliceArtifactValidator $waiverResumeCurrent $waiverResumePredecessor
   Assert-True ($validResumeResult.ExitCode -eq 0) "A complete canonical step-10 resume evidence chain should pass. Output: $($validResumeResult.Output)"
 
+  $missingCanonicalResumePredecessor = Remove-MarkdownSection $waiverResumePredecessor 'Canonical Adapter Evidence'
+  $missingCanonicalResumeResult = Invoke-ActivationSliceArtifactValidator $waiverResumeCurrent $missingCanonicalResumePredecessor
+  Assert-True ($missingCanonicalResumeResult.ExitCode -eq 1) "A resume-required predecessor without canonical adapter evidence should block. Output: $($missingCanonicalResumeResult.Output)"
+  Assert-Contains `
+    $missingCanonicalResumeResult.Output `
+    'resume predecessor Canonical Adapter Evidence section must appear exactly once; found 0' `
+    'Resume predecessor canonical adapter authority'
+
+  $quotedResumeCurrent = $waiverResumeCurrent.Replace(
+    "step_id: 10-code-migration`nstatus: approved`nresult: partial`napproval_source: auto-waive`nwaiver:",
+    "'step_id' : '10-code-migration'`n`"status`" : `"approved`"`n'result': 'partial'`n`"approval_source`": `"auto-waive`"`n`"waiver`" :"
+  )
+  $quotedResumePredecessor = $waiverResumePredecessor.Replace(
+    "step_id: 10-code-migration`nstatus: approved`nresult: partial`napproval_source: auto-waive`nwaiver:",
+    "'step_id' : '10-code-migration'`n`"status`" : `"approved`"`n'result': 'partial'`n`"approval_source`": `"auto-waive`"`n`"waiver`" :"
+  )
+  $quotedResumeResult = Invoke-ActivationSliceArtifactValidator $quotedResumeCurrent $quotedResumePredecessor
+  Assert-True ($quotedResumeResult.ExitCode -eq 0) "Canonical quoted lifecycle and waiver keys/scalars should pass the producer-shaped resume route. Output: $($quotedResumeResult.Output)"
+
   $editedResumePredecessor = "$waiverResumePredecessor`n`n$implementationLinks"
   $editedResumePredecessorResult = Invoke-ActivationSliceArtifactValidator $waiverResumeCurrent $editedResumePredecessor
   Assert-True ($editedResumePredecessorResult.ExitCode -eq 1) "A resume-required predecessor must not already carry target implementation evidence. Output: $($editedResumePredecessorResult.Output)"
   Assert-Contains $editedResumePredecessorResult.Output 'resume predecessor must not contain implementation evidence before re-entry' 'Pre-resume target mutation absence'
 
-  $invalidResumeFoundationRow = '| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | FOUNDATION-FAKE | fake-foundation-reference | fake-foundation-approval | capability-evidence-001 | TR-REQ-001, TR-RENDER-001 |'
+  $invalidResumeFoundationRow = '| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | FOUNDATION-FAKE | fake-foundation-reference | fake-foundation-approval | capability-evidence-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
   $invalidResumeFoundationCurrent = $waiverResumeCurrent.Replace(
-    '| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | capability-evidence-001 | TR-REQ-001, TR-RENDER-001 |',
+    '| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | capability-evidence-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |',
     $invalidResumeFoundationRow
   )
   $invalidResumeFoundationPredecessor = $waiverResumePredecessor.Replace(
-    '| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | capability-evidence-001 | TR-REQ-001, TR-RENDER-001 |',
+    '| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | capability-evidence-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |',
     $invalidResumeFoundationRow
   )
   $invalidResumeFoundationResult = Invoke-ActivationSliceArtifactValidator $invalidResumeFoundationCurrent $invalidResumeFoundationPredecessor
@@ -411,8 +536,8 @@ waiver:
   Assert-True ($greenfieldResumeResult.ExitCode -eq 1) "The baseline-waiver resume route must remain incremental/not-required. Output: $($greenfieldResumeResult.Output)"
   Assert-Contains $greenfieldResumeResult.Output 'resume selected-unit Mode Constraint must be incremental/preserve-existing' 'Greenfield waiver resume rejection'
 
-  $wrongBaselineCurrent = $waiverResumeCurrent.Replace('| capability-evidence-001 | TR-REQ-001, TR-RENDER-001 |', '| unrelated-baseline-002 | TR-REQ-001, TR-RENDER-001 |')
-  $wrongBaselinePredecessor = $waiverResumePredecessor.Replace('| capability-evidence-001 | TR-REQ-001, TR-RENDER-001 |', '| unrelated-baseline-002 | TR-REQ-001, TR-RENDER-001 |')
+  $wrongBaselineCurrent = $waiverResumeCurrent.Replace('| capability-evidence-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |', '| unrelated-baseline-002 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |')
+  $wrongBaselinePredecessor = $waiverResumePredecessor.Replace('| capability-evidence-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |', '| unrelated-baseline-002 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |')
   $wrongBaselineResult = Invoke-ActivationSliceArtifactValidator $wrongBaselineCurrent $wrongBaselinePredecessor
   Assert-True ($wrongBaselineResult.ExitCode -eq 1) "Resume Baseline Reference must equal the approved waiver evidence. Output: $($wrongBaselineResult.Output)"
   Assert-Contains $wrongBaselineResult.Output 'resume selected-unit Baseline Reference must equal waiver.evidence ordinally' 'Resume baseline/waiver evidence consistency'
@@ -429,6 +554,12 @@ waiver:
   $literalWaiverPredecessor = $waiverResumePredecessor.Replace('evidence: capability-evidence-001', $literalEvidence)
   $literalWaiverResult = Invoke-ActivationSliceArtifactValidator $literalWaiverCurrent $literalWaiverPredecessor
   Assert-NotContains $literalWaiverResult.Output 'invalid or ambiguous YAML front matter' 'Unindented blank line in supported waiver literal block scalar'
+
+  $sameDecodedLiteralEvidence = "evidence: |-`n    capability-evidence-001"
+  $sameDecodedLiteralCurrent = $waiverResumeCurrent.Replace('evidence: capability-evidence-001', $sameDecodedLiteralEvidence)
+  $sameDecodedLiteralPredecessor = $waiverResumePredecessor.Replace('evidence: capability-evidence-001', $sameDecodedLiteralEvidence)
+  $sameDecodedLiteralResult = Invoke-ActivationSliceArtifactValidator $sameDecodedLiteralCurrent $sameDecodedLiteralPredecessor
+  Assert-True ($sameDecodedLiteralResult.ExitCode -eq 0) "A literal block scalar with the same decoded waiver evidence should pass the producer-shaped resume route. Output: $($sameDecodedLiteralResult.Output)"
 
   $requiredResumeSections = @($nativeBlockerSectionName, 'Approved Baseline Waiver', 'Step 10 Waiver Resume State')
   foreach ($section in $requiredResumeSections) {
@@ -544,9 +675,9 @@ waiver:
   }
 
   $selectedUnitCells = @(
-    'UNIT-001', 'plan-001', 'approval-001', 'incremental/preserve-existing', 'not-required',
+    'UNIT-001', 'plan-001@1', 'approval-001', 'incremental/preserve-existing', 'not-required',
     'not-applicable', 'not-applicable', 'not-applicable', 'capability-evidence-001',
-    'TR-REQ-001, TR-RENDER-001'
+    'TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001'
   )
   $selectedUnitRow = '| ' + ($selectedUnitCells -join ' | ') + ' |'
   $selectedUnitMutations = @()
@@ -578,7 +709,7 @@ waiver:
   $step11AfterResume = $completeActivationSlice.Replace(
     'step_id: 01-validate-inputs',
     'step_id: 11-ai-review'
-  ).TrimEnd() + "`n`n$selectedUnitSection"
+  ).TrimEnd() + "`n`n- Delivery Adapter Kind: migration-unit`n- Delivery Adapter Mode Constraint: incremental/preserve-existing`n`n$selectedUnitSection"
   $postWaiverResult = Invoke-ActivationSliceArtifactValidator $step11AfterResume $waiverResumeCurrent
   Assert-True ($postWaiverResult.ExitCode -eq 0) "Step 11 must accept a self-consistent completed step-10 waiver resume. Output: $($postWaiverResult.Output)"
 
@@ -631,6 +762,27 @@ if ($Cluster -in @('Downstream', 'All')) {
   $contractText = Get-Content -Raw -Encoding utf8 (Join-Path $PSScriptRoot '../contracts/activation-slice.md')
   Assert-True ($contractText.Contains('## Downstream selected-unit handoff')) 'Activation Slice contract must canonically declare downstream selected-unit handoff'
   Assert-True ($contractText.Contains('## Regression parity handoff')) 'Activation Slice contract must canonically declare regression parity handoff'
+  Assert-True ($contractText.Contains('Delivery Adapter Mode Constraint')) 'Activation Slice contract must canonically declare downstream delivery-adapter mode authority'
+  Assert-True ($contractText.Contains('| `handoff` | `15-knowledge-base`')) 'Activation Slice contract must declare direct Knowledge Base predecessor roles'
+  foreach ($modeEnvelopeProducer in @(
+    [pscustomobject]@{ Name = 'review template'; Path = '../templates/migration/review-report.md' }
+    [pscustomobject]@{ Name = 'verification template'; Path = '../templates/migration/verification-report.md' }
+    [pscustomobject]@{ Name = 'parity template'; Path = '../templates/migration/parity-report.md' }
+    [pscustomobject]@{ Name = 'regression template'; Path = '../templates/migration/regression-report.md' }
+    [pscustomobject]@{ Name = 'knowledge-base template'; Path = '../templates/kb-entry.md' }
+    [pscustomobject]@{ Name = 'Gerrit template'; Path = '../templates/gerrit-report.md' }
+    [pscustomobject]@{ Name = 'AI review skill'; Path = '../skills/shared/ai-review/SKILL.md' }
+    [pscustomobject]@{ Name = 'verification skill'; Path = '../skills/shared/verification-testing/SKILL.md' }
+    [pscustomobject]@{ Name = 'parity skill'; Path = '../skills/migration/verify-parity/SKILL.md' }
+    [pscustomobject]@{ Name = 'regression skill'; Path = '../skills/migration/verify-regression/SKILL.md' }
+    [pscustomobject]@{ Name = 'knowledge-base skill'; Path = '../skills/shared/knowledge-base/SKILL.md' }
+    [pscustomobject]@{ Name = 'Gerrit skill'; Path = '../skills/shared/gerrit-automation/SKILL.md' }
+    [pscustomobject]@{ Name = 'migration orchestrator'; Path = '../skills/aitoolkit/migrate/SKILL.md' }
+    [pscustomobject]@{ Name = 'artifact schemas'; Path = '../skills/aitoolkit-schemas/SKILL.md' }
+  )) {
+    $modeEnvelopeText = Get-Content -Raw -Encoding utf8 (Join-Path $PSScriptRoot $modeEnvelopeProducer.Path)
+    Assert-True ($modeEnvelopeText.Contains('Delivery Adapter Mode Constraint')) "$($modeEnvelopeProducer.Name) must preserve explicit delivery-adapter mode authority"
+  }
   $parityTemplateText = Get-Content -Raw -Encoding utf8 (Join-Path $PSScriptRoot '../templates/migration/parity-report.md')
   Assert-True ($parityTemplateText.Contains('## Parity Verdict')) 'Parity report template must render the canonical structured overall parity verdict section'
   $legacyParityConclusion = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('IyMgS+G6v3QgbHXhuq1u'))
@@ -683,7 +835,7 @@ if ($Cluster -in @('Downstream', 'All')) {
 
 | Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs |
 |---|---|---|---|---|---|---|---|---|---|
-| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001, TR-RENDER-001 |
+| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |
 '@
   $parityVerdictSection = @'
 ## Parity Verdict
@@ -756,18 +908,128 @@ if ($Cluster -in @('Downstream', 'All')) {
     $artifact = $completeActivationSlice.Replace(
       'step_id: 01-validate-inputs',
       "step_id: $StepId"
-    ).TrimEnd() + "`n`n$downstreamSelectedUnitSection"
+    ).TrimEnd()
+    if ($StepId -ceq '10-code-migration') {
+      $artifact += "`n`n$(New-ImplementationMasterScopeSection)`n`n$(New-CanonicalAdapterEvidenceSection 'migration-unit')"
+    }
+    else {
+      $artifact += "`n`n- Delivery Adapter Kind: migration-unit`n- Delivery Adapter Mode Constraint: incremental/preserve-existing"
+    }
+    $artifact += "`n`n$downstreamSelectedUnitSection"
     if (-not [string]::IsNullOrWhiteSpace($Extra)) { $artifact += "`n`n$Extra" }
     return $artifact
   }
 
   $downstreamArtifacts = [ordered]@{
-    implementation = New-DownstreamArtifact '10-code-migration' $downstreamImplementationEvidence
+    implementation = New-DownstreamArtifact '10-code-migration' "$downstreamImplementationEvidence`n`n$(New-WorkItemImplementationEvidenceSections)"
     review = New-DownstreamArtifact '11-ai-review' $reviewChangeHygieneSection
     verification = New-DownstreamArtifact '12-verification-testing' $verificationProvenanceSection
     parity = New-DownstreamArtifact '13-verify-parity' "$parityVerdictSection`n`n$assuranceScenarioSection`n`n$parityProvenanceSection"
     regression = New-DownstreamArtifact '14-verify-regression' "$regressionConclusion`n`n$regressionScenarioSection`n`n$regressionProvenanceSection"
   }
+
+  function New-DirectAdapterPlanArtifact(
+    [string]$AdapterKind,
+    [string]$ModeConstraint = 'incremental/preserve-existing'
+  ) {
+    $orderedUnitsSection = [Text.Encoding]::UTF8.GetString(
+      [Convert]::FromBase64String('Q8OhYyDEkcahbiB24buLIG1pZ3JhdGlvbiB0aGVvIHRo4bupIHThu7E=')
+    )
+    $artifact = $completeActivationSlice.Replace(
+      'step_id: 01-validate-inputs',
+      'step_id: 08-plan-waves'
+    ).TrimEnd()
+    $artifact += "`n`n$(New-DeliveryAdapterSelectionSection $AdapterKind 'WORK-001' $ModeConstraint)"
+    if ($AdapterKind -ceq 'migration-unit') {
+      $artifact += @"
+
+
+## $orderedUnitsSection
+
+| Order | Migration Unit ID | Bootstrap Scope | Foundation Baseline ID | Foundation Approval Reference | Dependencies | Acceptance | Mode Constraint | Trace IDs | Delivery Change Boundary | Approval Reference | Approval Status |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | UNIT-001 | not-required | not-applicable | not-applicable | none | activation accepted | incremental/preserve-existing | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 | one-unit-one-change | approval-001 | approved |
+"@
+    }
+    return $artifact
+  }
+
+  $directMigrationPlan = New-DirectAdapterPlanArtifact 'migration-unit'
+  $directMigrationResult = Invoke-ActivationSliceArtifactValidator `
+    $downstreamArtifacts.implementation `
+    $directMigrationPlan
+  Assert-True ($directMigrationResult.ExitCode -eq 0) "Producer-shaped migration-unit step 10 should pass direct validation. Output: $($directMigrationResult.Output)"
+
+  $directSelectedUnitRow = '| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
+  $directOverlappingSelectedUnitTable = @'
+| Migration Unit ID | Plan Reference | Approval Reference | Mode Constraint | Bootstrap Scope | Foundation Baseline ID | Foundation Baseline Reference | Foundation Baseline Approval Reference | Baseline Reference | Trace IDs | Extra |
+|---|---|---|---|---|---|---|---|---|---|---|
+| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 | hidden |
+'@
+  foreach ($invalidDirectSelectedUnit in @(
+    [pscustomobject]@{
+      Name = 'missing row'
+      Text = $downstreamArtifacts.implementation.Replace($directSelectedUnitRow, '')
+      Expected = 'current implementation Selected Migration Unit must contain exactly one row; found 0'
+    }
+    [pscustomobject]@{
+      Name = 'duplicate row'
+      Text = $downstreamArtifacts.implementation.Replace($directSelectedUnitRow, "$directSelectedUnitRow`n$directSelectedUnitRow")
+      Expected = 'current implementation Selected Migration Unit must contain exactly one row; found 2'
+    }
+    [pscustomobject]@{
+      Name = 'duplicate section'
+      Text = $downstreamArtifacts.implementation.TrimEnd() + "`n`n$downstreamSelectedUnitSection"
+      Expected = 'current implementation Selected Migration Unit section must appear exactly once; found 2'
+    }
+    [pscustomobject]@{
+      Name = 'overlapping table'
+      Text = $downstreamArtifacts.implementation.Replace(
+        $downstreamSelectedUnitSection,
+        "$downstreamSelectedUnitSection`n`n$directOverlappingSelectedUnitTable"
+      )
+      Expected = 'current implementation Selected Migration Unit structured section contains additional overlapping record table'
+    }
+  )) {
+    Assert-True ($invalidDirectSelectedUnit.Text -cne $downstreamArtifacts.implementation) "Direct selected-unit fixture must alter the producer-shaped step 10: $($invalidDirectSelectedUnit.Name)"
+    $invalidDirectSelectedUnitResult = Invoke-ActivationSliceArtifactValidator `
+      $invalidDirectSelectedUnit.Text `
+      $directMigrationPlan
+    Assert-True ($invalidDirectSelectedUnitResult.ExitCode -eq 1) "Direct step-10 selected-unit $($invalidDirectSelectedUnit.Name) should block. Output: $($invalidDirectSelectedUnitResult.Output)"
+    Assert-Contains `
+      $invalidDirectSelectedUnitResult.Output `
+      $invalidDirectSelectedUnit.Expected `
+      "Direct step-10 selected-unit $($invalidDirectSelectedUnit.Name)"
+  }
+
+  $canonicalMigrationAdapterSection = New-CanonicalAdapterEvidenceSection 'migration-unit'
+  foreach ($invalidDirectCanonical in @(
+    [pscustomobject]@{
+      Name = 'missing'
+      Text = Remove-MarkdownSection $downstreamArtifacts.implementation 'Canonical Adapter Evidence'
+      Count = 0
+    }
+    [pscustomobject]@{
+      Name = 'duplicate'
+      Text = $downstreamArtifacts.implementation.TrimEnd() + "`n`n$canonicalMigrationAdapterSection"
+      Count = 2
+    }
+    [pscustomobject]@{
+      Name = 'hidden-only'
+      Text = (Remove-MarkdownSection $downstreamArtifacts.implementation 'Canonical Adapter Evidence').TrimEnd() + "`n`n<!--`n$canonicalMigrationAdapterSection`n-->"
+      Count = 0
+    }
+  )) {
+    $invalidDirectCanonicalResult = Invoke-ActivationSliceArtifactValidator `
+      $invalidDirectCanonical.Text `
+      $directMigrationPlan
+    Assert-True ($invalidDirectCanonicalResult.ExitCode -eq 1) "Direct step-10 $($invalidDirectCanonical.Name) canonical authority should block. Output: $($invalidDirectCanonicalResult.Output)"
+    Assert-Contains `
+      $invalidDirectCanonicalResult.Output `
+      "current implementation Canonical Adapter Evidence section must appear exactly once; found $($invalidDirectCanonical.Count)" `
+      "Direct step-10 $($invalidDirectCanonical.Name) canonical authority"
+  }
+
   $downstreamLinks = @(
     [pscustomobject]@{ Name = 'implementation to review'; Predecessor = 'implementation'; Current = 'review' }
     [pscustomobject]@{ Name = 'review to verification'; Predecessor = 'review'; Current = 'verification' }
@@ -783,11 +1045,533 @@ if ($Cluster -in @('Downstream', 'All')) {
     Assert-True ($missingResult.ExitCode -eq 1) "Downstream selected-unit removal should block: $($link.Name). Output: $($missingResult.Output)"
     Assert-Contains $missingResult.Output 'route current Selected Migration Unit section must appear exactly once; found 0' "Downstream selected-unit removal: $($link.Name)"
 
-    $mutatedSelectedUnit = $downstreamArtifacts[$link.Current].Replace('| UNIT-001 | plan-001 |', '| UNIT-001 | plan-mutated |')
+    $mutatedSelectedUnit = $downstreamArtifacts[$link.Current].Replace('| UNIT-001 | plan-001@1 |', '| UNIT-001 | plan-mutated |')
     $mutatedResult = Invoke-ActivationSliceArtifactValidator $mutatedSelectedUnit $downstreamArtifacts[$link.Predecessor]
     Assert-True ($mutatedResult.ExitCode -eq 1) "Downstream selected-unit mutation should block: $($link.Name). Output: $($mutatedResult.Output)"
     Assert-Contains $mutatedResult.Output 'downstream selected-unit field changed: Plan Reference' "Downstream selected-unit mutation: $($link.Name)"
   }
+
+  foreach ($invalidMigrationAuthority in @(
+    [pscustomobject]@{
+      Name = 'foreign Work Item ID'
+      Text = $downstreamArtifacts.implementation.Replace('| WORK-001 | migration-unit |', '| WORK-999 | migration-unit |')
+      Expected = 'implementation predecessor Master Scope Context.Work Item ID must equal Canonical Adapter Evidence.Work Item ID'
+    }
+    [pscustomobject]@{
+      Name = 'foreign External ID'
+      Text = $downstreamArtifacts.implementation.Replace('| migration-unit | UNIT-001 |', '| migration-unit | UNIT-999 |')
+      Expected = 'implementation predecessor Canonical Adapter Evidence External ID must equal Selected Migration Unit.Migration Unit ID'
+    }
+    [pscustomobject]@{
+      Name = 'pre-composed Authority'
+      Text = $downstreamArtifacts.implementation.Replace('| UNIT-001 | plan-001 | 1 |', '| UNIT-001 | plan-001@1 | 1 |')
+      Expected = 'implementation predecessor Canonical Adapter Evidence Authority must be unversioned'
+    }
+    [pscustomobject]@{
+      Name = 'foreign Authority'
+      Text = $downstreamArtifacts.implementation.Replace('| UNIT-001 | plan-001 | 1 |', '| UNIT-001 | plan-999 | 1 |')
+      Expected = 'implementation predecessor Selected Migration Unit.Plan Reference must equal Canonical Adapter Evidence Authority@Authority Revision'
+    }
+    [pscustomobject]@{
+      Name = 'nonpositive Authority Revision'
+      Text = $downstreamArtifacts.implementation.Replace('| UNIT-001 | plan-001 | 1 |', '| UNIT-001 | plan-001 | 0 |')
+      Expected = 'implementation predecessor Canonical Adapter Evidence Authority Revision must be a positive integer'
+    }
+    [pscustomobject]@{
+      Name = 'stale Authority Revision'
+      Text = $downstreamArtifacts.implementation.Replace('| UNIT-001 | plan-001 | 1 |', '| UNIT-001 | plan-001 | 2 |')
+      Expected = 'implementation predecessor Selected Migration Unit.Plan Reference must equal Canonical Adapter Evidence Authority@Authority Revision'
+    }
+    [pscustomobject]@{
+      Name = 'foreign Approval Reference'
+      Text = $downstreamArtifacts.implementation.Replace('| 1 | approval-001 | not-applicable |', '| 1 | approval-999 | not-applicable |')
+      Expected = 'implementation predecessor Canonical Adapter Evidence Approval Reference must equal Selected Migration Unit.Approval Reference'
+    }
+    [pscustomobject]@{
+      Name = 'foreign Mode Constraint'
+      Text = $downstreamArtifacts.implementation.Replace('| incremental/preserve-existing | DESIGN-001@1 |', '| greenfield/design-new | DESIGN-001@1 |')
+      Expected = 'implementation predecessor Canonical Adapter Evidence Mode Constraint must equal Selected Migration Unit.Mode Constraint'
+    }
+    [pscustomobject]@{
+      Name = 'foreign Trace IDs'
+      Text = $downstreamArtifacts.implementation.Replace(
+        '| approved-acceptance-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |',
+        '| approved-acceptance-001 | TR-REQ-001, TR-FOREIGN-001 |'
+      )
+      Expected = 'implementation predecessor Canonical Adapter Evidence Trace IDs must equal Selected Migration Unit.Trace IDs ordinally'
+    }
+  )) {
+    $invalidMigrationAuthorityResult = Invoke-ActivationSliceArtifactValidator `
+      $downstreamArtifacts.review `
+      $invalidMigrationAuthority.Text
+    Assert-True ($invalidMigrationAuthorityResult.ExitCode -eq 1) "Migration-unit step-10 authority must reject $($invalidMigrationAuthority.Name). Output: $($invalidMigrationAuthorityResult.Output)"
+    Assert-Contains $invalidMigrationAuthorityResult.Output $invalidMigrationAuthority.Expected "Migration-unit authority $($invalidMigrationAuthority.Name)"
+  }
+
+  $genericMasterScopeSection = @'
+## Master Scope Context
+
+| Run ID | Master Spec Reference | Master Spec ID | Master Spec Revision | Master Plan Reference | Master Plan ID | Master Plan Revision | Work Item ID |
+|---|---|---|---|---|---|---|---|
+| RUN-001 | master-spec.md | SPEC-001 | 1 | master-plan.md | PLAN-001 | 1 | WORK-001 |
+'@
+  function New-GenericDownstreamArtifact(
+    [string]$StepId,
+    [string]$AdapterKind,
+    [string]$Extra = '',
+    [string]$ModeConstraint = 'incremental/preserve-existing'
+  ) {
+    $artifact = $completeActivationSlice.Replace(
+      'step_id: 01-validate-inputs',
+      "step_id: $StepId"
+    ).TrimEnd()
+    if ($StepId -ceq '10-code-migration') {
+      $artifact += "`n`n$(New-ImplementationMasterScopeSection)`n`n$(New-CanonicalAdapterEvidenceSection $AdapterKind 'WORK-001' $ModeConstraint)`n`n$(New-WorkItemImplementationEvidenceSections)"
+    }
+    else {
+      $artifact += "`n`n$genericMasterScopeSection`n`n- Delivery Adapter Kind: $AdapterKind`n- Delivery Adapter Mode Constraint: $ModeConstraint"
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Extra)) { $artifact += "`n`n$Extra" }
+    return $artifact
+  }
+
+  $genericReviewChangeHygieneSection = $reviewChangeHygieneSection.Replace('UNIT-001', 'WORK-001')
+  $genericVerificationProvenanceSection = $verificationProvenanceSection.Replace('UNIT-001', 'WORK-001')
+  foreach ($adapterKind in @('task', 'story', 'package', 'phase', 'milestone', 'none')) {
+    $genericDownstreamArtifacts = [ordered]@{
+      implementation = New-GenericDownstreamArtifact '10-code-migration' $adapterKind
+      review = New-GenericDownstreamArtifact '11-ai-review' $adapterKind $genericReviewChangeHygieneSection
+      verification = New-GenericDownstreamArtifact '12-verification-testing' $adapterKind $genericVerificationProvenanceSection
+      parity = New-GenericDownstreamArtifact '13-verify-parity' $adapterKind "$parityVerdictSection`n`n$assuranceScenarioSection`n`n$genericVerificationProvenanceSection"
+      regression = New-GenericDownstreamArtifact '14-verify-regression' $adapterKind "$regressionConclusion`n`n$regressionScenarioSection`n`n$genericVerificationProvenanceSection"
+    }
+    $directGenericPlan = New-DirectAdapterPlanArtifact $adapterKind
+    $directGenericResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.implementation `
+      $directGenericPlan
+    Assert-True ($directGenericResult.ExitCode -eq 0) "Producer-shaped generic $adapterKind step 10 should pass direct validation. Output: $($directGenericResult.Output)"
+    foreach ($link in $downstreamLinks) {
+      $result = Invoke-ActivationSliceArtifactValidator `
+        $genericDownstreamArtifacts[$link.Current] `
+        $genericDownstreamArtifacts[$link.Predecessor]
+      Assert-True ($result.ExitCode -eq 0) "Canonical generic $adapterKind handoff should pass: $($link.Name). Output: $($result.Output)"
+    }
+  }
+
+  $genericDownstreamArtifacts = [ordered]@{
+    implementation = New-GenericDownstreamArtifact '10-code-migration' 'task'
+    review = New-GenericDownstreamArtifact '11-ai-review' 'task' $genericReviewChangeHygieneSection
+    verification = New-GenericDownstreamArtifact '12-verification-testing' 'task' $genericVerificationProvenanceSection
+    parity = New-GenericDownstreamArtifact '13-verify-parity' 'task' "$parityVerdictSection`n`n$assuranceScenarioSection`n`n$genericVerificationProvenanceSection"
+  }
+  $directGenericTaskPlan = New-DirectAdapterPlanArtifact 'task'
+  $directGenericGreenfield = New-GenericDownstreamArtifact `
+    '10-code-migration' `
+    'task' `
+    '' `
+    'greenfield/design-new'
+  $directGenericGreenfieldPlan = New-DirectAdapterPlanArtifact 'task' 'greenfield/design-new'
+  $directGenericGreenfieldResult = Invoke-ActivationSliceArtifactValidator `
+    $directGenericGreenfield `
+    $directGenericGreenfieldPlan
+  Assert-True ($directGenericGreenfieldResult.ExitCode -eq 0) "Producer-shaped greenfield generic step 10 should pass direct validation. Output: $($directGenericGreenfieldResult.Output)"
+
+  $baseTaskAuthority = Get-TestAdapterAuthority 'task'
+  $baseTaskSelectorRow = ConvertTo-TestAdapterSelectionRow $baseTaskAuthority
+  foreach ($selectorCardinality in @(
+    [pscustomobject]@{
+      Name = 'missing approved selector section'
+      Plan = Remove-MarkdownSection $directGenericTaskPlan 'Delivery Adapter Selection'
+      Count = 0
+    }
+    [pscustomobject]@{
+      Name = 'duplicate approved selector row'
+      Plan = $directGenericTaskPlan.Replace($baseTaskSelectorRow, "$baseTaskSelectorRow`n$baseTaskSelectorRow")
+      Count = 2
+    }
+  )) {
+    $selectorCardinalityResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.implementation `
+      $selectorCardinality.Plan
+    Assert-True ($selectorCardinalityResult.ExitCode -eq 1) "Direct generic $($selectorCardinality.Name) should block. Output: $($selectorCardinalityResult.Output)"
+    Assert-Contains `
+      $selectorCardinalityResult.Output `
+      "must match exactly one predecessor Delivery Adapter Selection row; found $($selectorCardinality.Count)" `
+      "Direct generic $($selectorCardinality.Name)"
+  }
+
+  $invalidDirectMode = $genericDownstreamArtifacts.implementation.Replace(
+    '| incremental/preserve-existing | DESIGN-001@1 |',
+    '| invented-mode | DESIGN-001@1 |'
+  )
+  $invalidDirectModeResult = Invoke-ActivationSliceArtifactValidator `
+    $invalidDirectMode `
+    $directGenericTaskPlan
+  Assert-True ($invalidDirectModeResult.ExitCode -eq 1) "Direct generic canonical mode must be contract-valid. Output: $($invalidDirectModeResult.Output)"
+  Assert-Contains `
+    $invalidDirectModeResult.Output `
+    'current implementation Canonical Adapter Evidence has invalid Mode Constraint' `
+    'Direct generic invalid canonical mode'
+
+  foreach ($selectorDrift in @(
+    [pscustomobject]@{ Field = 'Work Item ID'; Value = 'WORK-999'; Expected = 'must match exactly one predecessor Delivery Adapter Selection row; found 0' }
+    [pscustomobject]@{ Field = 'Adapter Kind'; Value = 'story'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Adapter Kind' }
+    [pscustomobject]@{ Field = 'External ID'; Value = 'TASK-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: External ID' }
+    [pscustomobject]@{ Field = 'Authority'; Value = 'task-authority-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Authority' }
+    [pscustomobject]@{ Field = 'Authority Revision'; Value = '2'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Authority Revision' }
+    [pscustomobject]@{ Field = 'Approval Reference'; Value = 'approval-task-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Approval Reference' }
+    [pscustomobject]@{ Field = 'Parent Selector'; Value = 'TASK-PARENT-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Parent Selector' }
+    [pscustomobject]@{ Field = 'Acceptance'; Value = 'mutated-acceptance'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Acceptance' }
+    [pscustomobject]@{ Field = 'Trace IDs'; Value = 'TR-REQ-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Trace IDs' }
+    [pscustomobject]@{ Field = 'Mode Constraint'; Value = 'greenfield/design-new'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Mode Constraint' }
+    [pscustomobject]@{ Field = 'Design Revision'; Value = 'DESIGN-999@1'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Design Revision' }
+    [pscustomobject]@{ Field = 'Parent Work Item ID'; Value = 'WORK-PARENT-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Parent Work Item ID' }
+    [pscustomobject]@{ Field = 'Decomposition Decision Reference'; Value = 'DEC-999'; Expected = 'Canonical Adapter Evidence field changed from approved predecessor: Decomposition Decision Reference' }
+  )) {
+    $mutatedAuthority = [ordered]@{}
+    foreach ($property in $baseTaskAuthority.PSObject.Properties) {
+      $mutatedAuthority[$property.Name] = if ($property.Name -ceq $selectorDrift.Field) {
+        $selectorDrift.Value
+      }
+      else {
+        [string]$property.Value
+      }
+    }
+    $mutatedSelectorRow = ConvertTo-TestAdapterSelectionRow ([pscustomobject]$mutatedAuthority)
+    $driftedPlan = $directGenericTaskPlan.Replace($baseTaskSelectorRow, $mutatedSelectorRow)
+    Assert-True ($driftedPlan -cne $directGenericTaskPlan) "Direct generic plan mutation must alter $($selectorDrift.Field)"
+    $selectorDriftResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.implementation `
+      $driftedPlan
+    Assert-True ($selectorDriftResult.ExitCode -eq 1) "Direct generic selector drift should block: $($selectorDrift.Field). Output: $($selectorDriftResult.Output)"
+    Assert-Contains $selectorDriftResult.Output $selectorDrift.Expected "Direct generic selector drift: $($selectorDrift.Field)"
+  }
+
+  $directGenericInventedUnit = $genericDownstreamArtifacts.implementation.TrimEnd() + "`n`n$downstreamSelectedUnitSection"
+  $directGenericInventedUnitResult = Invoke-ActivationSliceArtifactValidator `
+    $directGenericInventedUnit `
+    $directGenericTaskPlan
+  Assert-True ($directGenericInventedUnitResult.ExitCode -eq 1) "Direct generic step 10 must forbid Selected Migration Unit. Output: $($directGenericInventedUnitResult.Output)"
+  Assert-Contains `
+    $directGenericInventedUnitResult.Output `
+    'current implementation generic adapter forbids Selected Migration Unit section; found 1' `
+    'Direct generic invented selected-unit authority'
+
+  foreach ($missingDirectWorkItemSection in @('Work Item Changed Files', 'Work Item Test Evidence')) {
+    $missingDirectWorkItem = Remove-MarkdownSection `
+      $genericDownstreamArtifacts.implementation `
+      $missingDirectWorkItemSection
+    $missingDirectWorkItemResult = Invoke-ActivationSliceArtifactValidator `
+      $missingDirectWorkItem `
+      $directGenericTaskPlan
+    Assert-True ($missingDirectWorkItemResult.ExitCode -eq 1) "Direct generic step 10 must require $missingDirectWorkItemSection. Output: $($missingDirectWorkItemResult.Output)"
+    Assert-Contains `
+      $missingDirectWorkItemResult.Output `
+      "structured section must appear exactly once; found 0" `
+      "Direct generic missing $missingDirectWorkItemSection"
+  }
+
+  $genericGreenfieldParity = New-GenericDownstreamArtifact `
+    '13-verify-parity' `
+    'task' `
+    "$parityVerdictSection`n`n$assuranceScenarioSection`n`n$genericVerificationProvenanceSection" `
+    'greenfield/design-new'
+  $genericGreenfieldRegression = New-GenericDownstreamArtifact `
+    '14-verify-regression' `
+    'task' `
+    "$regressionConclusion`n`n$regressionScenarioSection`n`n$genericVerificationProvenanceSection" `
+    'greenfield/design-new'
+  $genericGreenfieldRegressionResult = Invoke-ActivationSliceArtifactValidator `
+    $genericGreenfieldRegression `
+    $genericGreenfieldParity
+  Assert-True ($genericGreenfieldRegressionResult.ExitCode -eq 1) "Generic greenfield parity must not enter regression. Output: $($genericGreenfieldRegressionResult.Output)"
+  Assert-Contains `
+    $genericGreenfieldRegressionResult.Output `
+    'regression route requires Delivery Adapter Mode Constraint incremental/preserve-existing' `
+    'Generic greenfield regression route rejection'
+
+  $incrementalKnowledge = New-GenericDownstreamArtifact '15-knowledge-base' 'task' $genericVerificationProvenanceSection
+  $incrementalKnowledgeResult = Invoke-ActivationSliceArtifactValidator `
+    $incrementalKnowledge `
+    (New-GenericDownstreamArtifact '14-verify-regression' 'task' "$regressionConclusion`n`n$regressionScenarioSection`n`n$genericVerificationProvenanceSection")
+  Assert-True ($incrementalKnowledgeResult.ExitCode -eq 0) "Incremental regression must hand off its exact adapter/mode envelope to Knowledge Base. Output: $($incrementalKnowledgeResult.Output)"
+
+  $greenfieldKnowledge = New-GenericDownstreamArtifact `
+    '15-knowledge-base' `
+    'task' `
+    $genericVerificationProvenanceSection `
+    'greenfield/design-new'
+  $greenfieldKnowledgeResult = Invoke-ActivationSliceArtifactValidator `
+    $greenfieldKnowledge `
+    $genericGreenfieldParity
+  Assert-True ($greenfieldKnowledgeResult.ExitCode -eq 0) "Greenfield parity must hand off its exact adapter/mode envelope directly to Knowledge Base. Output: $($greenfieldKnowledgeResult.Output)"
+
+  $missingModeAuthority = $genericDownstreamArtifacts.verification.Replace(
+    "`n- Delivery Adapter Mode Constraint: incremental/preserve-existing",
+    ''
+  )
+  $missingModeAuthorityResult = Invoke-ActivationSliceArtifactValidator `
+    $missingModeAuthority `
+    $genericDownstreamArtifacts.review
+  Assert-True ($missingModeAuthorityResult.ExitCode -eq 1) "A downstream artifact missing adapter-mode authority must block. Output: $($missingModeAuthorityResult.Output)"
+  Assert-Contains $missingModeAuthorityResult.Output 'route current requires exact Delivery Adapter Mode Constraint' 'Missing downstream mode authority'
+
+  $driftedModeAuthority = $genericDownstreamArtifacts.verification.Replace(
+    'Delivery Adapter Mode Constraint: incremental/preserve-existing',
+    'Delivery Adapter Mode Constraint: greenfield/design-new'
+  )
+  $driftedModeAuthorityResult = Invoke-ActivationSliceArtifactValidator `
+    $driftedModeAuthority `
+    $genericDownstreamArtifacts.review
+  Assert-True ($driftedModeAuthorityResult.ExitCode -eq 1) "A downstream artifact must not drift adapter-mode authority. Output: $($driftedModeAuthorityResult.Output)"
+  Assert-Contains $driftedModeAuthorityResult.Output 'downstream Delivery Adapter Mode Constraint changed from incremental/preserve-existing to greenfield/design-new' 'Downstream mode preservation'
+
+  $hiddenOnlyModeAuthority = $genericDownstreamArtifacts.verification.Replace(
+    '- Delivery Adapter Mode Constraint: incremental/preserve-existing',
+    ''
+  ).TrimEnd() + "`n`n<!--`n- Delivery Adapter Mode Constraint: incremental/preserve-existing`n-->"
+  $hiddenOnlyModeAuthorityResult = Invoke-ActivationSliceArtifactValidator `
+    $hiddenOnlyModeAuthority `
+    $genericDownstreamArtifacts.review
+  Assert-True ($hiddenOnlyModeAuthorityResult.ExitCode -eq 1) "Hidden-only adapter-mode authority must not satisfy the handoff. Output: $($hiddenOnlyModeAuthorityResult.Output)"
+  Assert-Contains $hiddenOnlyModeAuthorityResult.Output 'route current requires exact Delivery Adapter Mode Constraint' 'Hidden-only downstream mode authority'
+
+  foreach ($missingWorkItemSection in @(
+    [pscustomobject]@{ Section = 'Work Item Changed Files'; Expected = 'work-item-changed-file structured section must appear exactly once; found 0' }
+    [pscustomobject]@{ Section = 'Work Item Test Evidence'; Expected = 'work-item-test-evidence structured section must appear exactly once; found 0' }
+  )) {
+    $missingWorkItemEvidence = Remove-MarkdownSection `
+      $genericDownstreamArtifacts.implementation `
+      $missingWorkItemSection.Section
+    $missingWorkItemEvidenceResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.review `
+      $missingWorkItemEvidence
+    Assert-True ($missingWorkItemEvidenceResult.ExitCode -eq 1) "Completed generic step-10 predecessor must retain $($missingWorkItemSection.Section). Output: $($missingWorkItemEvidenceResult.Output)"
+    Assert-Contains `
+      $missingWorkItemEvidenceResult.Output `
+      $missingWorkItemSection.Expected `
+      "Generic predecessor missing $($missingWorkItemSection.Section)"
+  }
+
+  $wrongWorkItemEvidenceIdentity = $genericDownstreamArtifacts.implementation.Replace(
+    '| WORK-001 | ACT-001 | render |',
+    '| WORK-999 | ACT-001 | render |'
+  )
+  $wrongWorkItemEvidenceIdentityResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.review `
+    $wrongWorkItemEvidenceIdentity
+  Assert-True ($wrongWorkItemEvidenceIdentityResult.ExitCode -eq 1) "Generic implementation evidence must bind Canonical Adapter Evidence.Work Item ID. Output: $($wrongWorkItemEvidenceIdentityResult.Output)"
+  Assert-Contains `
+    $wrongWorkItemEvidenceIdentityResult.Output `
+    'work-item-changed-file Work Item ID WORK-999 does not match canonical Work Item ID WORK-001' `
+    'Generic work-item implementation evidence identity'
+
+  foreach ($invalidWorkItemLink in @(
+    [pscustomobject]@{
+      Name = 'unknown slice'
+      Text = $genericDownstreamArtifacts.implementation.Replace('| WORK-001 | ACT-001 | render |', '| WORK-001 | ACT-999 | render |')
+      Expected = 'work-item-changed-file link references unknown approved Activation Slice ID: ACT-999'
+    }
+    [pscustomobject]@{
+      Name = 'unknown seam'
+      Text = $genericDownstreamArtifacts.implementation.Replace('| WORK-001 | ACT-001 | render |', '| WORK-001 | ACT-001 | invented-seam |')
+      Expected = 'work-item-changed-file link ACT-001 references unknown approved seam: invented-seam'
+    }
+    [pscustomobject]@{
+      Name = 'foreign trace ID'
+      Text = $genericDownstreamArtifacts.implementation.Replace(
+        '| WORK-001 | ACT-001 | test | activation lifecycle | test activation | PASS | TR-REQ-001, TR-LIFECYCLE-001 |',
+        '| WORK-001 | ACT-001 | test | activation lifecycle | test activation | PASS | TR-REQ-001, TR-FOREIGN-001 |'
+      )
+      Expected = 'work-item-test-evidence link ACT-001/test has unapproved Trace IDs: TR-FOREIGN-001'
+    }
+  )) {
+    $invalidWorkItemLinkResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.review `
+      $invalidWorkItemLink.Text
+    Assert-True ($invalidWorkItemLinkResult.ExitCode -eq 1) "Generic implementation evidence must reject $($invalidWorkItemLink.Name). Output: $($invalidWorkItemLinkResult.Output)"
+    Assert-Contains $invalidWorkItemLinkResult.Output $invalidWorkItemLink.Expected "Generic work-item link $($invalidWorkItemLink.Name)"
+  }
+
+  $canonicalAdapterSection = New-CanonicalAdapterEvidenceSection 'task'
+  foreach ($invalidCanonicalAdapter in @(
+    [pscustomobject]@{
+      Name = 'missing canonical adapter table'
+      Text = Remove-MarkdownSection $genericDownstreamArtifacts.implementation 'Canonical Adapter Evidence'
+      Expected = 'implementation predecessor Canonical Adapter Evidence section must appear exactly once; found 0'
+    }
+    [pscustomobject]@{
+      Name = 'duplicate canonical adapter table'
+      Text = $genericDownstreamArtifacts.implementation.TrimEnd() + "`n`n$canonicalAdapterSection"
+      Expected = 'implementation predecessor Canonical Adapter Evidence section must appear exactly once; found 2'
+    }
+    [pscustomobject]@{
+      Name = 'invalid canonical adapter kind'
+      Text = $genericDownstreamArtifacts.implementation.Replace('| task | TASK-001 |', '| invented | TASK-001 |')
+      Expected = 'implementation predecessor has invalid Canonical Adapter Evidence Adapter Kind'
+    }
+    [pscustomobject]@{
+      Name = 'blocked canonical adapter match'
+      Text = $genericDownstreamArtifacts.implementation.Replace('| not-applicable | not-applicable | PASS |', '| not-applicable | not-applicable | BLOCKED |')
+      Expected = 'implementation predecessor Canonical Adapter Evidence requires Canonical Match PASS'
+    }
+  )) {
+    $invalidCanonicalAdapterResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.review `
+      $invalidCanonicalAdapter.Text
+    Assert-True ($invalidCanonicalAdapterResult.ExitCode -eq 1) "Step-10 canonical adapter evidence must reject $($invalidCanonicalAdapter.Name). Output: $($invalidCanonicalAdapterResult.Output)"
+    Assert-Contains $invalidCanonicalAdapterResult.Output $invalidCanonicalAdapter.Expected "Step-10 $($invalidCanonicalAdapter.Name)"
+  }
+
+  $codeFence = '{0}{0}{0}' -f [char]96
+  foreach ($hiddenAdapterDecoy in @(
+    "<!--`n- Delivery Adapter Kind: story`n-->",
+    "visible prose <!--`n    - Delivery Adapter Kind: story`n-->",
+    "${codeFence}text`n- Delivery Adapter Kind: story`n$codeFence",
+    '    - Delivery Adapter Kind: story'
+  )) {
+    $hiddenAdapterArtifact = $genericDownstreamArtifacts.verification.TrimEnd() + "`n`n$hiddenAdapterDecoy"
+    $hiddenAdapterResult = Invoke-ActivationSliceArtifactValidator `
+      $hiddenAdapterArtifact `
+      $genericDownstreamArtifacts.review
+    Assert-True ($hiddenAdapterResult.ExitCode -eq 0) "Hidden Delivery Adapter Kind decoy must not affect visible assurance provenance. Output: $($hiddenAdapterResult.Output)"
+
+    $hiddenPredecessorAdapter = $genericDownstreamArtifacts.review.TrimEnd() + "`n`n$hiddenAdapterDecoy"
+    $hiddenPredecessorAdapterResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.verification `
+      $hiddenPredecessorAdapter
+    Assert-True ($hiddenPredecessorAdapterResult.ExitCode -eq 0) "Hidden predecessor Delivery Adapter Kind decoy must not affect visible assurance provenance. Output: $($hiddenPredecessorAdapterResult.Output)"
+  }
+
+  $hiddenOnlyAdapter = $genericDownstreamArtifacts.review.Replace('- Delivery Adapter Kind: task', '').TrimEnd() + "`n`n<!--`n- Delivery Adapter Kind: task`n-->"
+  $hiddenOnlyAdapterResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.verification `
+    $hiddenOnlyAdapter
+  Assert-True ($hiddenOnlyAdapterResult.ExitCode -eq 1) "Hidden-only Delivery Adapter Kind must not satisfy downstream authority. Output: $($hiddenOnlyAdapterResult.Output)"
+  Assert-Contains $hiddenOnlyAdapterResult.Output 'downstream predecessor requires exact Delivery Adapter Kind' 'Hidden-only adapter authority'
+
+  $inlineHiddenOnlyPredecessorAdapter = $genericDownstreamArtifacts.review.Replace(
+    '- Delivery Adapter Kind: task',
+    ''
+  ).TrimEnd() + "`n`nvisible prose <!--`n    - Delivery Adapter Kind: task`n-->"
+  $inlineHiddenOnlyPredecessorResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.verification `
+    $inlineHiddenOnlyPredecessorAdapter
+  Assert-True ($inlineHiddenOnlyPredecessorResult.ExitCode -eq 1) "Inline-comment-hidden predecessor Delivery Adapter Kind must not satisfy downstream authority. Output: $($inlineHiddenOnlyPredecessorResult.Output)"
+  Assert-Contains $inlineHiddenOnlyPredecessorResult.Output 'downstream predecessor requires exact Delivery Adapter Kind' 'Inline-comment-hidden predecessor adapter authority'
+
+  $inlineHiddenOnlyCurrentAdapter = $genericDownstreamArtifacts.verification.Replace(
+    '- Delivery Adapter Kind: task',
+    ''
+  ).TrimEnd() + "`n`nvisible prose <!--`n    - Delivery Adapter Kind: task`n-->"
+  $inlineHiddenOnlyCurrentResult = Invoke-ActivationSliceArtifactValidator `
+    $inlineHiddenOnlyCurrentAdapter `
+    $genericDownstreamArtifacts.review
+  Assert-True ($inlineHiddenOnlyCurrentResult.ExitCode -eq 1) "Inline-comment-hidden current Delivery Adapter Kind must not satisfy downstream authority. Output: $($inlineHiddenOnlyCurrentResult.Output)"
+  Assert-Contains $inlineHiddenOnlyCurrentResult.Output 'route current requires exact Delivery Adapter Kind' 'Inline-comment-hidden current adapter authority'
+
+  foreach ($nonBulletAdapter in @(
+    [pscustomobject]@{
+      Name = 'missing marker whitespace'
+      Text = $genericDownstreamArtifacts.review.Replace('- Delivery Adapter Kind: task', '-Delivery Adapter Kind: task')
+    }
+    [pscustomobject]@{
+      Name = 'wrong-case label'
+      Text = $genericDownstreamArtifacts.review.Replace('- Delivery Adapter Kind: task', '- delivery adapter kind: task')
+    }
+    [pscustomobject]@{
+      Name = 'hanging paragraph continuation'
+      Text = $genericDownstreamArtifacts.review.Replace('- Delivery Adapter Kind: task', '').TrimEnd() + "`n`nvisible prose`n    - Delivery Adapter Kind: task"
+    }
+  )) {
+    $nonBulletAdapterResult = Invoke-ActivationSliceArtifactValidator `
+      $genericDownstreamArtifacts.verification `
+      $nonBulletAdapter.Text
+    Assert-True ($nonBulletAdapterResult.ExitCode -eq 1) "Adapter authority must reject $($nonBulletAdapter.Name). Output: $($nonBulletAdapterResult.Output)"
+    Assert-Contains $nonBulletAdapterResult.Output 'downstream predecessor requires exact Delivery Adapter Kind' "Strict adapter bullet $($nonBulletAdapter.Name)"
+  }
+
+  $inlineHiddenCanonicalAdapterSection = New-CanonicalAdapterEvidenceSection 'task'
+  $inlineHiddenCanonicalAdapter = (
+    Remove-MarkdownSection $genericDownstreamArtifacts.implementation 'Canonical Adapter Evidence'
+  ).TrimEnd() + "`n`nvisible prose <!--`n$inlineHiddenCanonicalAdapterSection`n-->"
+  $inlineHiddenCanonicalAdapterResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.review `
+    $inlineHiddenCanonicalAdapter
+  Assert-True ($inlineHiddenCanonicalAdapterResult.ExitCode -eq 1) "Inline-comment-hidden Canonical Adapter Evidence must not satisfy step-10 authority. Output: $($inlineHiddenCanonicalAdapterResult.Output)"
+  Assert-Contains $inlineHiddenCanonicalAdapterResult.Output 'implementation predecessor Canonical Adapter Evidence section must appear exactly once; found 0' 'Inline-comment-hidden canonical adapter authority'
+
+  $singleBacktick = [string][char]96
+  $literalInlineCommentTokenPredecessor = $genericDownstreamArtifacts.review.Replace(
+    '- Delivery Adapter Kind: task',
+    ''
+  ).TrimEnd() + "`n`nliteral ${singleBacktick}<!--${singleBacktick} token`n- Delivery Adapter Kind: task"
+  $literalInlineCommentTokenResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.verification `
+    $literalInlineCommentTokenPredecessor
+  Assert-True ($literalInlineCommentTokenResult.ExitCode -eq 0) "A literal inline-code HTML-comment token must not hide later visible adapter authority. Output: $($literalInlineCommentTokenResult.Output)"
+
+  $duplicateVisibleAdapter = $genericDownstreamArtifacts.review.TrimEnd() + "`n`n- Delivery Adapter Kind: task"
+  $duplicateVisibleAdapterResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.verification `
+    $duplicateVisibleAdapter
+  Assert-True ($duplicateVisibleAdapterResult.ExitCode -eq 1) "Duplicate visible Delivery Adapter Kind must be rejected. Output: $($duplicateVisibleAdapterResult.Output)"
+  Assert-Contains $duplicateVisibleAdapterResult.Output 'downstream predecessor requires exact Delivery Adapter Kind' 'Duplicate visible adapter authority'
+
+  $conflictingImplementationAdapter = $genericDownstreamArtifacts.implementation.TrimEnd() + "`n`n- Delivery Adapter Kind: story"
+  $conflictingImplementationAdapterResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.review `
+    $conflictingImplementationAdapter
+  Assert-True ($conflictingImplementationAdapterResult.ExitCode -eq 1) "Step-10 downstream bullet must not conflict with Canonical Adapter Evidence. Output: $($conflictingImplementationAdapterResult.Output)"
+  Assert-Contains `
+    $conflictingImplementationAdapterResult.Output `
+    'implementation predecessor Delivery Adapter Kind conflicts with Canonical Adapter Evidence' `
+    'Step-10 adapter authority conflict'
+  $inventedCurrentSelectedUnit = $genericDownstreamArtifacts.review.TrimEnd() + "`n`n$downstreamSelectedUnitSection"
+  $inventedCurrentSelectedUnitResult = Invoke-ActivationSliceArtifactValidator `
+    $inventedCurrentSelectedUnit `
+    $genericDownstreamArtifacts.implementation
+  Assert-True ($inventedCurrentSelectedUnitResult.ExitCode -eq 1) "Generic current artifact must not invent a Selected Migration Unit. Output: $($inventedCurrentSelectedUnitResult.Output)"
+  Assert-Contains `
+    $inventedCurrentSelectedUnitResult.Output `
+    'route current generic adapter forbids Selected Migration Unit section; found 1' `
+    'Generic current selected-unit absence'
+
+  $inventedPredecessorSelectedUnit = $genericDownstreamArtifacts.implementation.TrimEnd() + "`n`n$downstreamSelectedUnitSection"
+  $inventedPredecessorSelectedUnitResult = Invoke-ActivationSliceArtifactValidator `
+    $genericDownstreamArtifacts.review `
+    $inventedPredecessorSelectedUnit
+  Assert-True ($inventedPredecessorSelectedUnitResult.ExitCode -eq 1) "Generic predecessor artifact must not invent a Selected Migration Unit. Output: $($inventedPredecessorSelectedUnitResult.Output)"
+  Assert-Contains `
+    $inventedPredecessorSelectedUnitResult.Output `
+    'implementation predecessor generic adapter forbids Selected Migration Unit section; found 1' `
+    'Generic predecessor selected-unit absence'
+
+  $mismatchedGenericAdapter = $genericDownstreamArtifacts.review.Replace(
+    '- Delivery Adapter Kind: task',
+    '- Delivery Adapter Kind: story'
+  )
+  $mismatchedGenericAdapterResult = Invoke-ActivationSliceArtifactValidator `
+    $mismatchedGenericAdapter `
+    $genericDownstreamArtifacts.implementation
+  Assert-True ($mismatchedGenericAdapterResult.ExitCode -eq 1) "Downstream handoff must preserve the approved Delivery Adapter Kind. Output: $($mismatchedGenericAdapterResult.Output)"
+  Assert-Contains `
+    $mismatchedGenericAdapterResult.Output `
+    'downstream Delivery Adapter Kind changed from task to story' `
+    'Generic adapter preservation'
+
+  $wrongGenericIdentity = $genericDownstreamArtifacts.verification.Replace(
+    '| WORK-001 | base-sha-001 | final-sha-001 | <IMMEDIATE_PREDECESSOR_PATH> |',
+    '| WORK-999 | base-sha-001 | final-sha-001 | <IMMEDIATE_PREDECESSOR_PATH> |'
+  )
+  $wrongGenericIdentityResult = Invoke-ActivationSliceArtifactValidator `
+    $wrongGenericIdentity `
+    $genericDownstreamArtifacts.review
+  Assert-True ($wrongGenericIdentityResult.ExitCode -eq 1) "Generic assurance provenance must use Master Scope Context.Work Item ID. Output: $($wrongGenericIdentityResult.Output)"
+  Assert-Contains `
+    $wrongGenericIdentityResult.Output `
+    'assurance provenance current Task / Unit must equal approved adapter identity' `
+    'Wrong generic assurance identity'
 
   foreach ($correlatedMutation in @(
     [pscustomobject]@{
@@ -798,8 +1582,8 @@ if ($Cluster -in @('Downstream', 'All')) {
     }
     [pscustomobject]@{
       Name = 'blank Plan Reference'
-      Predecessor = $downstreamArtifacts.review.Replace('| UNIT-001 | plan-001 |', '| UNIT-001 |  |')
-      Current = $downstreamArtifacts.verification.Replace('| UNIT-001 | plan-001 |', '| UNIT-001 |  |')
+      Predecessor = $downstreamArtifacts.review.Replace('| UNIT-001 | plan-001@1 |', '| UNIT-001 |  |')
+      Current = $downstreamArtifacts.verification.Replace('| UNIT-001 | plan-001@1 |', '| UNIT-001 |  |')
       Expected = 'requires non-empty Plan Reference'
     }
     [pscustomobject]@{
@@ -856,7 +1640,7 @@ if ($Cluster -in @('Downstream', 'All')) {
   )
   $wrongUnitVerificationProvenanceResult = Invoke-ActivationSliceArtifactValidator $wrongUnitVerificationProvenance $wrongUnitReviewProvenance
   Assert-True ($wrongUnitVerificationProvenanceResult.ExitCode -eq 1) "Task provenance must identify the artifact's selected migration unit. Output: $($wrongUnitVerificationProvenanceResult.Output)"
-  Assert-Contains $wrongUnitVerificationProvenanceResult.Output 'assurance provenance current Task / Unit must equal Selected Migration Unit.Migration Unit ID' 'Wrong assurance task unit'
+  Assert-Contains $wrongUnitVerificationProvenanceResult.Output 'assurance provenance current Task / Unit must equal approved adapter identity' 'Wrong assurance task unit'
 
   $staleParitySource = $downstreamArtifacts.parity.Replace('<IMMEDIATE_PREDECESSOR_PATH>', 'unrelated-artifact.md')
   $staleParitySourceResult = Invoke-ActivationSliceArtifactValidator $staleParitySource $downstreamArtifacts.verification
@@ -1012,7 +1796,7 @@ if ($Cluster -in @('Downstream', 'All')) {
     }
   }
 
-  $unmatchedBacktickCurrent = $downstreamArtifacts.verification.Replace('| UNIT-001 | plan-001 |', '| `UNIT-001 | plan-001 |')
+  $unmatchedBacktickCurrent = $downstreamArtifacts.verification.Replace('| UNIT-001 | plan-001@1 |', '| `UNIT-001 | plan-001@1 |')
   $unmatchedBacktickResult = Invoke-ActivationSliceArtifactValidator $unmatchedBacktickCurrent $downstreamArtifacts.review
   Assert-True ($unmatchedBacktickResult.ExitCode -eq 1) "An unmatched leading backtick in an artifact table cell must not normalize to the predecessor value. Output: $($unmatchedBacktickResult.Output)"
   Assert-Contains $unmatchedBacktickResult.Output 'Migration Unit ID must match UNIT-[0-9]{3}: `UNIT-001' 'Artifact unmatched inline-code delimiter'
@@ -1083,7 +1867,7 @@ if ($Cluster -in @('Lifecycle', 'All')) {
   $regressionConclusionSection = [Text.Encoding]::UTF8.GetString(
     [Convert]::FromBase64String('S+G6v3QgbHXhuq1uIHjDoWMgbWluaCBtaWdyYXRpb24=')
   )
-  $incrementalSelectedRow = '| UNIT-001 | plan-001 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001, TR-RENDER-001 |'
+  $incrementalSelectedRow = '| UNIT-001 | plan-001@1 | approval-001 | incremental/preserve-existing | not-required | not-applicable | not-applicable | not-applicable | regression-baseline-001 | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
   $incrementalSelectedSection = @"
 ## Selected Migration Unit
 
@@ -1091,7 +1875,7 @@ if ($Cluster -in @('Lifecycle', 'All')) {
 |---|---|---|---|---|---|---|---|---|---|
 $incrementalSelectedRow
 "@
-  $incrementalOrderedRow = '| 1 | UNIT-001 | not-required | not-applicable | not-applicable | none | activation accepted | incremental/preserve-existing | TR-REQ-001, TR-RENDER-001 | one-unit-one-change | approval-001 | approved |'
+  $incrementalOrderedRow = '| 1 | UNIT-001 | not-required | not-applicable | not-applicable | none | activation accepted | incremental/preserve-existing | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 | one-unit-one-change | approval-001 | approved |'
   $incrementalOrderedSection = @"
 ## $orderedUnitsSection
 
@@ -1099,7 +1883,7 @@ $incrementalSelectedRow
 |---|---|---|---|---|---|---|---|---|---|---|---|
 $incrementalOrderedRow
 "@
-  $greenfieldSelectedRow = '| UNIT-001 | plan-001 | approval-001 | greenfield/design-new | required | FOUNDATION-001 | target-baseline-001 | bootstrap-approved-001 | not-applicable | TR-REQ-001, TR-RENDER-001 |'
+  $greenfieldSelectedRow = '| UNIT-001 | plan-001@1 | approval-001 | greenfield/design-new | required | FOUNDATION-001 | target-baseline-001 | bootstrap-approved-001 | not-applicable | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
   $greenfieldSelectedSection = @"
 ## Selected Migration Unit
 
@@ -1107,7 +1891,7 @@ $incrementalOrderedRow
 |---|---|---|---|---|---|---|---|---|---|
 $greenfieldSelectedRow
 "@
-  $greenfieldOrderedRow = '| 1 | UNIT-001 | required | pending-bootstrap | pending-step09-approval | none | activation accepted | greenfield/design-new | TR-REQ-001, TR-RENDER-001 | one-unit-one-change | approval-001 | approved |'
+  $greenfieldOrderedRow = '| 1 | UNIT-001 | required | pending-bootstrap | pending-step09-approval | none | activation accepted | greenfield/design-new | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 | one-unit-one-change | approval-001 | approved |'
   $greenfieldOrderedSection = @"
 ## $orderedUnitsSection
 
@@ -1141,6 +1925,8 @@ $greenfieldOrderedRow
 | Migration Unit ID | Activation Slice ID | Seam | Test | Command | Result | Trace IDs |
 |---|---|---|---|---|---|---|
 | UNIT-001 | ACT-001 | test | activation lifecycle | test activation | PASS | TR-REQ-001, TR-LIFECYCLE-001 |
+
+$(New-WorkItemImplementationEvidenceSections)
 "@
   $parityVerdict = @'
 ## Parity Verdict
@@ -1195,8 +1981,18 @@ $greenfieldOrderedRow
 | pre-mutation command unavailable | command-resolution-evidence-001 |
 '@
 
-  function New-LifecycleArtifact([string]$StepId, [string[]]$Sections = @()) {
+  function New-LifecycleArtifact(
+    [string]$StepId,
+    [string[]]$Sections = @(),
+    [string]$ModeConstraint = 'incremental/preserve-existing'
+  ) {
     $artifact = $completeActivationSlice.Replace('step_id: 01-validate-inputs', "step_id: $StepId").TrimEnd()
+    if ($StepId -ceq '10-code-migration') {
+      $artifact += "`n`n$(New-ImplementationMasterScopeSection)`n`n$(New-CanonicalAdapterEvidenceSection 'migration-unit' 'WORK-001' $ModeConstraint)"
+    }
+    elseif ($StepId -cin @('11-ai-review', '12-verification-testing', '13-verify-parity', '14-verify-regression', '15-knowledge-base')) {
+      $artifact += "`n`n- Delivery Adapter Kind: migration-unit`n- Delivery Adapter Mode Constraint: $ModeConstraint"
+    }
     foreach ($section in $Sections) { $artifact += "`n`n$section" }
     return $artifact
   }
@@ -1222,15 +2018,26 @@ ready
     mapping = New-LifecycleArtifact '05-feature-mapping'
     gaps = New-LifecycleArtifact '06-analyze-gaps-conflicts'
     design = New-LifecycleArtifact '07-technical-design'
-    incrementalPlan = New-LifecycleArtifact '08-plan-waves' @($incrementalOrderedSection)
-    greenfieldPlan = New-LifecycleArtifact '08-plan-waves' @($greenfieldOrderedSection)
+    incrementalPlan = New-LifecycleArtifact '08-plan-waves' @(
+      $incrementalOrderedSection,
+      (New-DeliveryAdapterSelectionSection 'migration-unit')
+    )
+    greenfieldPlan = New-LifecycleArtifact '08-plan-waves' @(
+      $greenfieldOrderedSection,
+      (New-DeliveryAdapterSelectionSection 'migration-unit' 'WORK-001' 'greenfield/design-new')
+    )
     bootstrap = New-LifecycleArtifact '09-bootstrap-target' @($greenfieldSelectedSection, $foundationRecord)
     incrementalImplementation = New-LifecycleArtifact '10-code-migration' @($incrementalSelectedSection, $implementationRecords)
-    greenfieldImplementation = New-LifecycleArtifact '10-code-migration' @($greenfieldSelectedSection, $implementationRecords)
+    greenfieldImplementation = New-LifecycleArtifact '10-code-migration' @($greenfieldSelectedSection, $implementationRecords) 'greenfield/design-new'
     review = New-LifecycleArtifact '11-ai-review' @($incrementalSelectedSection, $reviewChangeHygieneSection)
     verification = New-LifecycleArtifact '12-verification-testing' @($incrementalSelectedSection, $verificationProvenanceSection)
     parity = New-LifecycleArtifact '13-verify-parity' @($incrementalSelectedSection, $parityVerdict, $assuranceScenarioSection, $parityProvenanceSection)
     regression = New-LifecycleArtifact '14-verify-regression' @($incrementalSelectedSection, $regressionConclusion, $regressionScenarioSection, $regressionProvenanceSection)
+    knowledge = New-LifecycleArtifact '15-knowledge-base' @($incrementalSelectedSection, $regressionProvenanceSection)
+    greenfieldReview = New-LifecycleArtifact '11-ai-review' @($greenfieldSelectedSection, $reviewChangeHygieneSection) 'greenfield/design-new'
+    greenfieldVerification = New-LifecycleArtifact '12-verification-testing' @($greenfieldSelectedSection, $verificationProvenanceSection) 'greenfield/design-new'
+    greenfieldParity = New-LifecycleArtifact '13-verify-parity' @($greenfieldSelectedSection, $parityVerdict, $assuranceScenarioSection, $parityProvenanceSection) 'greenfield/design-new'
+    greenfieldKnowledge = New-LifecycleArtifact '15-knowledge-base' @($greenfieldSelectedSection, $parityProvenanceSection) 'greenfield/design-new'
   }
   $roleLinks = @(
     [pscustomobject]@{ Name = '01 to 02 origin'; PredecessorText = $originPredecessor; CurrentText = $roleArtifacts.discovery }
@@ -1247,6 +2054,8 @@ ready
     [pscustomobject]@{ Name = '11 to 12'; Predecessor = 'review'; Current = 'verification' }
     [pscustomobject]@{ Name = '12 to 13'; Predecessor = 'verification'; Current = 'parity' }
     [pscustomobject]@{ Name = '13 to 14'; Predecessor = 'parity'; Current = 'regression' }
+    [pscustomobject]@{ Name = '14 to 15 incremental'; Predecessor = 'regression'; Current = 'knowledge' }
+    [pscustomobject]@{ Name = '13 to 15 greenfield'; Predecessor = 'greenfieldParity'; Current = 'greenfieldKnowledge' }
   )
   foreach ($link in $roleLinks) {
     $current = if ($null -ne $link.CurrentText) { $link.CurrentText } else { $roleArtifacts[$link.Current] }
@@ -1313,7 +2122,7 @@ ready
   Assert-True ($incrementalBootstrapResult.ExitCode -eq 1) "Step 09 must reject the incremental/not-required route. Output: $($incrementalBootstrapResult.Output)"
   Assert-Contains $incrementalBootstrapResult.Output 'bootstrap route requires selected-unit Mode Constraint greenfield/design-new and Bootstrap Scope required' 'Incremental bootstrap rejection'
 
-  $directRequiredImplementation = New-LifecycleArtifact '10-code-migration' @($greenfieldSelectedSection, $implementationRecords)
+  $directRequiredImplementation = New-LifecycleArtifact '10-code-migration' @($greenfieldSelectedSection, $implementationRecords) 'greenfield/design-new'
   $directRequiredResult = Invoke-ActivationSliceArtifactValidator $directRequiredImplementation $roleArtifacts.greenfieldPlan
   Assert-True ($directRequiredResult.ExitCode -eq 1) "Step 10 cannot bypass step 09 for a bootstrap-required unit. Output: $($directRequiredResult.Output)"
   Assert-Contains $directRequiredResult.Output 'initial plan route requires selected-unit Bootstrap Scope not-required' 'Required bootstrap bypass rejection'
@@ -1367,26 +2176,27 @@ ready
   Assert-True ($concreteNoneSegmentBaselineResult.ExitCode -eq 0) "A concrete baseline path is not a placeholder merely because one path segment is named none. Output: $($concreteNoneSegmentBaselineResult.Output)"
 
   $pendingGreenfieldPlanRow = $greenfieldOrderedRow.Replace('| required |', '| not-required |')
-  $pendingGreenfieldSelectedRow = '| UNIT-001 | plan-001 | approval-001 | greenfield/design-new | not-required | pending-bootstrap | target-baseline-001 | pending-step09-approval | not-applicable | TR-REQ-001, TR-RENDER-001 |'
+  $pendingGreenfieldSelectedRow = '| UNIT-001 | plan-001@1 | approval-001 | greenfield/design-new | not-required | pending-bootstrap | target-baseline-001 | pending-step09-approval | not-applicable | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
   $pendingGreenfieldPlan = $roleArtifacts.greenfieldPlan.Replace($greenfieldOrderedRow, $pendingGreenfieldPlanRow)
   $pendingGreenfieldImplementation = New-LifecycleArtifact '10-code-migration' @(
     $greenfieldSelectedSection.Replace($greenfieldSelectedRow, $pendingGreenfieldSelectedRow),
     $implementationRecords
-  )
+  ) 'greenfield/design-new'
   $pendingGreenfieldResult = Invoke-ActivationSliceArtifactValidator $pendingGreenfieldImplementation $pendingGreenfieldPlan
   Assert-True ($pendingGreenfieldResult.ExitCode -eq 1) "A later-greenfield direct-plan route must not carry pending bootstrap foundation sentinels. Output: $($pendingGreenfieldResult.Output)"
   Assert-Contains $pendingGreenfieldResult.Output 'direct-plan foundation state violates the greenfield canonical tuple' 'Greenfield direct-plan foundation state'
 
-  $laterGreenfieldPlanRow = '| 1 | UNIT-001 | not-required | FOUNDATION-001 | foundation-approval-001 | none | activation accepted | greenfield/design-new | TR-REQ-001, TR-RENDER-001 | one-unit-one-change | approval-001 | approved |'
-  $laterGreenfieldSelectedRow = '| UNIT-001 | plan-001 | approval-001 | greenfield/design-new | not-required | FOUNDATION-001 | target-baseline-001 | foundation-approval-001 | not-applicable | TR-REQ-001, TR-RENDER-001 |'
+  $laterGreenfieldPlanRow = '| 1 | UNIT-001 | not-required | FOUNDATION-001 | foundation-approval-001 | none | activation accepted | greenfield/design-new | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 | one-unit-one-change | approval-001 | approved |'
+  $laterGreenfieldSelectedRow = '| UNIT-001 | plan-001@1 | approval-001 | greenfield/design-new | not-required | FOUNDATION-001 | target-baseline-001 | foundation-approval-001 | not-applicable | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
   $laterGreenfieldPlan = New-LifecycleArtifact '08-plan-waves' @(
     $greenfieldOrderedSection.Replace($greenfieldOrderedRow, $laterGreenfieldPlanRow),
+    (New-DeliveryAdapterSelectionSection 'migration-unit' 'WORK-001' 'greenfield/design-new'),
     $approvedFoundationRecord
   )
   $laterGreenfieldImplementation = New-LifecycleArtifact '10-code-migration' @(
     $greenfieldSelectedSection.Replace($greenfieldSelectedRow, $laterGreenfieldSelectedRow),
     $implementationRecords
-  )
+  ) 'greenfield/design-new'
   $laterGreenfieldResult = Invoke-ActivationSliceArtifactValidator $laterGreenfieldImplementation $laterGreenfieldPlan
   Assert-True ($laterGreenfieldResult.ExitCode -eq 0) "A later-greenfield direct-plan route with one correlated approved foundation record should pass. Output: $($laterGreenfieldResult.Output)"
 
@@ -1415,7 +2225,7 @@ ready
   Assert-True ($staleDomainBlockerResult.ExitCode -eq 1) "A completed routed artifact must omit stale Domain Blocker evidence. Output: $($staleDomainBlockerResult.Output)"
   Assert-Contains $staleDomainBlockerResult.Output 'non-blocking lifecycle must not contain Domain Blocker' 'Stale Domain Blocker section'
 
-  $blockedBootstrapSelectedRow = '| UNIT-001 | plan-001 | approval-001 | greenfield/design-new | required | pending-bootstrap | not-applicable | pending-step09-approval | not-applicable | TR-REQ-001, TR-RENDER-001 |'
+  $blockedBootstrapSelectedRow = '| UNIT-001 | plan-001@1 | approval-001 | greenfield/design-new | required | pending-bootstrap | not-applicable | pending-step09-approval | not-applicable | TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |'
   $blockedBootstrap = $roleArtifacts.bootstrap.Replace(
     "status: approved`nresult: complete`napproval_source: human",
     "status: draft`nresult: blocked"
@@ -1440,19 +2250,19 @@ ready
     [pscustomobject]@{
       Name = 'blank correlated Approval Reference'
       PlanRow = $greenfieldOrderedRow.Replace('| approval-001 | approved |', '|  | approved |')
-      CurrentRow = $greenfieldSelectedRow.Replace('| plan-001 | approval-001 |', '| plan-001 |  |')
+      CurrentRow = $greenfieldSelectedRow.Replace('| plan-001@1 | approval-001 |', '| plan-001@1 |  |')
       Expected = 'requires non-empty Approval Reference'
     }
     [pscustomobject]@{
       Name = 'blank correlated Trace IDs'
-      PlanRow = $greenfieldOrderedRow.Replace('| TR-REQ-001, TR-RENDER-001 |', '|  |')
-      CurrentRow = $greenfieldSelectedRow.Replace('| TR-REQ-001, TR-RENDER-001 |', '|  |')
+      PlanRow = $greenfieldOrderedRow.Replace('| TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |', '|  |')
+      CurrentRow = $greenfieldSelectedRow.Replace('| TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001 |', '|  |')
       Expected = 'requires non-empty Trace IDs'
     }
     [pscustomobject]@{
       Name = 'blank current Plan Reference'
       PlanRow = $greenfieldOrderedRow
-      CurrentRow = $greenfieldSelectedRow.Replace('| UNIT-001 | plan-001 |', '| UNIT-001 |  |')
+      CurrentRow = $greenfieldSelectedRow.Replace('| UNIT-001 | plan-001@1 |', '| UNIT-001 |  |')
       Expected = 'requires non-empty Plan Reference'
     }
     [pscustomobject]@{
@@ -1547,7 +2357,7 @@ ready
     [pscustomobject]@{ Field = 'Foundation Baseline Reference'; Row = $greenfieldSelectedRow.Replace('target-baseline-001', 'target-baseline-002') }
     [pscustomobject]@{ Field = 'Foundation Baseline Approval Reference'; Row = $greenfieldSelectedRow.Replace('bootstrap-approved-001', 'bootstrap-approved-002') }
     [pscustomobject]@{ Field = 'Baseline Reference'; Row = $greenfieldSelectedRow.Replace('| bootstrap-approved-001 | not-applicable | TR-REQ-001', '| bootstrap-approved-001 | unexpected-baseline | TR-REQ-001') }
-    [pscustomobject]@{ Field = 'Trace IDs'; Row = $greenfieldSelectedRow.Replace('TR-REQ-001, TR-RENDER-001', 'TR-OTHER-001') }
+    [pscustomobject]@{ Field = 'Trace IDs'; Row = $greenfieldSelectedRow.Replace('TR-REQ-001, TR-RENDER-001, TR-LIFECYCLE-001', 'TR-OTHER-001') }
   )
   foreach ($mutation in $bootstrapSelectedMutations) {
     $mutatedImplementation = $roleArtifacts.greenfieldImplementation.Replace($greenfieldSelectedRow, $mutation.Row)

@@ -33,11 +33,14 @@ Require a regression command resolved before comparison and a pre-change target 
 
 ## Migration-only handoff extension
 
-This skill runs for `workflow_type: migration`; feature and bugfix shared flows do not use this extension. The immediate predecessor must contain exactly one `Selected Migration Unit` section plus the structured `Parity Verdict` row and evidence reference required by `aitoolkit/contracts/activation-slice.md`.
+An executable step-14 artifact has the exact canonical front matter keys and lifecycle `status: approved`, `result: complete`, `approval_source: human`. Draft, blocked, automatic, duplicate-key, extra-key, or cross-run output is non-executable and cannot seed Knowledge Base.
+
+This skill runs for `workflow_type: migration`; feature and bugfix shared flows do not use this extension. Preserve exact `Master Scope Context`, `Delivery Adapter Kind`, and `Delivery Adapter Mode Constraint`; the mode must be exactly `incremental/preserve-existing`. Require exactly one `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-unit`, and otherwise omit `Selected Migration Unit` without inventing `UNIT-*`. The immediate predecessor must also contain the structured `Parity Verdict` row and evidence reference required by `aitoolkit/contracts/activation-slice.md`.
 
 - Validate and copy `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, and trace IDs from the immediate predecessor.
 - Preserve a lifecycle-valid predecessor parity verdict (`pass | fail`), add the regression verdict, and write `result: complete | blocked`. A blocked parity report stops before step 14. Missing, ambiguous, or mismatched selected-unit, baseline, or verdict evidence yields `result: blocked` before executing regression.
 - Never reconstruct the envelope or parity verdict from cumulative artifacts. For feature and bugfix, this extension is not applicable.
+- Before matrix validation or regression execution, validate and copy exactly one `Architecture Responsibility Handoff` table from the immediate `13-parity-report.md` predecessor. Preserve the ordinally exact contract version, Tree Conformance, Responsibility Conformance, Verification Ownership, Architecture Conformance State, and Evidence References; derive the aggregate state from the three sub-verdicts. Do not reconstruct responsibility provenance from cumulative artifacts or directory scans. Missing, stale/cross-run, unsupported/mixed-version, mismatched evidence, or any `BLOCKED` sub-verdict yields `result: blocked` before regression execution. Runtime/`auto-waive` never changes the responsibility handoff.
 
 ## Procedure
 
@@ -58,12 +61,13 @@ Evidence includes command provenance, comparable runs, failure identities, delta
 
 ## Hợp đồng đầu ra
 
-Preserve the validated `Task Provenance` lineage from the parity predecessor: task/unit ID, task-base SHA, and final-tree SHA remain ordinally exact, while `Source Artifact` resolves to that exact immediate parity artifact path. Missing, unrelated-source, or mismatched lineage yields `result: blocked`.
+Preserve the validated adapter-aware `Task Provenance` lineage from the parity predecessor: `Task / Unit` remains the selected Migration Unit ID for `migration-unit` or the current Work Item ID for a generic adapter; task-base SHA and final-tree SHA remain ordinally exact, while `Source Artifact` resolves to that exact immediate parity artifact path. Missing, unrelated-source, or mismatched lineage yields `result: blocked`.
 
 - File: `<RUN_DIR>/14-regression-report.md`.
 - Front matter: `step_id: 14-verify-regression`, `status: draft`, `result: complete | blocked`, `produced_at`.
 - Preserve `Activation Slice` from the parity predecessor with the identical slice set, Applicability, all nine rows, Source Reference evidence, and Trace IDs.
-- Preserve `Selected Migration Unit` with the full migration handoff envelope.
+- Preserve exact `Master Scope Context`, `Delivery Adapter Kind`, and `Delivery Adapter Mode Constraint`; preserve `Selected Migration Unit` with the full migration handoff envelope only when `Delivery Adapter Kind` is `migration-unit`, otherwise omit `Selected Migration Unit`.
+- Preserve exactly one `Architecture Responsibility Handoff` table from the immediate parity predecessor, including immutable evidence references.
 - Preserve `Kết luận xác minh migration` with parity verdict, regression applicability/verdict, and evidence references.
 - Preserve `Scenarios`, `Command / Evidence`, `Evidence`, and `Unknowns`. The structured `Kết luận xác minh migration` row is the sole overall verdict surface and agrees with scenario evidence.
 - Each scenario states baseline outcome, candidate outcome, delta class, waiver reference when needed, and trace IDs.

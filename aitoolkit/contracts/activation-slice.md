@@ -229,6 +229,8 @@ like every other handoff. `<not-applicable>` means the route has not selected a
 migration unit yet and the current artifact must not contain a visible
 `Selected Migration Unit` section.
 
+Its `Plan Reference` is always the exact composite `Delivery Adapter Selection.Authority@Delivery Adapter Selection.Authority Revision`. The revision is a positive integer and `Authority` is an unversioned value that MUST NOT itself contain `@`; all implementation, review, verification, parity, regression, and knowledge-base handoffs preserve this value byte-for-byte.
+
 | Route | Current step ID | Current lifecycle | Predecessor step ID | Predecessor Status | Predecessor Result | Predecessor Approval Source | Predecessor Waiver | Selected Mode Constraint | Selected Bootstrap Scope |
 |---|---|---|---|---|---|---|---|---|---|
 | `discovery-origin` | `02-discovery` | `draft/complete, approved/complete, draft/blocked` | `01-validate-inputs` | `approved` | `complete, partial` | `<canonical>` | `<any>` | `<not-applicable>` | `<not-applicable>` |
@@ -247,6 +249,8 @@ migration unit yet and the current artifact must not contain a visible
 | `handoff` | `12-verification-testing` | `draft/complete, approved/complete, draft/blocked` | `11-ai-review` | `approved` | `complete` | `<canonical>` | `<any>` | `<canonical>` | `<canonical>` |
 | `handoff` | `13-verify-parity` | `draft/complete, approved/complete, draft/blocked` | `12-verification-testing` | `approved` | `complete` | `<canonical>` | `<any>` | `<canonical>` | `<canonical>` |
 | `handoff` | `14-verify-regression` | `draft/complete, approved/complete, draft/blocked` | `13-verify-parity` | `approved` | `complete` | `<canonical>` | `<any>` | `incremental/preserve-existing` | `not-required` |
+| `handoff` | `15-knowledge-base` | `draft/complete, approved/complete, draft/blocked` | `13-verify-parity` | `approved` | `complete` | `<canonical>` | `<any>` | `greenfield/design-new` | `<canonical>` |
+| `handoff` | `15-knowledge-base` | `draft/complete, approved/complete, draft/blocked` | `14-verify-regression` | `approved` | `complete` | `<canonical>` | `<any>` | `incremental/preserve-existing` | `not-required` |
 
 ## Bootstrap selected-unit handoff
 
@@ -290,17 +294,51 @@ plan predecessor; an apparently resolved tuple without that record is invalid.
 | `incremental/preserve-existing` | `not-required` | `not-applicable` | `not-applicable` | `not-applicable` | `not-applicable` | `not-applicable` | `<resolved-pre-mutation-baseline-reference>` | `<not-applicable>` | `<not-applicable>` | `<not-applicable>` |
 | `greenfield/design-new` | `not-required` | `FOUNDATION-*` | `<approved-reference>` | `same-plan` | `same-approved-record` | `same-plan` | `not-applicable` | `Baseline nền tảng đã duyệt` | `Foundation Baseline ID, Target Baseline Reference, Approval Reference, Approval Status, Evidence` | `exactly-one-approved-selected-match` |
 
+## Delivery adapter evidence by artifact role
+
+Adapter authority is role-specific. Step 10 resolves the exact visible
+producer table and never falls back to a downstream bullet. Steps 11 through 15
+resolve exactly one visible `Delivery Adapter Kind` bullet and one visible
+`Delivery Adapter Mode Constraint` bullet. A visible bullet uses the exact
+case-sensitive label, zero to three leading spaces, a `-` marker, and at least
+one following space or tab. Comment, fence, indented-code, hanging-paragraph,
+wrong-case, and malformed-marker decoys do not count.
+
+| Artifact step IDs | Canonical source | Required schema | Cardinality |
+|---|---|---|---|
+| `10-code-migration` | `Canonical Adapter Evidence` | `Work Item ID, Adapter Kind, External ID, Authority, Authority Revision, Approval Reference, Parent Selector, Acceptance, Trace IDs, Mode Constraint, Design Revision, Parent Work Item ID, Decomposition Decision Reference, Canonical Match` | `exactly-one-visible-row` |
+| `11-ai-review, 12-verification-testing, 13-verify-parity, 14-verify-regression, 15-knowledge-base` | `Delivery Adapter Kind, Delivery Adapter Mode Constraint` | `Adapter Kind, Mode Constraint` | `exactly-one-visible-line-each` |
+
+For a `migration-unit` step-10 producer, the canonical row's `Work Item ID`
+equals `Master Scope Context.Work Item ID`; `External ID`, `Approval Reference`,
+`Mode Constraint`, and `Trace IDs` equal their `Selected Migration Unit`
+counterparts ordinally. `Authority` is non-empty and unversioned, `Authority
+Revision` is a positive integer, and `Selected Migration Unit.Plan Reference`
+is their exact `Authority@Authority Revision` composite.
+
+Step 11 binds both downstream bullets to the step-10 canonical row. Each later
+edge preserves both values byte-for-byte from its immediate predecessor. A
+`migration-unit` mode also equals `Selected Migration Unit.Mode Constraint`.
+Generic adapters have no selected-unit row and therefore carry the implicit
+`Bootstrap Scope = not-required`; their explicit mode is still approved-plan
+authority, never caller-attested. Greenfield chains terminate directly from
+step 13 at step 15, while incremental chains require step 14 before step 15.
+
 ## Downstream selected-unit handoff
 
-Every downstream migration assurance artifact preserves exactly one complete
-selected-unit row ordinally from its immediate predecessor.
+Downstream assurance artifacts bind their adapter kind to the approved current
+master-plan selection. Migration-unit artifacts preserve exactly one complete
+selected-unit row ordinally from their immediate predecessor; generic adapters
+omit the section.
 
-| Current step ID | Section | Required columns | Preservation |
-|---|---|---|---|
-| `11-ai-review` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
-| `12-verification-testing` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
-| `13-verify-parity` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
-| `14-verify-regression` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
+| Current step ID | Adapter Kind Applicability | Section | Required columns | Preservation |
+|---|---|---|---|---|
+| `11-ai-review` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
+| `12-verification-testing` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
+| `13-verify-parity` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
+| `14-verify-regression` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
+| `15-knowledge-base` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` | `ordinal-exact-predecessor` |
+| `11-ai-review, 12-verification-testing, 13-verify-parity, 14-verify-regression, 15-knowledge-base` | `task, story, package, phase, milestone, none` | `<absent>` | `<not-applicable>` | `ordinal-absence` |
 
 ## Regression parity handoff
 
@@ -321,14 +359,17 @@ lineage through their immediate predecessor's `Task Provenance` row. Every
 declared field mapping is ordinal-exact. The current `Source Artifact` must
 resolve to the exact artifact path supplied as the immediate predecessor; an
 unrelated, stale, or merely different path is invalid.
-Both lineage rows identify their own artifact's selected migration unit, and
-their task-base and final-tree references are resolved non-placeholder values.
+Both lineage rows resolve assurance identity from the approved adapter: a
+`migration-unit` binds `Task / Unit` to its selected Migration Unit ID, while a
+generic adapter binds `Task / Unit` to the current `Master Scope Context` Work
+Item ID. Their task-base and final-tree references are resolved non-placeholder
+values.
 
 | Current step ID | Predecessor step ID | Current section | Current required columns | Predecessor section | Predecessor required columns | Preserved field mapping | Intrinsic predicates | Source Artifact rule |
 |---|---|---|---|---|---|---|---|---|
-| `12-verification-testing` | `11-ai-review` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Change Hygiene` | `Task / Unit, Scope Evidence, Formatter Evidence, Unrelated Diff, Severity, Task-base SHA, Final-tree SHA` | `Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA` | `Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder` | `resolves-to-immediate-predecessor-path` |
-| `13-verify-parity` | `12-verification-testing` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA` | `Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder` | `resolves-to-immediate-predecessor-path` |
-| `14-verify-regression` | `13-verify-parity` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA` | `Task / Unit=Selected Migration Unit.Migration Unit ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder` | `resolves-to-immediate-predecessor-path` |
+| `12-verification-testing` | `11-ai-review` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Change Hygiene` | `Task / Unit, Scope Evidence, Formatter Evidence, Unrelated Diff, Severity, Task-base SHA, Final-tree SHA` | `Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA` | `Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder` | `resolves-to-immediate-predecessor-path` |
+| `13-verify-parity` | `12-verification-testing` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA` | `Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder` | `resolves-to-immediate-predecessor-path` |
+| `14-verify-regression` | `13-verify-parity` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task Provenance` | `Task / Unit, Task-base SHA, Final-tree SHA, Source Artifact` | `Task / Unit=Task / Unit, Task-base SHA=Task-base SHA, Final-tree SHA=Final-tree SHA` | `Adapter Kind=migration-unit => Task / Unit=Selected Migration Unit.Migration Unit ID; Adapter Kind=generic => Task / Unit=Master Scope Context.Work Item ID, Task-base SHA=non-empty-non-placeholder, Final-tree SHA=non-empty-non-placeholder` | `resolves-to-immediate-predecessor-path` |
 
 ## Assurance verdict consistency
 
@@ -425,16 +466,22 @@ Every completed step-10 output resolves every implementation record against the
 approved Activation Slice envelope in its valid immediate predecessor,
 including a bootstrap predecessor on the greenfield foundation route. Step 11
 revalidates those records against the step-10 predecessor's preserved envelope.
-A structurally valid `draft/blocked` pre-mutation output may omit changed-file
-and test records; if either section is present, it remains fully validated. A
-file or test that covers more than one seam repeats one structured row per
-`(Activation Slice ID, Seam)` link.
+A normal complete output contains at least one row in every applicable
+changed-file and test-evidence section. A structurally valid `draft/blocked`
+pre-mutation output may omit those records; if an applicable section is present,
+it remains fully validated. Generic Work Item rows bind their `Work Item ID`
+ordinally to the step-10 `Canonical Adapter Evidence` row. Their non-empty Trace
+IDs are subsets of both that canonical adapter row and the cited approved
+`(Activation Slice ID, Seam)` trace set. A file or test that covers more than one
+seam repeats one structured row per link.
 
-| Record | Current step ID | Allowed predecessor step IDs | Section | Required columns |
-|---|---|---|---|---|
-| `selected-unit` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` |
-| `changed-file` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `File đã thay đổi` | `Migration Unit ID, Activation Slice ID, Seam, File, Change, Trace IDs` |
-| `test-evidence` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `Activation Slice Test Evidence` | `Migration Unit ID, Activation Slice ID, Seam, Test, Command, Result, Trace IDs` |
+| Record | Current step ID | Allowed predecessor step IDs | Adapter Kind Applicability | Section | Required columns |
+|---|---|---|---|---|---|
+| `selected-unit` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `migration-unit` | `Selected Migration Unit` | `Migration Unit ID, Plan Reference, Approval Reference, Mode Constraint, Bootstrap Scope, Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference, Baseline Reference, Trace IDs` |
+| `changed-file` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `migration-unit` | `File đã thay đổi` | `Migration Unit ID, Activation Slice ID, Seam, File, Change, Trace IDs` |
+| `test-evidence` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `migration-unit` | `Activation Slice Test Evidence` | `Migration Unit ID, Activation Slice ID, Seam, Test, Command, Result, Trace IDs` |
+| `work-item-changed-file` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `task, story, package, phase, milestone, none` | `Work Item Changed Files` | `Work Item ID, Activation Slice ID, Seam, File, Change, Trace IDs` |
+| `work-item-test-evidence` | `10-code-migration` | `08-plan-waves, 09-bootstrap-target, 10-code-migration` | `task, story, package, phase, milestone, none` | `Work Item Test Evidence` | `Work Item ID, Activation Slice ID, Seam, Test, Command, Result, Trace IDs` |
 
 Each link uses an approved slice ID and canonical seam from that predecessor.
 Its non-empty Trace IDs are a subset of the predecessor Trace IDs stored for

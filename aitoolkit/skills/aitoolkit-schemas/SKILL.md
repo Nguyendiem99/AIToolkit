@@ -132,7 +132,7 @@ Before a migration run consumes the project pack, `project_pack.reviewed_at` mus
 
 ## 4. Migration selected-unit handoff
 
-After step 08 approval and selector choice, each executed migration artifact preserves exactly one `Selected Migration Unit` row with:
+After step 08 approval and selector choice, an executed migration artifact preserves exact `Delivery Adapter Kind` and one exact `Delivery Adapter Mode Constraint` from approved plan authority. It preserves exactly one `Selected Migration Unit` row only when `Delivery Adapter Kind = migration-unit`. For `task | story | package | phase | milestone | none`, the section is absent, bootstrap scope is implicitly `not-required`, and the generic assurance identity is `Master Scope Context.Work Item ID`; a producer must not invent `UNIT-*`:
 
 - Migration Unit ID, plan reference, approval reference, mode constraint, Bootstrap Scope;
 - Foundation Baseline ID, Foundation Baseline Reference, Foundation Baseline Approval Reference;
@@ -140,7 +140,7 @@ After step 08 approval and selector choice, each executed migration artifact pre
 
 For a greenfield foundation unit, step 09 creates an approved foundation baseline record. A later greenfield `Bootstrap Scope = not-required` unit skips step 09 and resolves its Foundation Baseline ID in the approved migration plan. Incremental records the three foundation-baseline values as `not-applicable`.
 
-Steps 11-13 preserve this envelope for every migration run. Incremental step 14 additionally preserves the parity verdict and adds regression applicability/verdict; greenfield proceeds from step 13 directly to terminal Knowledge Capture. Standalone delivery skills are outside this pipeline handoff schema and must resolve their own explicit completed-run inputs.
+Steps 11-13 and terminal step 15 preserve this conditional envelope, including exact `Delivery Adapter Mode Constraint`. Incremental step 14 additionally preserves the parity verdict and adds regression applicability/verdict; greenfield proceeds from step 13 directly to terminal Knowledge Capture. Standalone Gerrit delivery resolves the approved plan plus the complete ordered review -> verification -> parity -> optional mode-required regression -> terminal KB chain before consuming the exact KB envelope. It retains the same conditional cardinality: one selected-unit row for `migration-unit`, zero for every generic adapter. Paired KB/Gerrit equality without that lineage is not authority.
 
 ## 5. Migration scope orchestration artifacts
 
@@ -149,6 +149,13 @@ live in `contracts/migration-scope-orchestration.md`. The canonical target
 exemplar, conformance, assurance-state, structural-gate, and review rules live in
 `contracts/target-structure-conformance.md`. The shapes below reference those
 contracts and do not redefine their value sets.
+
+File responsibility artifact fields (owned capability IDs, trace IDs, atomic
+boundary IDs, classification, architecture authority, co-location, actual
+responsibility evidence, verification ownership, evidence kind, verification
+disposition, and verdict) are routed exclusively to
+`contracts/file-responsibility-conformance.md`. This schema does not copy its
+enums or table columns.
 
 The canonical master spec front matter is:
 
@@ -187,6 +194,9 @@ execution_policy: dependency-ready
 max_concurrency: 1
 produced_at: <date>
 supersedes: <artifact-id>@<revision> | not-applicable
+responsibility_contract:
+  version: 1
+  applicability: required
 ---
 ```
 
@@ -207,6 +217,8 @@ latest_attempt: <attempt ID or none>
 terminal_evidence: <artifact reference or none>
 approval_reference: <exact approval or pending>
 ```
+
+The approved master-plan body contains complete, order-aligned `Delivery Adapter Selection` and `Responsibility Owner References` tables for the same Work Item set. Its bounded front matter declares exactly one canonical `responsibility_contract` block with `version: 1` and `applicability: required`; missing, pre-v1, unsupported, duplicate, or mixed plan discriminators are non-executable. Together with the exact approved technical-design artifact matching each row's `Design Revision`, those tables are the pre-edit planned responsibility authority. They are not a post-review handoff and no synthetic queue-authority artifact is part of this schema.
 
 Optional adapter and decomposition records use these shapes:
 
@@ -261,3 +273,43 @@ revision 1 from approved evidence, creates one work item per canonical legacy
 unit, preserves exact selectors and only contract-valid terminal evidence,
 passes a new approval gate, and never infers requested-scope completion from a
 single unit.
+
+The canonical terminal scope report front matter is:
+
+```yaml
+---
+artifact_type: migration-scope-terminal-report
+master_spec_id: SPEC-<SCOPE>-<NNN>
+master_spec_revision: <positive integer>
+master_plan_id: PLAN-<SCOPE>-<NNN>
+master_plan_revision: <positive integer>
+status: <artifact lifecycle value>
+result: <artifact result value>
+approval_source: <approval source>
+scope_status: <value from migration-scope-orchestration.md>
+produced_at: <date>
+---
+```
+
+Its `Work Item Terminal Evidence` table enumerates the exact current approved
+master-plan work-item set in both directions. Each row binds Work Item ID,
+required disposition, status, immutable terminal evidence, the three assurance
+fields from `target-structure-conformance.md`, blocker, and plan revision. Its
+`Scope Completion Calculation` derives the terminal verdict from the canonical
+contract; it never trusts a caller-provided completion boolean or infers scope
+completion from one legacy unit, attempt, or artifact.
+
+Every terminal-success `Terminal Evidence` artifact contains exactly one v1
+`Architecture Responsibility Handoff` whose `Evidence References` is the
+review-originated source-diff, followed by exactly one `Terminal Chain
+Reference` table with columns `Work Item ID | Artifact Reference`. The row
+binds that Work Item to the immutable final mode-aware chain/KB
+`artifact#sha256:<digest>` reference. The terminal scope report preserves
+master-plan order, aggregates the source-diffs in its handoff, and maps the
+separate final references in its Evidence Index; these two reference classes
+are never interchangeable.
+
+Compatibility conversion output is not executable authority by itself. The
+new revision-1 master spec, revision-1 master plan, exact legacy-unit adapter
+mapping, and preserved terminal evidence must pass a fresh human approval gate
+before any production mutation or resume.

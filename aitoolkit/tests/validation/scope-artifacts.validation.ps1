@@ -1,4 +1,7 @@
 function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
+  if ($null -eq (Get-Command Get-ArcVisibleMarkdownText -CommandType Function -ErrorAction SilentlyContinue)) {
+    . (Join-Path $PSScriptRoot 'responsibility-conformance.validation.ps1')
+  }
   $contractPath = Join-Path $Root 'contracts/migration-scope-orchestration.md'
   if (-not (Test-Path -LiteralPath $contractPath -PathType Leaf)) {
     $errors.Add('Missing migration scope orchestration contract resource')
@@ -11,16 +14,38 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
 
   Test-MarkdownTableExactColumns $ContractText 'Requested Scope' @('Kind', 'ID', 'Statement', 'Source', 'Resolution Evidence') 'Migration scope orchestration contract'
   Test-MarkdownTableExactColumns $ContractText 'Work Item' @('Work Item ID', 'Title', 'Required', 'Dependencies', 'Plan Order', 'Acceptance', 'Trace IDs', 'Delivery Adapter', 'Status', 'Latest Attempt', 'Terminal Evidence', 'Approval Reference') 'Migration scope orchestration contract'
+  Test-MarkdownTableExactColumns $ContractText 'Delivery Adapter Selection' @('Work Item ID', 'Adapter Kind', 'External ID', 'Authority', 'Authority Revision', 'Approval Reference', 'Parent Selector', 'Acceptance', 'Trace IDs', 'Mode Constraint', 'Design Revision', 'Parent Work Item ID', 'Decomposition Decision Reference') 'Migration scope orchestration contract'
+  Test-MarkdownTableExactColumns $ContractText 'Responsibility Owner References' @('Work Item ID', 'Design Revision', 'Responsibility IDs', 'Shared Foundation IDs', 'Integration Responsibility IDs', 'Independent Boundary Evidence') 'Migration scope orchestration contract'
   Test-MarkdownTableExactColumns $ContractText 'Attempt' @('Attempt ID', 'Work Item ID', 'Plan Revision', 'Status', 'Artifact Reference') 'Migration scope orchestration contract'
   Test-MarkdownTableExactColumns $ContractText 'Revision' @('Artifact ID', 'Revision', 'Supersedes', 'Change Summary', 'Affected Work Items', 'Approval Reference') 'Migration scope orchestration contract'
-  @('Requested scope kinds: `project | module | feature | task | explicit-item | unresolved`.', 'Scope states: `planned | scope-in-progress | scope-blocked | scope-complete | scope-cancelled-approved`.', 'Work-item states: `proposed | pending | ready | in-progress | blocked | complete | cancelled-approved | not-applicable-approved`.', 'Delivery adapter kinds: `migration-unit | task | story | package | phase | milestone | none`.', 'Selection order: dependency depth ascending -> Plan Order ascending -> ordinal Work Item ID ascending.', 'Terminal-success states: `complete | cancelled-approved | not-applicable-approved`.', 'Resume reconciliation applies a missing terminal transition from valid evidence before selecting another work item.', 'Approved revisions are immutable and form one linear, non-forked, non-cyclic chain.', 'Decomposition creates a new master-plan revision and canonical child selectors must be approved before adapter assignment.', 'Scope-completion formula: every required work item is terminal-success AND no blocker remains AND the dependency graph is valid AND completed-item architecture conformance is PASS AND completed-item selector/schema is PASS AND the terminal scope report enumerates all evidence.') | ForEach-Object { Require-Token $ContractText $_ 'Migration scope orchestration contract' }
+  @('Requested scope kinds: `project | module | feature | task | explicit-item | unresolved`.', 'Scope states: `planned | scope-in-progress | scope-blocked | scope-complete | scope-cancelled-approved`.', 'Work-item states: `proposed | pending | ready | in-progress | blocked | complete | cancelled-approved | not-applicable-approved`.', 'Delivery adapter kinds: `migration-unit | task | story | package | phase | milestone | none`.', 'Selection order: dependency depth ascending -> Plan Order ascending -> ordinal Work Item ID ascending.', 'Terminal-success states: `complete | cancelled-approved | not-applicable-approved`.', 'Resume reconciliation applies a missing terminal transition from valid evidence before selecting another work item.', 'Approved revisions are immutable and form one linear, non-forked, non-cyclic chain.', 'Decomposition creates a new master-plan revision and canonical child selectors must be approved before adapter assignment.', 'Every executable master plan declares exactly one bounded `responsibility_contract` discriminator with exact `version: 1` and `applicability: required` before any planned authority row is consumed.', 'Scope-completion formula: every required work item is terminal-success AND no blocker remains AND the dependency graph is valid AND completed-item architecture conformance is PASS AND completed-item selector/schema is PASS AND the terminal scope report enumerates all evidence.', 'Terminal aggregation never rewrites or overloads the immutable handoff evidence cell.') | ForEach-Object { Require-Token $ContractText $_ 'Migration scope orchestration contract' }
 
   $addError = { param([string]$Message) $errors.Add($Message) }
   $getFrontMatter = {
     param([string]$Text, [string]$Label)
     $result = [ordered]@{}
     if ($Text -notmatch '(?s)\A---\r?\n(?<body>.*?)\r?\n---(?:\r?\n|\z)') { & $addError "$Label missing front matter"; return $null }
-    foreach ($line in @($Matches['body'] -split '\r?\n')) {
+    $frontMatterLines = @($Matches['body'] -split '\r?\n')
+    for ($lineIndex = 0; $lineIndex -lt $frontMatterLines.Count; $lineIndex++) {
+      $line = $frontMatterLines[$lineIndex]
+      if ($line -ceq 'responsibility_contract:') {
+        $duplicateContract = $result.Contains('responsibility_contract')
+        $contractValid = (
+          -not $duplicateContract -and
+          ($lineIndex + 2) -lt $frontMatterLines.Count -and
+          $frontMatterLines[$lineIndex + 1] -ceq '  version: 1' -and
+          $frontMatterLines[$lineIndex + 2] -ceq '  applicability: required' -and
+          (($lineIndex + 3) -ge $frontMatterLines.Count -or $frontMatterLines[$lineIndex + 3] -notmatch '^[ \t]')
+        )
+        if (-not $contractValid -and -not $errors.Contains('responsibility-contract-version-invalid')) {
+          & $addError 'responsibility-contract-version-invalid'
+        }
+        $result['responsibility_contract'] = if ($contractValid) { 'version=1;applicability=required' } else { 'invalid' }
+        while (($lineIndex + 1) -lt $frontMatterLines.Count -and $frontMatterLines[$lineIndex + 1] -match '^[ \t]') {
+          $lineIndex++
+        }
+        continue
+      }
       if ($line -notmatch '^(?<key>[a-z_]+):[ \t]*(?<value>.*)$') { & $addError "$Label has invalid front matter line: $line"; continue }
       $key = $Matches['key']; $value = $Matches['value'].Trim()
       if ($result.Contains($key)) { & $addError "$Label duplicate front matter field: $key"; continue }
@@ -31,6 +56,7 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
   }
   $getSection = {
     param([string]$Text, [string]$Section)
+    $Text = Get-ArcVisibleMarkdownText -Text $Text
     $escaped = [regex]::Escape($Section)
     $matches = [regex]::Matches($Text, "(?m)^## $escaped[ \t]*$")
     if ($matches.Count -eq 0) { return $null }
@@ -65,14 +91,24 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
     param([string]$Text, [string]$Label, [string]$ArtifactType, [string[]]$Fields, [string[]]$Sections)
     $script:scopeArtifactLabel = $Label; $frontMatter = & $getFrontMatter $Text $Label
     if ($null -eq $frontMatter) { return $null }
+    $visibleText = Get-ArcVisibleMarkdownText -Text $Text
     foreach ($field in $Fields) { if (-not $frontMatter.Contains($field)) { & $addError "$Label missing front matter field: $field" } }
     if ((@($frontMatter.Keys) -join '|') -cne ($Fields -join '|')) { & $addError "$Label front matter fields must be exact" }
     if ($frontMatter.Contains('artifact_type') -and $frontMatter['artifact_type'] -cne $ArtifactType) { & $addError "$Label artifact_type must be $ArtifactType" }
+    if (
+      $Label -ceq 'master plan' -and
+      (-not $frontMatter.Contains('responsibility_contract') -or $frontMatter['responsibility_contract'] -cne 'version=1;applicability=required')
+    ) {
+      if (-not $errors.Contains('responsibility-contract-version-invalid')) {
+        & $addError 'responsibility-contract-version-invalid'
+      }
+      return $null
+    }
     foreach ($section in $Sections) {
       [void](& $getSection $Text $section)
-      if (@([regex]::Matches($Text, "(?m)^## $([regex]::Escape($section))[ \t]*$")).Count -eq 0) { & $addError "$Label missing required section: $section" }
+      if (@([regex]::Matches($visibleText, "(?m)^## $([regex]::Escape($section))[ \t]*$")).Count -eq 0) { & $addError "$Label missing required section: $section" }
     }
-    $actualSections = @([regex]::Matches($Text, '(?m)^## (?<name>.+?)[ \t]*$') | ForEach-Object { $_.Groups['name'].Value.Trim() })
+    $actualSections = @([regex]::Matches($visibleText, '(?m)^## (?<name>.+?)[ \t]*$') | ForEach-Object { $_.Groups['name'].Value.Trim() })
     if (($actualSections -join '|') -cne ($Sections -join '|')) { & $addError "$Label sections must be exact" }
     return $frontMatter
   }
@@ -84,9 +120,9 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
   $specText = (Get-Content -Raw -Encoding utf8 $specPath).Replace("`r`n", "`n").Replace("`r", "`n")
   $planText = (Get-Content -Raw -Encoding utf8 $planPath).Replace("`r`n", "`n").Replace("`r", "`n")
   $specFields = @('artifact_type', 'master_spec_id', 'revision', 'status', 'result', 'approval_source', 'requested_scope_kind', 'requested_scope_id', 'produced_at', 'supersedes')
-  $planFields = @('artifact_type', 'master_plan_id', 'master_spec_id', 'master_spec_revision', 'revision', 'status', 'scope_status', 'execution_policy', 'max_concurrency', 'produced_at', 'supersedes')
+  $planFields = @('artifact_type', 'master_plan_id', 'master_spec_id', 'master_spec_revision', 'revision', 'status', 'scope_status', 'execution_policy', 'max_concurrency', 'produced_at', 'supersedes', 'responsibility_contract')
   $specSections = @('Problem and Intended Outcome', 'Requested Scope Boundary', 'Actors and Journeys', 'Behaviors, States and Failure Paths', 'Constraints and Project Rules', 'Architecture and Conformance Applicability', 'Measurable Success Criteria', 'Explicitly Out-of-Scope Items', 'Assumptions and Unknowns', 'Trace/Evidence Index', 'Approval Record', 'Revision History')
-  $planSections = @('Requested Scope', 'Work Items', 'Dependency Graph', 'Attempt History', 'State Transition Log', 'Scope Completion Calculation', 'Evidence', 'Unknowns', 'Approval Record', 'Revision History')
+  $planSections = @('Requested Scope', 'Work Items', 'Delivery Adapter Selection', 'Responsibility Owner References', 'Dependency Graph', 'Attempt History', 'State Transition Log', 'Scope Completion Calculation', 'Evidence', 'Unknowns', 'Approval Record', 'Revision History')
   $spec = & $validateArtifact $specText 'master spec' 'migration-master-spec' $specFields $specSections
   $plan = & $validateArtifact $planText 'master plan' 'migration-master-plan' $planFields $planSections
   if ($null -eq $spec -or $null -eq $plan) { return }
@@ -128,6 +164,8 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
   $script:scopeArtifactLabel = 'master plan'
   $planScopeRows = @(& $getRows $planText 'Requested Scope' @('Kind', 'ID', 'Statement', 'Source', 'Resolution Evidence'))
   $workRows = @(& $getRows $planText 'Work Items' @('Work Item ID', 'Title', 'Required', 'Dependencies', 'Plan Order', 'Acceptance', 'Trace IDs', 'Delivery Adapter', 'Status', 'Latest Attempt', 'Terminal Evidence', 'Approval Reference'))
+  $selectorRows = @(& $getRows $planText 'Delivery Adapter Selection' @('Work Item ID', 'Adapter Kind', 'External ID', 'Authority', 'Authority Revision', 'Approval Reference', 'Parent Selector', 'Acceptance', 'Trace IDs', 'Mode Constraint', 'Design Revision', 'Parent Work Item ID', 'Decomposition Decision Reference'))
+  $ownerRows = @(& $getRows $planText 'Responsibility Owner References' @('Work Item ID', 'Design Revision', 'Responsibility IDs', 'Shared Foundation IDs', 'Integration Responsibility IDs', 'Independent Boundary Evidence'))
   $dependencyRows = @(& $getRows $planText 'Dependency Graph' @('Work Item ID', 'Dependency Work Item ID', 'Relationship', 'Evidence'))
   $attemptRows = @(& $getRows $planText 'Attempt History' @('Attempt ID', 'Work Item ID', 'Plan Revision', 'Status', 'Artifact Reference'))
   $transitionRows = @(& $getRows $planText 'State Transition Log' @('Work Item ID', 'From State', 'To State', 'Evidence or Decision', 'Plan Revision'))
@@ -147,6 +185,109 @@ function Test-ScopeArtifacts([string]$Root, [string]$ContractText) {
     if (-not (& $placeholder $planOrder) -and $planOrder -notmatch '^[1-9][0-9]*$') { & $addError "master plan Plan Order must be a positive integer: $planOrder" }
     if (-not $planOrders.Add($planOrder)) { & $addError "master plan duplicate Plan Order: $planOrder" }
     foreach ($dependency in @($cells[3].Split(',') | ForEach-Object { $_.Trim() })) { if ($dependency -ne 'none' -and $dependency -notmatch '^WORK-[A-Z0-9]+-[A-Z0-9-]+$') { & $addError "master plan invalid dependency reference: $dependency" } }
+  }
+  $selectorWorkIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  $canonicalSelectorMode = ''
+  $canonicalSelectorDesignRevision = ''
+  foreach ($row in $selectorRows) {
+    $cells = $row.Cells
+    [void]$selectorWorkIds.Add($cells[0])
+    if (-not $workById.ContainsKey($cells[0])) { & $addError "master plan selector references unknown Work Item ID: $($cells[0])"; continue }
+    $workCells = $workById[$cells[0]].Cells
+    $expectedAdapter = if ($cells[1] -ceq 'none') { 'none' } else { "$($cells[1]):$($cells[2])" }
+    $adapterMatches = $workCells[7] -ceq $expectedAdapter -or ($cells[1] -ceq 'none' -and $workCells[7] -cmatch '^generic:[A-Za-z0-9][A-Za-z0-9._-]*$')
+    $resolvedApprovalPattern = '^approval:(?![^\r\n]*(?:PENDING|TBD|UNKNOWN|PLACEHOLDER))[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+    $selectorAuthorityValid = if ($cells[1] -ceq 'none') {
+      @($cells[2..6] | Where-Object { $_ -cne 'not-applicable' }).Count -eq 0
+    }
+    else {
+      $cells[1] -cin @('migration-unit', 'task', 'story', 'package', 'phase', 'milestone') -and
+      $cells[2] -cmatch '^[A-Za-z0-9][A-Za-z0-9:._/-]*$' -and
+      $cells[2] -notmatch '^(?:not-applicable|pending|unknown|placeholder|<[^>]+>)$' -and
+      $cells[3] -cmatch '^[A-Za-z0-9][A-Za-z0-9:._/-]*$' -and
+      $cells[3] -notmatch '^(?:not-applicable|pending|unknown|placeholder|<[^>]+>)$' -and
+      $cells[4] -cmatch '^[1-9][0-9]*$' -and
+      $cells[5] -cmatch $resolvedApprovalPattern -and
+      $cells[6] -cmatch '^(?:not-applicable|[A-Za-z0-9][A-Za-z0-9:._/-]*)$'
+    }
+    if (-not $selectorAuthorityValid -or -not $adapterMatches -or $workCells[5] -cne $cells[7] -or $workCells[6] -cne $cells[8]) { & $addError "master plan selector must match Work Item authority: $($cells[0])" }
+    $modeValid = (& $placeholder $cells[9]) -or $cells[9] -cin @('incremental/preserve-existing', 'greenfield/design-new')
+    $designRevisionValid = (& $placeholder $cells[10]) -or $cells[10] -ceq 'pending-step07' -or $cells[10] -cmatch '^DESIGN-[A-Z0-9]+(?:-[A-Z0-9]+)*@[1-9][0-9]*$'
+    $decompositionValid = (
+      $cells[11] -ceq 'not-applicable' -and $cells[12] -ceq 'not-applicable'
+    ) -or (
+      $cells[11] -cmatch '^WORK-[A-Z0-9]+-[A-Z0-9-]+$' -and
+      $cells[11] -cne $cells[0] -and
+      $workIds.Contains($cells[11]) -and
+      $cells[12] -cmatch '^DEC-[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+    ) -or ((& $placeholder $cells[11]) -and (& $placeholder $cells[12]))
+    if (-not (& $placeholder $cells[9])) {
+      if ($canonicalSelectorMode -ceq '') { $canonicalSelectorMode = $cells[9] }
+      elseif ($cells[9] -cne $canonicalSelectorMode) { $modeValid = $false }
+    }
+    if (-not (& $placeholder $cells[10])) {
+      if ($canonicalSelectorDesignRevision -ceq '') { $canonicalSelectorDesignRevision = $cells[10] }
+      elseif ($cells[10] -cne $canonicalSelectorDesignRevision) { $designRevisionValid = $false }
+    }
+    if (-not $modeValid -or -not $designRevisionValid -or -not $decompositionValid) {
+      & $addError "master plan selector immutable fields are invalid: $($cells[0])"
+    }
+  }
+  $selectorByWorkItem = [Collections.Generic.Dictionary[string, object]]::new([StringComparer]::Ordinal)
+  $selectorIndexByWorkItem = [Collections.Generic.Dictionary[string, int]]::new([StringComparer]::Ordinal)
+  $selectorIdentityOwners = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
+  for ($selectorIndex = 0; $selectorIndex -lt $selectorRows.Count; $selectorIndex++) {
+    $cells = $selectorRows[$selectorIndex].Cells
+    if (-not $selectorByWorkItem.ContainsKey($cells[0])) {
+      $selectorByWorkItem.Add($cells[0], $selectorRows[$selectorIndex])
+      $selectorIndexByWorkItem.Add($cells[0], $selectorIndex)
+    }
+    if ($cells[1] -cne 'none' -and -not (& $placeholder $cells[2])) {
+      if ($selectorIdentityOwners.ContainsKey($cells[2])) { & $addError "master plan selector identity must be unique: $($cells[2])" }
+      else { $selectorIdentityOwners.Add($cells[2], $cells[0]) }
+    }
+  }
+  foreach ($row in $selectorRows) {
+    $cells = $row.Cells
+    if ((& $placeholder $cells[0]) -or (& $placeholder $cells[11]) -or (& $placeholder $cells[12])) { continue }
+    if ($cells[11] -ceq 'not-applicable' -and $cells[12] -ceq 'not-applicable') {
+      if ($cells[6] -cne 'not-applicable') { & $addError "master plan Parent Selector must bind exact parent selector authority: $($cells[0])" }
+      continue
+    }
+    if (-not $selectorByWorkItem.ContainsKey($cells[11])) {
+      & $addError "master plan Parent Selector must bind exact parent selector authority: $($cells[0])"
+      continue
+    }
+    $parentCells = $selectorByWorkItem[$cells[11]].Cells
+    $expectedParentSelector = if ($cells[1] -ceq 'none' -or $parentCells[1] -ceq 'none') { 'not-applicable' } else { $parentCells[2] }
+    if ($cells[6] -cne $expectedParentSelector) { & $addError "master plan Parent Selector must bind exact parent selector authority: $($cells[0])" }
+    if ($selectorIndexByWorkItem[$cells[11]] -ge $selectorIndexByWorkItem[$cells[0]]) { & $addError "master plan Parent Selector parent must precede child: $($cells[0])" }
+  }
+  if ($selectorRows.Count -ne $workRows.Count -or $selectorWorkIds.Count -ne $selectorRows.Count -or -not $selectorWorkIds.SetEquals($workIds)) {
+    & $addError 'master plan Delivery Adapter Selection must contain exactly one row per Work Item'
+  }
+  $workItemOrder = @($workRows | ForEach-Object { $_.Cells[0] })
+  $selectorOrder = @($selectorRows | ForEach-Object { $_.Cells[0] })
+  if (($selectorOrder -join '|') -cne ($workItemOrder -join '|')) {
+    & $addError 'master plan Delivery Adapter Selection order must match Work Items order'
+  }
+  $ownerWorkIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+  foreach ($row in $ownerRows) {
+    $cells = $row.Cells
+    if (-not $ownerWorkIds.Add($cells[0])) { & $addError "master plan duplicate Responsibility Owner References Work Item ID: $($cells[0])" }
+    if (-not $selectorByWorkItem.ContainsKey($cells[0])) {
+      & $addError "master plan Responsibility Owner References references unknown Work Item ID: $($cells[0])"
+    }
+    elseif ($cells[1] -cne $selectorByWorkItem[$cells[0]].Cells[10]) {
+      & $addError "master plan Responsibility Owner References Design Revision must match selector: $($cells[0])"
+    }
+  }
+  if ($ownerRows.Count -ne $workRows.Count -or $ownerWorkIds.Count -ne $ownerRows.Count -or -not $ownerWorkIds.SetEquals($workIds)) {
+    & $addError 'master plan Responsibility Owner References must contain exactly one row per Work Item'
+  }
+  $ownerOrder = @($ownerRows | ForEach-Object { $_.Cells[0] })
+  if (($ownerOrder -join '|') -cne ($workItemOrder -join '|')) {
+    & $addError 'master plan Responsibility Owner References order must match Work Items order'
   }
   foreach ($row in $workRows) {
     foreach ($dependency in @($row.Cells[3].Split(',') | ForEach-Object { $_.Trim() })) {

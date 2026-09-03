@@ -23,6 +23,16 @@ Sửa kit rồi cài lại: xem `CONTRIBUTING.md` §9. Mỗi release phải bump
 6. Migration ends at Knowledge Capture after the mode-specific verification path.
 7. Gerrit, CCC, and Release are separate delivery skills invoked only by explicit calls after migration.
 
+## Scope orchestration linh động
+
+Migration dùng mô hình hai tầng. **Scope plane** resolve requested scope, duy trì `master-spec.md`/`master-plan.md`, dependency graph, revision, queue và terminal verdict; tầng này không sửa target source. **Execution plane** nhận đúng một approved work item (`max_concurrency: 1`), chạy một immutable attempt và trả terminal evidence; nó không được tự thêm item hoặc báo toàn bộ scope complete.
+
+`work_item` là khái niệm chung. Project không có unit vẫn chạy được bằng adapter `none`; project có canonical migration plan có thể gắn adapter `migration-unit`, nhưng selector phải resolve đúng approved row. Ví dụ unit: `WORK-ADMIN-LOCKS -> migration-unit:UNIT-ADM-002`. Ví dụ không dùng unit: `WORK-BILLING-EXPORT -> none`, với acceptance/trace riêng và không phát minh external ID.
+
+Resume đọc explicit latest approved linear master revisions, reconcile attempt `in-progress`, rồi chọn deterministic theo dependency depth, `Plan Order`, `Work Item ID`; không quét thư mục để đoán state. Thay scope/dependency/acceptance/selector/architecture tạo immutable revision mới và duyệt lại affected items. Attempt complete chỉ kết thúc một lần chạy; work-item complete chỉ kết thúc acceptance của item; `scope-complete` chỉ do master plan tính khi mọi required item terminal-success, graph hợp lệ, architecture/selector-schema `PASS`, không blocker và terminal scope report liệt kê đủ evidence.
+
+Historical unit-only runs phải qua compatibility conversion và approval mới trước mutation: tạo master spec/plan revision 1, một work item cho mỗi canonical legacy unit, giữ exact adapter/evidence hợp lệ và không suy module completion từ một unit.
+
 ## Tự động hóa và ngôn ngữ artifact
 
 - Profile mới mặc định `automation.mode: interactive` và `output.artifact_language: vi`; profile cũ thiếu hai field dùng fallback tương ứng `interactive` và `vi`. Vì vậy artifact migration được sinh mặc định tiếng Việt UTF-8, còn key/enums/ID/path/command/log và cột bảng machine-readable giữ nguyên.

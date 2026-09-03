@@ -63,6 +63,16 @@ Mỗi `Conforms = no` phải dùng canonical `DEV-*` và trỏ đúng một row 
 
 Hợp đồng đầu ra giữ `Approved Master Plan Evidence`, `Work Item Trace`, `Target Structure Conformance Matrix`, `Approved Structural Deviations`, `Planned File Tree`, và `Provider/Router/Localization/Subscription Boundaries`; complete chỉ khi approved-plan binding, coverage/boundary/path relation đầy đủ và mọi non-conforming row có approved decision.
 
+## Responsibility and verification ownership
+
+Read `aitoolkit/contracts/file-responsibility-conformance.md` as the sole authority for responsibility/verification columns, enums, sentinel semantics, and diagnostics; do not copy or redefine that contract here. Consume the approved discovery classification together with its exact authority and immutable evidence. A discovery agent's opinion is never design authority.
+
+Immediately after `Planned File Tree`, emit exactly one `File Responsibility Matrix` and exactly one `Verification Ownership Matrix` with the canonical 20/11 column order. The set of `(Planned Path, Planned Symbol)` tuples and the responsibility owner tuples must be exact and bidirectional. `Owner Symbol` is the primary public owner or module export; `Public Symbols` may list several feature-local public symbols, while private helpers do not get separate rows.
+
+Keep owned capability IDs separate from requirement, acceptance, mapping, and work-item trace IDs. Multiple traces for one capability are not an aggregate owner. A multi-capability owner needs an exact approved deviation and non-placeholder Tech Lead approval evidence. `Atomic Boundary ID` is only valid for an atomic owner. A shared foundation owns only its shared capability and cannot contain concrete registration, route, handler, or feature-specific effect.
+
+For incremental work, preferred exemplar authority uses the validated target exemplar; compatibility-only, legacy-debt, and no-equivalent structures require the canonical approved-deviation route. Legacy debt is never propagated as new native structure. For greenfield no-equivalent work, use approved greenfield design authority, not a fabricated deviation. Every non-test production responsibility has production-bound verification coverage in both directions. `not-applicable-approved` is a controlled verification disposition only for the canonical config/manifest/generated/schema/build route; it is forbidden for behavior, routing, lifecycle, external effects, destructive action, and production composition.
+
 ## Evidence and Unknowns
 
 Evidence must locate the profile decision, target observations, requirement/constraint sources, trace IDs, and approval identity/revision. Unknowns name missing evidence, owner, or decision and the downstream work it blocks.
@@ -70,11 +80,12 @@ Evidence must locate the profile decision, target observations, requirement/cons
 ## Hợp đồng đầu ra
 
 - File: `<RUN_DIR>/07-technical-design.md`.
-- Front matter: `step_id: 07-technical-design`, `status: draft`, `result: complete | blocked`, `produced_at`.
+- Front matter: `step_id: 07-technical-design`, `status: draft`, `result: complete | blocked`, `produced_at`, and canonical `revision: DESIGN-*@<positive integer>`.
 - Preserve the template sections `Architecture`, `Evidence`, `Unknowns`, and `Verdict`.
 - Preserve `Activation Slice` with the same ID, all seam rows, and trace IDs; add the resolved data flow, router policy, async lifecycle, and test-strategy evidence owned by this step.
+- Include the responsibility-contract v1 front-matter block and the two canonical ownership matrices immediately after `Planned File Tree`; a missing, mixed, or unsupported responsibility contract version blocks the design.
 - For a routed `result: blocked` artifact whose Activation Slice and immediate-predecessor handoff are otherwise valid, emit exactly one `Domain Blocker` table with non-placeholder `Blocker` and `Evidence Reference` values; omit that section for non-blocked output.
-- `complete` means the design is ready for approval, not that approval has occurred. Only the orchestrator may advance an explicitly approved revision.
+- `complete` means the design is ready for approval, not that approval has occurred. Only the orchestrator may advance an explicitly approved revision. The approved design artifact's bounded `revision` field is the sole authority plan-waves may cite; plan-local or master-plan revision is never a substitute.
 
 ## Quick reference
 

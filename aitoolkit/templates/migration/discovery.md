@@ -3,6 +3,9 @@ step_id: <orchestrator-provided>
 status: draft
 result: complete
 produced_at: <yyyy-mm-dd>
+responsibility_contract:
+  version: 1
+  applicability: required
 ---
 
 <!-- artifact_language: vi -->
@@ -22,18 +25,18 @@ produced_at: <yyyy-mm-dd>
 
 ## Comparable Target Exemplars
 
-Giữ exact set/cardinality tám concern canonical: không thiếu, duplicate hoặc invented concern. Mỗi row applicable cần path thật, toàn bộ symbol explicit đã inspect (không wildcard/`all`), pattern quan sát được, lý do comparability cụ thể và evidence chính xác. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`.
+Giữ exact set/cardinality tám concern canonical: không thiếu, duplicate hoặc invented concern. Mỗi row applicable cần path thật, toàn bộ symbol explicit đã inspect (không wildcard/`all`), pattern quan sát được, primary responsibility, owned capabilities, verification owner, lý do comparability cụ thể, evidence chính xác, inspection status và classification authority/evidence immutable. `unknown` làm artifact blocked; `no-equivalent` cần resolved row trong `No-equivalent Gaps`. Classification không phải self-attestation của agent: `preferred` cần repeated working evidence và không authoritative conflict; `compatibility-only` cần project-pack rule hoặc approved owner decision; `legacy-debt` cần project documentation, debt record hoặc Tech Lead-approved conflict; `no-equivalent` cần factual search/inspection evidence.
 
-| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
-|---|---|---|---|---|---|---|
-| module/container composition | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| main/child presentation boundaries | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| unit/component organization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| controller/provider/state pattern | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| routing and lifecycle | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| localization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| service/config subscription and normalization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
-| test harness and production-boundary tests | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> |
+| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| module/container composition | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| main/child presentation boundaries | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| unit/component organization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| controller/provider/state pattern | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| routing and lifecycle | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| localization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| service/config subscription and normalization | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
+| test harness and production-boundary tests | <đường dẫn target thật> | <symbols đã inspect đầy đủ> | <pattern đang hoạt động> | <primary reason-to-change> | <CAP-###> | <VERIFY-OWNER-###> | <lý do comparable> | <path:line hoặc evidence chính xác> | <verified / no-equivalent / unknown> | <preferred / compatibility-only / legacy-debt / no-equivalent> | <preferred/no-equivalent: factual-discovery-evidence; compatibility-only: project-pack-rule / approved-owner-decision; legacy-debt: project-documentation / debt-record / tech-lead-approved-conflict> | <tham chiếu immutable đúng với authority> |
 
 ## Inspected Symbols
 
@@ -59,7 +62,7 @@ Giữ exact columns và đúng thứ tự end-to-end dưới đây; output của
 
 ## No-equivalent Gaps
 
-Set gap rows phải khớp chính xác concern có `Status = no-equivalent`; dùng `resolved:DECISION-<ID>: <quyết định cụ thể>` và `approval:TECH-LEAD-<ID>`, không chứa placeholder semantic. Nếu không có gap thật, ghi đúng một sentinel `none` với các field còn lại là `not-applicable`.
+Set gap rows phải khớp chính xác concern có `Inspection Status = no-equivalent`; dùng `resolved:DECISION-<ID>: <quyết định cụ thể>` và `approval:TECH-LEAD-<ID>`, không chứa placeholder semantic. Nếu không có gap thật, ghi đúng một sentinel `none` với các field còn lại là `not-applicable`.
 
 | Concern | Gap Reference | Conflict Reference | Resolved Decision | Approval Reference |
 |---|---|---|---|---|

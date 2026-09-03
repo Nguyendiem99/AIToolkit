@@ -35,11 +35,14 @@ Determine parity policy from `verification.behavior_parity`.
 
 ## Migration-only handoff extension
 
-This skill runs for `workflow_type: migration`; feature and bugfix shared flows do not use this extension. Its immediate predecessor must contain exactly one `Selected Migration Unit` section.
+An executable step-13 artifact has the exact canonical front matter keys and lifecycle `status: approved`, `result: complete`, `approval_source: human`. Draft, blocked, automatic, duplicate-key, extra-key, or cross-run output is non-executable and cannot seed regression or Knowledge Base.
+
+This skill runs for `workflow_type: migration`; feature and bugfix shared flows do not use this extension. The immediate predecessor must preserve exact `Master Scope Context`, `Delivery Adapter Kind`, and `Delivery Adapter Mode Constraint`; copy both adapter fields ordinally. Require exactly one `Selected Migration Unit` only when `Delivery Adapter Kind` is `migration-unit`, and otherwise omit `Selected Migration Unit` without inventing `UNIT-*`.
 
 - Validate and copy `migration_unit_id`, plan reference, approval reference, mode constraint, `Bootstrap Scope`, Foundation Baseline ID, foundation baseline reference, foundation baseline approval reference, baseline reference, and trace IDs into the parity report.
 - The output keeps `result: complete | blocked`; missing, ambiguous, or mismatched handoff evidence yields `result: blocked` before parity execution.
 - Never reconstruct the selected unit or incremental baseline reference from cumulative artifacts.
+- Before matrix validation or parity execution, validate and copy exactly one `Architecture Responsibility Handoff` table from the immediate `verification-report.md` predecessor. Preserve the ordinally exact contract version, Tree Conformance, Responsibility Conformance, Verification Ownership, Architecture Conformance State, and Evidence References; derive the aggregate state from the three sub-verdicts. Do not reconstruct responsibility provenance from cumulative artifacts or directory scans. Missing, stale/cross-run, unsupported/mixed-version, mismatched evidence, or any `BLOCKED` sub-verdict yields `result: blocked` before parity execution. Runtime/`auto-waive` never changes the responsibility handoff.
 
 ## Procedure
 
@@ -57,12 +60,13 @@ Evidence identifies baseline provenance, exact inputs, environments, commands, r
 
 ## Hợp đồng đầu ra
 
-Preserve the validated `Task Provenance` lineage from the verification predecessor: task/unit ID, task-base SHA, and final-tree SHA remain ordinally exact, while `Source Artifact` resolves to that exact immediate verification artifact path. Missing, unrelated-source, or mismatched lineage yields `result: blocked`.
+Preserve the validated adapter-aware `Task Provenance` lineage from the verification predecessor: `Task / Unit` remains the selected Migration Unit ID for `migration-unit` or the current Work Item ID for a generic adapter; task-base SHA and final-tree SHA remain ordinally exact, while `Source Artifact` resolves to that exact immediate verification artifact path. Missing, unrelated-source, or mismatched lineage yields `result: blocked`.
 
 - File: `<RUN_DIR>/13-parity-report.md`.
 - Front matter: `step_id: 13-verify-parity`, `status: draft`, `result: complete | blocked`, `produced_at`.
 - Preserve `Activation Slice` from the verification predecessor with the identical slice set, Applicability, all nine rows, Source Reference evidence, and Trace IDs.
-- Preserve `Selected Migration Unit` with selector, plan/approval, bootstrap-scope, foundation-baseline ID/reference/approval, regression baseline, and trace references.
+- Preserve exact `Master Scope Context`, `Delivery Adapter Kind`, and `Delivery Adapter Mode Constraint`; preserve `Selected Migration Unit` with selector, plan/approval, bootstrap-scope, foundation-baseline ID/reference/approval, regression baseline, and trace references only when `Delivery Adapter Kind` is `migration-unit`, otherwise omit `Selected Migration Unit`.
+- Preserve exactly one `Architecture Responsibility Handoff` table from the immediate verification predecessor, including immutable evidence references.
 - Write exactly one structured `Parity Verdict` row with the canonical `Parity Verdict` and non-empty `Evidence Reference` fields defined by `aitoolkit/contracts/activation-slice.md`.
 - Preserve `Scenarios`, `Command / Evidence`, `Evidence`, and `Unknowns`.
 - The structured `Parity Verdict` row is the sole overall verdict surface. Its value is `pass | fail | blocked` and must agree with scenario evidence and front-matter result.

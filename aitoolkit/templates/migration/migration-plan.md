@@ -3,6 +3,9 @@ step_id: <orchestrator-provided>
 status: draft
 result: complete
 produced_at: <yyyy-mm-dd>
+responsibility_contract:
+  version: 1
+  applicability: required
 ---
 
 <!-- artifact_language: vi -->
@@ -17,6 +20,8 @@ produced_at: <yyyy-mm-dd>
 
 `Migration Unit ID` là canonical selector chỉ cho delivery adapter `migration-unit`, không phải generic work-item taxonomy. Generic master plan vẫn dùng `WORK-*` và không bắt buộc các field adapter của template này.
 
+Generic adapters still emit one `Work Item Adapter Trace` row to bind their `Work Item ID`, approved design revision, and responsibility owner references; set `Migration Unit ID = not-applicable` and do not invent a `UNIT-*` taxonomy for them.
+
 ## Work Item Adapter Trace
 
 Mỗi ordered migration unit phải resolve đúng một row trong bảng này; row thừa, thiếu hoặc trùng đều block selector.
@@ -30,6 +35,16 @@ Mỗi ordered migration unit phải resolve đúng một row trong bảng này; 
 | Foundation Baseline ID | Target Baseline Reference | Approval Reference | Approval Status | Evidence |
 |---|---|---|---|---|
 | <FOUNDATION-001> | <bản ghi target-baseline đã duyệt> | <tham chiếu duyệt> | <approved> | <bằng chứng revision/độ mới> |
+
+## Responsibility Owner References
+
+Use `aitoolkit/contracts/file-responsibility-conformance.md` as the sole authority for responsibility and verification ownership semantics. Every selected work item has exactly one row. `Design Revision` must exactly resolve the bounded `revision: DESIGN-*@<positive integer>` value of the approved technical-design artifact and match `Work Item Adapter Trace`. Preserve the exact ordered `RESP-*` set from that cited revision: concrete feature owners, shared foundations, and integration/composition owners remain in their respective columns. This table binds implementation scope; it does not redefine either responsibility matrix.
+
+`Independent Boundary Evidence` must cite the approved rationale that the selected owner set remains independently implementable, reviewable, verifiable, and revertible. Cross-work-item reuse, a foreign owner, a duplicate owner, stale design revision, or a shared foundation presented as a concrete feature owner blocks the plan.
+
+| Work Item ID | Design Revision | Responsibility IDs | Shared Foundation IDs | Integration Responsibility IDs | Independent Boundary Evidence |
+|---|---|---|---|---|---|
+| <WORK-SCOPE-NAME> | <approved design revision> | <ordered concrete RESP-* IDs> | <ordered shared-foundation RESP-* IDs or not-applicable> | <ordered integration/composition RESP-* IDs or not-applicable> | <immutable approval/rule evidence for independently implementable, reviewable, verifiable, and revertible boundary> |
 
 ## Activation Slice
 

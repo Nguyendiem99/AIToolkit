@@ -10,7 +10,11 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
   }
 
   Test-MarkdownTableExactColumns $ContractText 'Comparable Target Exemplars' `
-    @('Concern', 'Path', 'Inspected Symbols', 'Observed Pattern', 'Comparable Reason', 'Evidence', 'Status') `
+    @(
+      'Concern', 'Path', 'Inspected Symbols', 'Observed Pattern', 'Primary Responsibility',
+      'Owned Capabilities', 'Verification Owner', 'Comparable Reason', 'Evidence',
+      'Inspection Status', 'Classification', 'Classification Authority', 'Classification Evidence'
+    ) `
     'Target structure conformance contract'
   Test-MarkdownTableExactColumns $ContractText 'Target Structure Conformance Matrix' `
     @('Concern', 'Working Exemplar', 'Observed Target Pattern', 'Proposed Path/Symbol', 'Conforms', 'Deviation Reference') `
@@ -21,7 +25,8 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
 
   @(
     'service/config subscription and normalization',
-    'Exemplar status: `verified | no-equivalent | unknown`.',
+    '`Inspection Status` and `Classification` are independent.',
+    'no seven-column discovery adapter is executable in responsibility contract v1.',
     'A `Conforms = no` row requires a resolved conflict and Tech Lead approval in `Deviation Reference`.',
     'The structural pre-edit gate blocks before target edit and is not waiver-eligible.',
     'runtime_evidence_state: PASS | FAIL | NOT_RUN | WAIVED',
@@ -67,7 +72,7 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
     param([string]$Text, [string]$Heading)
     $body = & $getSection $Text $Heading
     if ($null -eq $body) { return $null }
-    $lines = @($body -split '\n')
+    $lines = @($body -split '\n' | ForEach-Object { $_.TrimEnd("`r") })
     $parseStrictTableLine = {
       param([string]$Line)
       $frameMatch = [regex]::Match($Line, '^\|(?<body>.*)\|[ \t]*$')
@@ -229,15 +234,440 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
   }
 
   $discoveryPath = Join-Path $Root '02-discovery.md'
+  $designPath = Join-Path $Root '07-technical-design.md'
+  $profilePath = Join-Path $Root 'docs/aitoolkit/project.yaml'
+  $approvedResponsibilityMode = ''
+  $hasTargetResponsibilityArtifacts = (Test-Path -LiteralPath $discoveryPath -PathType Leaf) -or (Test-Path -LiteralPath $designPath -PathType Leaf)
+  if ($hasTargetResponsibilityArtifacts -and -not (Test-Path -LiteralPath $profilePath -PathType Leaf)) {
+    $errors.Add('Missing approved migration mode authority')
+  }
+  elseif ($hasTargetResponsibilityArtifacts) {
+    $profileText = Get-Content -Raw -Encoding utf8 -LiteralPath $profilePath
+    $getYamlSection = {
+      param([string]$Text, [string]$Name)
+      $matches = @([regex]::Matches($Text, '(?ms)^' + [regex]::Escape($Name) + ':\s*\r?\n(?<body>.*?)(?=^[a-z_][a-z0-9_]*:|\z)'))
+      if ($matches.Count -ne 1) { return $null }
+      return $matches[0].Groups['body'].Value
+    }
+    $getTextRevision = {
+      param([string]$Text)
+      $bytes = ([Text.UTF8Encoding]::new($false)).GetBytes($Text.Replace("`r`n", "`n"))
+      $sha = [Security.Cryptography.SHA256]::Create()
+      try { return 'sha256:' + ([BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '')) }
+      finally { $sha.Dispose() }
+    }
+    $getTreeRevision = {
+      param([string]$Path)
+      $manifest = @(
+        Get-ChildItem -LiteralPath $Path -File -Recurse | Sort-Object { $_.FullName.Substring($Path.Length).Replace('\', '/') } | ForEach-Object {
+          $relative = $_.FullName.Substring($Path.Length).TrimStart('\', '/').Replace('\', '/')
+          $content = Get-Content -Raw -Encoding utf8 -LiteralPath $_.FullName
+          "$relative`n$($content.Replace("`r`n", "`n"))"
+        }
+      ) -join "`n"
+      return & $getTextRevision $manifest
+    }
+
+    $expectedTopLevelKeys = @(
+      'automation', 'base_branch', 'build_cmd', 'coverage_cmd', 'documents', 'legacy', 'lint_cmd',
+      'migration', 'output', 'project', 'project_pack', 'review_focus', 'schema_version', 'target',
+      'test_cmd', 'verification'
+    )
+    $legacyRequiredTopLevelKeys = @($expectedTopLevelKeys | Where-Object { $_ -cnotin @('automation', 'output') })
+    $topLevelKeys = @([regex]::Matches($profileText, '(?m)^(?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+    $profileSectionNames = @('project', 'migration', 'automation', 'output', 'legacy', 'target', 'documents', 'verification', 'project_pack')
+    $profileSections = @{}
+    foreach ($sectionName in $profileSectionNames) {
+      $sectionBody = & $getYamlSection $profileText $sectionName
+      $profileSections[$sectionName] = if ($null -eq $sectionBody) { '' } else { $sectionBody }
+    }
+    if ($topLevelKeys -cnotcontains 'automation') { $profileSections['automation'] = '  mode: interactive' }
+    if ($topLevelKeys -cnotcontains 'output') { $profileSections['output'] = '  artifact_language: vi' }
+    $migrationBody = $profileSections['migration']
+    $projectPackBody = $profileSections['project_pack']
+    $getSectionKeys = {
+      param([string]$Body)
+      if ($null -eq $Body) { return @() }
+      return @([regex]::Matches($Body, '(?m)^  (?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+    }
+    $sectionKeyShapes = [ordered]@{
+      project = 'id'
+      migration = 'architecture_policy|mode|unit'
+      automation = 'mode'
+      output = 'artifact_language'
+      legacy = 'framework|language|path'
+      target = 'framework|language|path'
+      documents = 'architecture|migration|requirements|uiux'
+      verification = 'behavior_parity|regression|visual_fidelity'
+      project_pack = 'path|review_evidence|reviewed_at'
+    }
+    $scalarTopLevelKeys = @('schema_version', 'base_branch', 'test_cmd', 'lint_cmd', 'build_cmd', 'coverage_cmd')
+    $canonicalProfileShapeValid = $true
+    $seenTopLevelKeys = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $currentProfileSection = ''
+    $reviewFocusUsesBlockList = $false
+    $reviewFocusItemCount = 0
+    foreach ($profileLine in @($profileText -split "`n" | ForEach-Object { $_.TrimEnd("`r") })) {
+      if ([string]::IsNullOrWhiteSpace($profileLine)) { continue }
+      if ($profileLine -cnotmatch '^[ \t]') {
+        $topLevelLine = [regex]::Match($profileLine, '^(?<key>[a-z_][a-z0-9_]*):(?<value>[^\r\n]*)$')
+        if (-not $topLevelLine.Success) {
+          $canonicalProfileShapeValid = $false
+          $currentProfileSection = ''
+          continue
+        }
+        $topLevelKey = $topLevelLine.Groups['key'].Value
+        $topLevelValue = $topLevelLine.Groups['value'].Value.Trim()
+        if ($expectedTopLevelKeys -cnotcontains $topLevelKey -or -not $seenTopLevelKeys.Add($topLevelKey)) {
+          $canonicalProfileShapeValid = $false
+        }
+        if ($profileSectionNames -ccontains $topLevelKey) {
+          if ($topLevelValue -cne '') { $canonicalProfileShapeValid = $false }
+          $currentProfileSection = $topLevelKey
+        }
+        elseif ($topLevelKey -ceq 'review_focus') {
+          if ($topLevelValue -ceq '') {
+            $reviewFocusUsesBlockList = $true
+            $currentProfileSection = 'review_focus'
+          }
+          elseif ($topLevelValue -ceq '[]') {
+            $currentProfileSection = ''
+          }
+          else {
+            $canonicalProfileShapeValid = $false
+            $currentProfileSection = ''
+          }
+        }
+        elseif ($scalarTopLevelKeys -ccontains $topLevelKey) {
+          if ($topLevelValue -ceq '' -or ($topLevelKey -ceq 'schema_version' -and $topLevelValue -cne '1')) {
+            $canonicalProfileShapeValid = $false
+          }
+          $currentProfileSection = ''
+        }
+        else {
+          $canonicalProfileShapeValid = $false
+          $currentProfileSection = ''
+        }
+        continue
+      }
+
+      if ($currentProfileSection -ceq '') {
+        $canonicalProfileShapeValid = $false
+        continue
+      }
+      if ($currentProfileSection -ceq 'review_focus') {
+        if ($profileLine -cmatch '^  - (?:(?:"[^"\r\n]+")|(?:''[^''\r\n]+'')|(?:[A-Za-z0-9][A-Za-z0-9 ._/-]*))$') {
+          $reviewFocusItemCount++
+        }
+        else {
+          $canonicalProfileShapeValid = $false
+        }
+        continue
+      }
+      if ($currentProfileSection -ceq 'documents') {
+        if (
+          $profileLine -cnotmatch '^  (?:requirements|uiux|migration|architecture):(?: \[\])?$' -and
+          $profileLine -cnotmatch '^    - path: [^\r\n]+$' -and
+          $profileLine -cnotmatch '^      (?:input_source|format|readability|evidence_id): [^\r\n]+$'
+        ) { $canonicalProfileShapeValid = $false }
+        continue
+      }
+      $allowedNestedKeys = @($sectionKeyShapes[$currentProfileSection] -split '\|')
+      $nestedLine = [regex]::Match($profileLine, '^  (?<key>[a-z_][a-z0-9_]*):[ \t]*(?<value>[^\r\n]+)[ \t]*$')
+      if (-not $nestedLine.Success -or $allowedNestedKeys -cnotcontains $nestedLine.Groups['key'].Value) {
+        $canonicalProfileShapeValid = $false
+      }
+    }
+    if ($reviewFocusUsesBlockList -and $reviewFocusItemCount -eq 0) { $canonicalProfileShapeValid = $false }
+    foreach ($requiredTopLevelKey in $legacyRequiredTopLevelKeys) {
+      if (-not $seenTopLevelKeys.Contains($requiredTopLevelKey)) { $canonicalProfileShapeValid = $false }
+    }
+    $authorityInvalid = (
+      -not $canonicalProfileShapeValid -or
+      @([regex]::Matches($profileText, '(?m)^schema_version:[ \t]*1[ \t]*\r?$')).Count -ne 1 -or
+      @($topLevelKeys | Where-Object { $expectedTopLevelKeys -cnotcontains $_ }).Count -ne 0 -or
+      @($legacyRequiredTopLevelKeys | Where-Object { $topLevelKeys -cnotcontains $_ }).Count -ne 0 -or
+      @([regex]::Matches($profileText, '(?m)^(?:mode|migration_mode|architecture_policy):')).Count -ne 0 -or
+      @([regex]::Matches($profileText, '(?m)^base_branch:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+      @([regex]::Matches($profileText, '(?m)^test_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+      @([regex]::Matches($profileText, '(?m)^lint_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+      @([regex]::Matches($profileText, '(?m)^build_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+      @([regex]::Matches($profileText, '(?m)^coverage_cmd:[ \t]*[^\r\n]+[ \t]*\r?$')).Count -ne 1 -or
+      @([regex]::Matches($profileText, '(?m)^review_focus:[ \t]*(?:\[\])?[ \t]*\r?$')).Count -ne 1
+    )
+    foreach ($sectionName in $sectionKeyShapes.Keys) {
+      $sectionKeys = @(& $getSectionKeys $profileSections[$sectionName])
+      $sectionLines = @($profileSections[$sectionName] -split '\r?\n' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+      if (
+        $null -eq $profileSections[$sectionName] -or
+        ($sectionKeys -join '|') -cne $sectionKeyShapes[$sectionName] -or
+        (
+          $sectionName -cne 'documents' -and
+          (
+            $sectionLines.Count -ne $sectionKeys.Count -or
+            @($sectionLines | Where-Object { $_ -cnotmatch '^  [a-z_][a-z0-9_]*:\s*[^\r\n]*$' }).Count -ne 0
+          )
+        )
+      ) {
+        $authorityInvalid = $true
+      }
+    }
+
+    $projectIdMatches = @([regex]::Matches($profileSections['project'], '(?m)^  id:\s*(?<value>[A-Za-z0-9][A-Za-z0-9._-]*)\s*$'))
+    $automationMatches = @([regex]::Matches($profileSections['automation'], '(?m)^  mode:\s*(?:interactive|auto|auto-waive)\s*$'))
+    $outputMatches = @([regex]::Matches($profileSections['output'], '(?m)^  artifact_language:\s*vi\s*$'))
+    $legacyPathMatches = @([regex]::Matches($profileSections['legacy'], '(?m)^  path:\s*(?<value>null|[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)\s*$'))
+    $targetPathMatches = @([regex]::Matches($profileSections['target'], '(?m)^  path:\s*(?<value>null|[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)\s*$'))
+    $legacyLanguageMatches = @([regex]::Matches($profileSections['legacy'], '(?m)^  language:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
+    $legacyFrameworkMatches = @([regex]::Matches($profileSections['legacy'], '(?m)^  framework:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
+    $targetLanguageMatches = @([regex]::Matches($profileSections['target'], '(?m)^  language:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
+    $targetFrameworkMatches = @([regex]::Matches($profileSections['target'], '(?m)^  framework:\s*[A-Za-z0-9][A-Za-z0-9+._-]*\s*$'))
+    $isCanonicalRelativePath = {
+      param([string]$Value)
+      return $Value -cmatch '^[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*$' -and
+        @($Value.Split('/') | Where-Object { $_ -cin @('.', '..') }).Count -eq 0
+    }
+    $legacyPathValid = $legacyPathMatches.Count -eq 1 -and (
+      $legacyPathMatches[0].Groups['value'].Value -ceq 'null' -or
+      (& $isCanonicalRelativePath $legacyPathMatches[0].Groups['value'].Value)
+    )
+    $targetPathValid = $targetPathMatches.Count -eq 1 -and (
+      $targetPathMatches[0].Groups['value'].Value -ceq 'null' -or
+      (& $isCanonicalRelativePath $targetPathMatches[0].Groups['value'].Value)
+    )
+    $verificationValid = (
+      @([regex]::Matches($profileSections['verification'], '(?m)^  behavior_parity:\s*(?:required|optional)\s*$')).Count -eq 1 -and
+      @([regex]::Matches($profileSections['verification'], '(?m)^  regression:\s*(?:required|optional)\s*$')).Count -eq 1 -and
+      @([regex]::Matches($profileSections['verification'], '(?m)^  visual_fidelity:\s*(?:required|optional)\s*$')).Count -eq 1
+    )
+    if (
+      $projectIdMatches.Count -ne 1 -or $automationMatches.Count -ne 1 -or $outputMatches.Count -ne 1 -or
+      -not $legacyPathValid -or -not $targetPathValid -or
+      $legacyLanguageMatches.Count -ne 1 -or $legacyFrameworkMatches.Count -ne 1 -or
+      $targetLanguageMatches.Count -ne 1 -or $targetFrameworkMatches.Count -ne 1 -or -not $verificationValid
+    ) { $authorityInvalid = $true }
+
+    $documentEntries = [Collections.Generic.List[object]]::new()
+    $documentEvidenceIds = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    $documentCategoryNames = @('requirements', 'uiux', 'migration', 'architecture')
+    foreach ($categoryName in $documentCategoryNames) {
+      $categoryMatch = [regex]::Match(
+        $profileSections['documents'],
+        '(?ms)^  ' + [regex]::Escape($categoryName) + ':(?<value>[^\r\n]*)\r?\n(?<body>.*?)(?=^  (?:requirements|uiux|migration|architecture):|\z)'
+      )
+      if (-not $categoryMatch.Success) { $authorityInvalid = $true; continue }
+      $categoryValue = $categoryMatch.Groups['value'].Value.Trim()
+      $categoryBody = $categoryMatch.Groups['body'].Value
+      if ($categoryValue -ceq '[]') {
+        if (-not [string]::IsNullOrWhiteSpace($categoryBody)) { $authorityInvalid = $true }
+        continue
+      }
+      if ($categoryValue -cne '') { $authorityInvalid = $true; continue }
+      $entryMatches = @([regex]::Matches(
+        $categoryBody,
+        '(?ms)^    - path:\s*(?<path>[^\r\n]+)\r?\n      input_source:\s*(?<input>explicit|inbox)\s*\r?\n      format:\s*(?<format>[A-Za-z0-9][A-Za-z0-9._+-]*)\s*\r?\n      readability:\s*(?<readability>readable)\s*\r?\n      evidence_id:\s*(?<evidence>[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+)\s*(?:\r?\n|\z)'
+      ))
+      $consumed = ($entryMatches | ForEach-Object { $_.Value }) -join ''
+      if ($entryMatches.Count -eq 0 -or $consumed.Trim() -cne $categoryBody.Trim()) { $authorityInvalid = $true; continue }
+      foreach ($entryMatch in $entryMatches) {
+        $entryPath = $entryMatch.Groups['path'].Value.Trim()
+        $evidenceId = $entryMatch.Groups['evidence'].Value
+        if (-not (& $isCanonicalRelativePath $entryPath) -or -not $documentEvidenceIds.Add($evidenceId)) {
+          $authorityInvalid = $true
+        }
+        $documentEntries.Add([pscustomobject]@{
+          Category = $categoryName
+          Path = $entryPath
+          InputSource = $entryMatch.Groups['input'].Value
+          Format = $entryMatch.Groups['format'].Value
+          Readability = $entryMatch.Groups['readability'].Value
+          EvidenceId = $evidenceId
+        })
+      }
+    }
+    $modeMatches = @()
+    $policyMatches = @()
+    if (-not $authorityInvalid) {
+      $modeMatches = @([regex]::Matches($migrationBody, '(?m)^  mode:\s*(?<value>greenfield|incremental)\s*$'))
+      $unitMatches = @([regex]::Matches($migrationBody, '(?m)^  unit:\s*feature\s*$'))
+      $policyMatches = @([regex]::Matches($migrationBody, '(?m)^  architecture_policy:\s*(?<value>design-new|preserve-existing)\s*$'))
+      $reviewedAtMatches = @([regex]::Matches($projectPackBody, '(?m)^  reviewed_at:\s*(?<value>[^\r\n]+?)\s*$'))
+      $reviewEvidenceMatches = @([regex]::Matches($projectPackBody, '(?m)^  review_evidence:\s*(?<value>[^\r\n]+?)\s*$'))
+      $packPathMatches = @([regex]::Matches($projectPackBody, '(?m)^  path:\s*(?<value>docs/aitoolkit/[A-Za-z0-9_.\-/]+)\s*$'))
+      $authorityInvalid = (
+        $modeMatches.Count -ne 1 -or $unitMatches.Count -ne 1 -or $policyMatches.Count -ne 1 -or
+        $reviewedAtMatches.Count -ne 1 -or $reviewEvidenceMatches.Count -ne 1 -or $packPathMatches.Count -ne 1
+      )
+    }
+    if ($authorityInvalid) {
+      $errors.Add('Invalid approved migration mode authority')
+    }
+    else {
+      $approvedResponsibilityMode = $modeMatches[0].Groups['value'].Value
+      $expectedPolicy = if ($approvedResponsibilityMode -ceq 'greenfield') { 'design-new' } else { 'preserve-existing' }
+      if ($policyMatches[0].Groups['value'].Value -cne $expectedPolicy) {
+        $errors.Add('Approved migration mode authority is internally inconsistent')
+        $approvedResponsibilityMode = ''
+      }
+
+      $reviewedAt = $reviewedAtMatches[0].Groups['value'].Value.Trim()
+      $reviewEvidence = $reviewEvidenceMatches[0].Groups['value'].Value.Trim().Replace('/', [IO.Path]::DirectorySeparatorChar)
+      $packRelativePath = $packPathMatches[0].Groups['value'].Value.Trim().Replace('/', [IO.Path]::DirectorySeparatorChar)
+      $reviewTimestamp = [DateTimeOffset]::MinValue
+      $reviewTimestampValid = $reviewedAt -cmatch '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$' -and [DateTimeOffset]::TryParse($reviewedAt, [ref]$reviewTimestamp)
+      $reviewPath = [IO.Path]::GetFullPath((Join-Path $Root $reviewEvidence))
+      $packPath = [IO.Path]::GetFullPath((Join-Path $Root $packRelativePath))
+      $rootPrefix = [IO.Path]::GetFullPath($Root).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+      if (
+        -not $reviewTimestampValid -or -not $reviewPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        -not $packPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or
+        -not (Test-Path -LiteralPath $reviewPath -PathType Leaf) -or -not (Test-Path -LiteralPath $packPath -PathType Container)
+      ) {
+        $errors.Add('Missing approved migration mode authority')
+        $approvedResponsibilityMode = ''
+      }
+      else {
+        $reviewText = Get-Content -Raw -Encoding utf8 -LiteralPath $reviewPath
+        $frontMatterMatch = [regex]::Match($reviewText, '\A---\s*\r?\n(?<body>.*?)\r?\n---(?:\r?\n|\z)', [Text.RegularExpressions.RegexOptions]::Singleline)
+        $reviewFrontMatter = if ($frontMatterMatch.Success) { $frontMatterMatch.Groups['body'].Value } else { '' }
+        $reviewKeys = @([regex]::Matches($reviewFrontMatter, '(?m)^(?<key>[a-z_][a-z0-9_]*):') | ForEach-Object { $_.Groups['key'].Value } | Sort-Object)
+        $freshnessTable = & $getStrictTable $reviewText 'Độ mới của review'
+        $reviewApproved = (
+          ($reviewKeys -join '|') -ceq 'approval_source|produced_at|result|status|step_id' -and
+          @([regex]::Matches($reviewFrontMatter, '(?m)^step_id:\s*04-project-pack-review\s*$')).Count -eq 1 -and
+          @([regex]::Matches($reviewFrontMatter, '(?m)^status:\s*approved\s*$')).Count -eq 1 -and
+          @([regex]::Matches($reviewFrontMatter, '(?m)^result:\s*complete\s*$')).Count -eq 1 -and
+          @([regex]::Matches($reviewFrontMatter, '(?m)^approval_source:\s*human\s*$')).Count -eq 1 -and
+          $null -ne $freshnessTable -and
+          ($freshnessTable.Columns -join '|') -ceq 'Reviewed At|Profile Revision|Pack Revision|Source/Target/Document Revisions|Approval Evidence' -and
+          $freshnessTable.Rows.Count -eq 1
+        )
+        if (-not $reviewApproved) {
+          $errors.Add('Missing approved migration mode authority')
+          $approvedResponsibilityMode = ''
+        }
+        else {
+          $freshness = $freshnessTable.Rows[0]
+          $profileForRevision = [regex]::Replace($profileText, '(?m)^  reviewed_at:\s*[^\r\n]+\s*$', '  reviewed_at: <review-metadata>')
+          $profileForRevision = [regex]::Replace($profileForRevision, '(?m)^  review_evidence:\s*[^\r\n]+\s*$', '  review_evidence: <review-metadata>')
+          $expectedProfileRevision = & $getTextRevision $profileForRevision
+          $expectedPackRevision = & $getTreeRevision $packPath
+          $citationSpecs = [Collections.Generic.List[object]]::new()
+          $legacyPathValue = $legacyPathMatches[0].Groups['value'].Value
+          $targetPathValue = $targetPathMatches[0].Groups['value'].Value
+          if ($legacyPathValue -cne 'null') { $citationSpecs.Add([pscustomobject]@{ Kind = 'legacy'; Path = $legacyPathValue; EvidenceId = '' }) }
+          if ($targetPathValue -cne 'null') { $citationSpecs.Add([pscustomobject]@{ Kind = 'target'; Path = $targetPathValue; EvidenceId = '' }) }
+          foreach ($entry in $documentEntries) { $citationSpecs.Add([pscustomobject]@{ Kind = 'document'; Path = $entry.Path; EvidenceId = $entry.EvidenceId }) }
+
+          $citationRevisionParts = [Collections.Generic.List[string]]::new()
+          $citationRevisionsValid = $true
+          foreach ($citation in $citationSpecs) {
+            $citationFullPath = [IO.Path]::GetFullPath((Join-Path $Root $citation.Path.Replace('/', [IO.Path]::DirectorySeparatorChar)))
+            if (-not $citationFullPath.StartsWith($rootPrefix, [StringComparison]::OrdinalIgnoreCase) -or -not (Test-Path -LiteralPath $citationFullPath)) {
+              $citationRevisionsValid = $false
+              continue
+            }
+            $citationRevision = if (Test-Path -LiteralPath $citationFullPath -PathType Container) {
+              & $getTreeRevision $citationFullPath
+            }
+            elseif (Test-Path -LiteralPath $citationFullPath -PathType Leaf) {
+              & $getTextRevision (Get-Content -Raw -Encoding utf8 -LiteralPath $citationFullPath)
+            }
+            else {
+              $citationRevisionsValid = $false
+              ''
+            }
+            if ([string]::IsNullOrWhiteSpace($citationRevision)) { continue }
+            $citationLabel = if ($citation.Kind -ceq 'document') {
+              "document:$($citation.EvidenceId):$($citation.Path)@$citationRevision"
+            }
+            else {
+              "$($citation.Kind):$($citation.Path)@$citationRevision"
+            }
+            $citationRevisionParts.Add($citationLabel)
+          }
+          $expectedCitationRevisions = if ($citationRevisionParts.Count -eq 0) { 'not-applicable' } else { $citationRevisionParts -join '; ' }
+
+          $documentEvidenceValid = $true
+          if ($documentEntries.Count -gt 0) {
+            $documentEvidenceTable = & $getStrictTable $reviewText 'Bằng chứng tài liệu profile'
+            $documentEvidenceValid = (
+              $null -ne $documentEvidenceTable -and
+              ($documentEvidenceTable.Columns -join '|') -ceq 'Category|Canonical Path|Input Source|Format|Readability|Evidence ID' -and
+              $documentEvidenceTable.Rows.Count -eq $documentEntries.Count
+            )
+            if ($documentEvidenceValid) {
+              foreach ($entry in $documentEntries) {
+                $matches = @($documentEvidenceTable.Rows | Where-Object {
+                  $_.Category -ceq $entry.Category -and $_.'Canonical Path' -ceq $entry.Path -and
+                  $_.'Input Source' -ceq $entry.InputSource -and $_.Format -ceq $entry.Format -and
+                  $_.Readability -ceq $entry.Readability -and $_.'Evidence ID' -ceq $entry.EvidenceId
+                })
+                if ($matches.Count -ne 1) { $documentEvidenceValid = $false; break }
+              }
+            }
+          }
+          if (
+            $freshness.'Reviewed At' -cne $reviewedAt -or
+            $freshness.'Profile Revision' -cne $expectedProfileRevision -or
+            $freshness.'Pack Revision' -cne $expectedPackRevision -or
+            -not $citationRevisionsValid -or -not $documentEvidenceValid -or
+            $freshness.'Source/Target/Document Revisions' -cne $expectedCitationRevisions -or
+            $freshness.'Approval Evidence' -cnotmatch '^approval:TECH-LEAD-(?![^\r\n]*(?:PENDING|TBD|UNKNOWN|PLACEHOLDER))[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+          ) {
+            $errors.Add('Stale approved migration mode authority')
+            $approvedResponsibilityMode = ''
+          }
+        }
+      }
+    }
+  }
+  if (Test-Path -LiteralPath $designPath -PathType Leaf) {
+    $modeAuthorityText = Get-Content -Raw -Encoding utf8 -LiteralPath $designPath
+    $modeAuthorityTable = & $getTable $modeAuthorityText 'Architecture'
+    if ($null -ne $modeAuthorityTable -and ($modeAuthorityTable.Columns -join '|') -ceq 'Mode / Policy|Target Conformance / New Architecture|Trace IDs|Decision') {
+      $modeRows = @($modeAuthorityTable.Rows | Where-Object { $_.'Mode / Policy' -cmatch '^(?:greenfield|greenfield\s*/\s*design-new|incremental|incremental\s*/\s*preserve-existing)$' })
+      if ($modeRows.Count -ne 1) {
+        $errors.Add('Technical design Architecture mode policy must resolve exactly one canonical mode')
+      }
+      else {
+        $designMode = if ($modeRows[0].'Mode / Policy' -cmatch '^(?:greenfield|greenfield\s*/\s*design-new)$') { 'greenfield' } else { 'incremental' }
+        if ($approvedResponsibilityMode -ne '' -and $designMode -cne $approvedResponsibilityMode) {
+          $errors.Add('Technical design Architecture mode policy must match approved project mode')
+        }
+      }
+    }
+  }
   if (Test-Path -LiteralPath $discoveryPath -PathType Leaf) {
     $discoveryText = Get-Content -Raw -Encoding utf8 -LiteralPath $discoveryPath
+    $responsibilityContractPath = Join-Path $PSScriptRoot '../../contracts/file-responsibility-conformance.md'
+    if (-not (Test-Path -LiteralPath $responsibilityContractPath -PathType Leaf)) {
+      $errors.Add('Missing responsibility conformance contract resource')
+    }
+    else {
+      $responsibilityContractText = Get-Content -Raw -Encoding utf8 -LiteralPath $responsibilityContractPath
+      $responsibilityDiagnostics = @(& {
+        . (Join-Path $PSScriptRoot 'responsibility-conformance.validation.ps1')
+        if ($approvedResponsibilityMode -ne '') {
+          Test-ResponsibilityDiscovery -DiscoveryText $discoveryText -Mode $approvedResponsibilityMode -ContractText $responsibilityContractText
+        }
+      })
+      $responsibilityDiagnostics | ForEach-Object {
+        $errors.Add($_)
+      }
+    }
     $discoveryTable = & $getTable $discoveryText 'Comparable Target Exemplars'
     if ($null -eq $discoveryTable) {
       $errors.Add('Discovery missing Comparable Target Exemplars')
     }
     else {
-      if (($discoveryTable.Columns -join '|') -cne ($contractExemplarTable.Columns -join '|')) {
-        $errors.Add("Discovery Comparable Target Exemplars table columns must be exactly: $($contractExemplarTable.Columns -join ' | ')")
+      $discoveryExemplarColumns = @(
+        'Concern', 'Path', 'Inspected Symbols', 'Observed Pattern', 'Primary Responsibility',
+        'Owned Capabilities', 'Verification Owner', 'Comparable Reason', 'Evidence',
+        'Inspection Status', 'Classification', 'Classification Authority', 'Classification Evidence'
+      )
+      if (($discoveryTable.Columns -join '|') -cne ($discoveryExemplarColumns -join '|')) {
+        $errors.Add("Discovery Comparable Target Exemplars table columns must be exactly: $($discoveryExemplarColumns -join ' | ')")
       }
       if ($discoveryTable.Rows.Count -ne $canonicalConcerns.Count) {
         $errors.Add("Discovery concern cardinality must equal canonical eight; found $($discoveryTable.Rows.Count)")
@@ -261,6 +691,21 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
             $errors.Add("Discovery $concern $requiredColumn must not be blank")
           }
         }
+        $capabilityTokens = @(
+          $row.'Owned Capabilities'.Split([char[]]@(',', ';')) |
+            ForEach-Object { $_.Trim() } |
+            Where-Object { $_ -ne '' }
+        )
+        if (
+          (& $isMissingValue $row.'Primary Responsibility') -or
+          $capabilityTokens.Count -eq 0 -or
+          @($capabilityTokens | Where-Object { $_ -cnotmatch '^CAP-[A-Z0-9]+(?:-[A-Z0-9]+)*$' }).Count -gt 0 -or
+          @($capabilityTokens | Sort-Object -Unique).Count -ne $capabilityTokens.Count -or
+          (& $isMissingValue $row.'Verification Owner') -or
+          $row.'Verification Owner' -cnotmatch '^VERIFY-OWNER-[A-Z0-9]+(?:-[A-Z0-9]+)*$'
+        ) {
+          $errors.Add("Discovery $concern responsibility fields must include primary responsibility, canonical CAP-* list, and VERIFY-OWNER-*")
+        }
         if (& $isMissingValue $row.'Inspected Symbols') {
           $errors.Add("Discovery $concern Inspected Symbols must not be blank")
         }
@@ -281,15 +726,15 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
         if ($row.'Comparable Reason' -match '^(?i:not comparable|non-comparable|generic|same technology|uses?\s+\S+)$') {
           $errors.Add("Discovery $concern Comparable Reason must explain comparability")
         }
-        if ($row.Status -ceq 'unknown') {
+        if ($row.'Inspection Status' -ceq 'unknown') {
           $errors.Add("Discovery $concern unknown status blocks discovery")
         }
-        elseif ($row.Status -cnotin @('verified', 'no-equivalent')) {
-          $errors.Add("Discovery $concern has invalid exemplar status: $($row.Status)")
+        elseif ($row.'Inspection Status' -cnotin @('verified', 'no-equivalent')) {
+          $errors.Add("Discovery $concern has invalid exemplar status: $($row.'Inspection Status')")
         }
       }
 
-      $noEquivalentRows = @($discoveryTable.Rows | Where-Object { $_.Status -ceq 'no-equivalent' })
+      $noEquivalentRows = @($discoveryTable.Rows | Where-Object { $_.'Inspection Status' -ceq 'no-equivalent' })
       if ($noEquivalentRows.Count -gt 0) {
         $gapTable = & $getTable $discoveryText 'No-equivalent Gaps'
         $gapColumns = @('Concern', 'Gap Reference', 'Conflict Reference', 'Resolved Decision', 'Approval Reference')
@@ -410,7 +855,7 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
       $errors.Add("Discovery No-equivalent Gaps table columns must be exactly: $($gapColumns -join ' | ')")
     }
     else {
-      $noEquivalentConcerns = @($discoveryTable.Rows | Where-Object { $_.Status -ceq 'no-equivalent' } | ForEach-Object { $_.Concern })
+      $noEquivalentConcerns = @($discoveryTable.Rows | Where-Object { $_.'Inspection Status' -ceq 'no-equivalent' } | ForEach-Object { $_.Concern })
       $realGapRows = @($gapTable.Rows | Where-Object { $_.Concern -cne 'none' })
       $sentinelRows = @($gapTable.Rows | Where-Object { $_.Concern -ceq 'none' })
       $gapConcernSet = @($realGapRows | ForEach-Object { $_.Concern } | Sort-Object)
@@ -1025,6 +1470,29 @@ function Test-TargetConformance([string]$Root, [string]$ContractText) {
           if (& $isMissingValue $boundaryRows[0].$column) {
             $errors.Add("Technical design $requiredBoundary boundary $column must not be blank")
           }
+        }
+      }
+    }
+
+    if ($errors.Count -eq 0) {
+      $responsibilityContractPath = Join-Path $PSScriptRoot '../../contracts/file-responsibility-conformance.md'
+      if (-not (Test-Path -LiteralPath $responsibilityContractPath -PathType Leaf)) {
+        $errors.Add('Missing responsibility conformance contract resource')
+      }
+      else {
+        $responsibilityContractText = Get-Content -Raw -Encoding utf8 -LiteralPath $responsibilityContractPath
+        $designDiscoveryText = if (Test-Path -LiteralPath $discoveryPath -PathType Leaf) {
+          Get-Content -Raw -Encoding utf8 -LiteralPath $discoveryPath
+        }
+        else { '' }
+        $responsibilityDiagnostics = @(& {
+          . (Join-Path $PSScriptRoot 'responsibility-conformance.validation.ps1')
+          if ($approvedResponsibilityMode -ne '') {
+            Test-ResponsibilityDesign -DiscoveryText $designDiscoveryText -DesignText $designText -Mode $approvedResponsibilityMode -ContractText $responsibilityContractText
+          }
+        })
+        $responsibilityDiagnostics | ForEach-Object {
+          $errors.Add($_)
         }
       }
     }

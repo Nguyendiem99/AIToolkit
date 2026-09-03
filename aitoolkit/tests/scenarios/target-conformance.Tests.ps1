@@ -5,6 +5,27 @@ $contractPath = Join-Path $toolkitRoot 'contracts/target-structure-conformance.m
 $scopeContractPath = Join-Path $toolkitRoot 'contracts/migration-scope-orchestration.md'
 $validatorPath = Join-Path $toolkitRoot 'tests/validation/target-conformance.validation.ps1'
 $contractText = Get-Content -Raw -Encoding utf8 -LiteralPath $contractPath
+
+function Get-CanonicalDiscoveryContract([string]$Text) {
+  $canonicalHeader = '| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |'
+  if ($Text.Contains($canonicalHeader)) { return $Text }
+  $legacyHeader = '| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |'
+  $legacyRow = '| applicable structural concern | real target path | fully inspected symbols | observed working pattern | why the exemplar is comparable | exact evidence reference | exemplar status |'
+  $canonicalRow = '| applicable structural concern | real target path | fully inspected symbols | observed working pattern | concrete reason-to-change | CAP-EXAMPLE | VERIFY-OWNER-EXAMPLE | why the exemplar is comparable | exact evidence reference | verified | preferred | factual-discovery-evidence | working-evidence:target/example.dart#Example |'
+  $updated = $Text.Replace($legacyHeader, $canonicalHeader).Replace($legacyRow, $canonicalRow)
+  if ($updated -ceq $Text) { throw 'Canonical discovery contract fixture replacement was a silent no-op' }
+  return $updated.Replace('Exemplar status: `verified | no-equivalent | unknown`.', 'Inspection Status: `verified | no-equivalent | unknown`. Classification: `preferred | compatibility-only | legacy-debt | no-equivalent`.')
+}
+
+function Get-LegacySevenColumnDiscoveryContract([string]$Text) {
+  $canonicalHeader = '| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |'
+  $canonicalRow = '| applicable structural concern | real target path | fully inspected symbols | observed working pattern | concrete reason-to-change | CAP-EXAMPLE | VERIFY-OWNER-EXAMPLE | why the exemplar is comparable | exact evidence reference | verified | preferred | factual-discovery-evidence | working-evidence:target/example.dart#Example |'
+  $legacyHeader = '| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |'
+  $legacyRow = '| applicable structural concern | real target path | fully inspected symbols | observed working pattern | why the exemplar is comparable | exact evidence reference | exemplar status |'
+  $updated = $Text.Replace($canonicalHeader, $legacyHeader).Replace($canonicalRow, $legacyRow)
+  if ($updated -ceq $Text) { throw 'Legacy discovery contract fixture replacement was a silent no-op' }
+  return $updated
+}
 $scopeContractText = Get-Content -Raw -Encoding utf8 -LiteralPath $scopeContractPath
 
 function Require-Token([string]$Text, [string]$Token, [string]$Context) {
@@ -40,6 +61,10 @@ function Test-MarkdownTableExactColumns {
 }
 
 . $validatorPath
+$validatorSource = Get-Content -Raw -Encoding utf8 -LiteralPath $validatorPath
+if ($validatorSource -match 'Test-ResponsibilityDiscovery[^\r\n]+-Mode\s+incremental') {
+  throw 'Target conformance must not hard-code incremental responsibility discovery mode'
+}
 
 $concerns = @(
   'module/container composition',
@@ -52,11 +77,148 @@ $concerns = @(
   'test harness and production-boundary tests'
 )
 
+function Get-AuthorityTextRevision([string]$Text) {
+  $bytes = ([Text.UTF8Encoding]::new($false)).GetBytes($Text.Replace("`r`n", "`n"))
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { return 'sha256:' + ([BitConverter]::ToString($sha.ComputeHash($bytes)).Replace('-', '')) }
+  finally { $sha.Dispose() }
+}
+
+function Get-AuthorityTreeRevision([string]$Root) {
+  $manifest = @(
+    Get-ChildItem -LiteralPath $Root -File -Recurse | Sort-Object { $_.FullName.Substring($Root.Length).Replace('\', '/') } | ForEach-Object {
+      $relative = $_.FullName.Substring($Root.Length).TrimStart('\', '/').Replace('\', '/')
+      $content = Get-Content -Raw -Encoding utf8 -LiteralPath $_.FullName
+      "$relative`n$($content.Replace("`r`n", "`n"))"
+    }
+  ) -join "`n"
+  return Get-AuthorityTextRevision $manifest
+}
+
+function Write-ApprovedModeAuthority {
+  param(
+    [string]$Root,
+    [ValidateSet('incremental','greenfield')][string]$Mode
+  )
+
+  $docsRoot = Join-Path $Root 'docs/aitoolkit'
+  $packRoot = Join-Path $docsRoot 'migration-project'
+  $legacyRoot = Join-Path $Root 'legacy'
+  $targetRoot = Join-Path $Root 'target'
+  $inputRoot = Join-Path $Root 'inputs'
+  [void](New-Item -ItemType Directory -Path $packRoot -Force)
+  [void](New-Item -ItemType Directory -Path $legacyRoot -Force)
+  [void](New-Item -ItemType Directory -Path $targetRoot -Force)
+  [void](New-Item -ItemType Directory -Path $inputRoot -Force)
+  $packText = "# Approved fixture project pack`n"
+  Set-Content -Encoding utf8 -LiteralPath (Join-Path $packRoot 'SKILL.md') -Value $packText
+  Set-Content -Encoding utf8 -LiteralPath (Join-Path $legacyRoot 'source.txt') -Value "approved legacy source`n"
+  Set-Content -Encoding utf8 -LiteralPath (Join-Path $targetRoot 'baseline.txt') -Value "approved target baseline`n"
+  Set-Content -Encoding utf8 -LiteralPath (Join-Path $inputRoot 'requirements.md') -Value "# Approved requirements`n"
+  $reviewedAt = '2026-08-20T12:00:00Z'
+  $reviewEvidence = 'docs/aitoolkit/project-pack-review.md'
+  $policy = if ($Mode -ceq 'greenfield') { 'design-new' } else { 'preserve-existing' }
+  $profileText = @"
+schema_version: 1
+project:
+  id: target-conformance-fixture
+migration:
+  mode: $Mode
+  unit: feature
+  architecture_policy: $policy
+automation:
+  mode: interactive
+output:
+  artifact_language: vi
+legacy:
+  path: legacy
+  language: unknown
+  framework: unknown
+target:
+  path: target
+  language: unknown
+  framework: unknown
+documents:
+  requirements:
+    - path: inputs/requirements.md
+      input_source: explicit
+      format: markdown
+      readability: readable
+      evidence_id: DOC-REQ-001
+  uiux: []
+  migration: []
+  architecture: []
+base_branch: null
+test_cmd: null
+lint_cmd: null
+build_cmd: null
+coverage_cmd: null
+review_focus: []
+verification:
+  behavior_parity: required
+  regression: optional
+  visual_fidelity: optional
+project_pack:
+  path: docs/aitoolkit/migration-project
+  reviewed_at: $reviewedAt
+  review_evidence: $reviewEvidence
+"@
+  $profileForRevision = $profileText.Replace("reviewed_at: $reviewedAt", 'reviewed_at: <review-metadata>').Replace("review_evidence: $reviewEvidence", 'review_evidence: <review-metadata>')
+  $profileRevision = Get-AuthorityTextRevision $profileForRevision
+  $packRevision = Get-AuthorityTreeRevision $packRoot
+  $legacyRevision = Get-AuthorityTreeRevision $legacyRoot
+  $targetRevision = Get-AuthorityTreeRevision $targetRoot
+  $documentRevision = Get-AuthorityTextRevision (Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $inputRoot 'requirements.md'))
+  $citedRevisions = "legacy:legacy@$legacyRevision; target:target@$targetRevision; document:DOC-REQ-001:inputs/requirements.md@$documentRevision"
+  Set-Content -Encoding utf8 -LiteralPath (Join-Path $docsRoot 'project.yaml') -Value $profileText
+  Set-Content -Encoding utf8 -LiteralPath (Join-Path $docsRoot 'project-pack-review.md') -Value @"
+---
+step_id: 04-project-pack-review
+status: approved
+result: complete
+approval_source: human
+produced_at: 2026-08-20
+---
+
+## Độ mới của review
+
+| Reviewed At | Profile Revision | Pack Revision | Source/Target/Document Revisions | Approval Evidence |
+|---|---|---|---|---|
+| $reviewedAt | $profileRevision | $packRevision | $citedRevisions | approval:TECH-LEAD-PROJECT-PACK-001 |
+
+## Bằng chứng tài liệu profile
+
+| Category | Canonical Path | Input Source | Format | Readability | Evidence ID |
+|---|---|---|---|---|---|
+| requirements | inputs/requirements.md | explicit | markdown | readable | DOC-REQ-001 |
+"@
+}
+
+function Refresh-ApprovedModeAuthorityProfileRevision([string]$Root) {
+  $profilePath = Join-Path $Root 'docs/aitoolkit/project.yaml'
+  $reviewPath = Join-Path $Root 'docs/aitoolkit/project-pack-review.md'
+  $profileText = Get-Content -Raw -Encoding utf8 -LiteralPath $profilePath
+  $profileForRevision = [regex]::Replace($profileText, '(?m)^  reviewed_at:\s*[^\r\n]+\s*$', '  reviewed_at: <review-metadata>')
+  $profileForRevision = [regex]::Replace($profileForRevision, '(?m)^  review_evidence:\s*[^\r\n]+\s*$', '  review_evidence: <review-metadata>')
+  $profileRevision = Get-AuthorityTextRevision $profileForRevision
+  $reviewText = Get-Content -Raw -Encoding utf8 -LiteralPath $reviewPath
+  $profileRevisionMatch = [regex]::Match($reviewText, '(?m)^\|[^|\r\n]+\|\s*(?<revision>sha256:[0-9A-F]{64})\s*\|')
+  if (-not $profileRevisionMatch.Success) { throw 'Approved profile revision fixture is missing' }
+  Set-Content -Encoding utf8 -LiteralPath $reviewPath -Value $reviewText.Replace($profileRevisionMatch.Groups['revision'].Value, $profileRevision)
+}
+
 function New-ScenarioRoot {
+  param(
+    [ValidateSet('incremental','greenfield')][string]$ApprovedMode = 'incremental',
+    [switch]$OmitModeAuthority
+  )
   $scenarioRoot = Join-Path ([IO.Path]::GetTempPath()) ('aitoolkit-target-conformance-' + [guid]::NewGuid().ToString('N'))
   [void](New-Item -ItemType Directory -Path (Join-Path $scenarioRoot 'contracts') -Force)
   Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot 'contracts/target-structure-conformance.md') -Value $contractText
   Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot 'contracts/migration-scope-orchestration.md') -Value $scopeContractText
+  if (-not $OmitModeAuthority) {
+    Write-ApprovedModeAuthority -Root $scenarioRoot -Mode $ApprovedMode
+  }
   return $scenarioRoot
 }
 
@@ -84,7 +246,8 @@ function New-DiscoveryArtifact {
     [switch]$UnstructuredTransformation,
     [switch]$DisconnectedDataFlow,
     [string]$ComparableSymbolsOverride = '',
-    [string]$InspectedSymbolOverride = ''
+    [string]$InspectedSymbolOverride = '',
+    [switch]$OmitResponsibilityContractVersion
   )
 
   $rows = foreach ($concern in $IncludedConcerns) {
@@ -116,13 +279,20 @@ function New-DiscoveryArtifact {
     else {
       'verified'
     }
-    "| $concern | lib/target_shell.dart | $symbols | working target pattern for $concern | $comparableReason | lib/target_shell.dart:10-80 | $status |"
+    $classification = if ($status -ceq 'no-equivalent') { 'no-equivalent' } else { 'preferred' }
+    $classificationEvidence = if ($status -ceq 'no-equivalent') {
+      'search:discovery-search.md#query=target-shell,result=0'
+    }
+    else {
+      'inspection:lib/target_shell.dart:10-80; inspection:test/target_shell_test.dart:10-60'
+    }
+    "| $concern | lib/target_shell.dart | $symbols | working target pattern for $concern | one focused $concern responsibility | CAP-001 | VERIFY-OWNER-001 | $comparableReason | lib/target_shell.dart:10-80 | $status | $classification | factual-discovery-evidence | $classificationEvidence |"
   }
   if ($ExtraConcern) {
-    $rows += '| invented concern | lib/invented.dart | InventedController | invented pattern | same production responsibility and activation path | lib/invented.dart:1-20 | verified |'
+    $rows += '| invented concern | lib/invented.dart | InventedController | invented pattern | one focused invented responsibility | CAP-099 | VERIFY-OWNER-099 | same production responsibility and activation path | lib/invented.dart:1-20 | verified | preferred | factual-discovery-evidence | inspection:lib/invented.dart:1-20; inspection:test/invented_test.dart:1 |'
   }
   if ($DuplicateConcern) {
-    $rows += '| module/container composition | lib/duplicate.dart | DuplicateShell | duplicate pattern | same production responsibility and activation path | lib/duplicate.dart:1-20 | verified |'
+    $rows += '| module/container composition | lib/duplicate.dart | DuplicateShell | duplicate pattern | one focused duplicate responsibility | CAP-098 | VERIFY-OWNER-098 | same production responsibility and activation path | lib/duplicate.dart:1-20 | verified | preferred | factual-discovery-evidence | inspection:lib/duplicate.dart:1-20; inspection:test/duplicate_test.dart:1 |'
   }
 
   $gapDecision = if (-not [string]::IsNullOrWhiteSpace($GapDecisionOverride)) {
@@ -195,14 +365,15 @@ step_id: 02-discovery
 status: draft
 result: complete
 produced_at: 2026-08-19
+$(if ($OmitResponsibilityContractVersion) { '' } else { "responsibility_contract:`n  version: 1`n  applicability: required" })
 ---
 
 # Discovery
 
 ## Comparable Target Exemplars
 
-| Concern | Path | Inspected Symbols | Observed Pattern | Comparable Reason | Evidence | Status |
-|---|---|---|---|---|---|---|
+| Concern | Path | Inspected Symbols | Observed Pattern | Primary Responsibility | Owned Capabilities | Verification Owner | Comparable Reason | Evidence | Inspection Status | Classification | Classification Authority | Classification Evidence |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
 $($rows -join "`n")
 
 ## Inspected Symbols
@@ -252,6 +423,7 @@ function New-DesignArtifact {
     [switch]$RootProposedPaths,
     [switch]$TraversalProposedPath,
     [switch]$MalformedProposedPath,
+    [switch]$OmitResponsibilityMatrices,
     [string]$WorkItemId = 'WORK-ADMIN-TARGET',
     [string]$MasterPlanReference = 'master-plan.md#PLAN-ADMIN-001',
     [string]$MasterPlanRevision = '2',
@@ -431,6 +603,27 @@ $($plannedTreeRows -join "`n")
 "@
   }
 
+  $responsibilityMatrices = if ($OmitResponsibilityMatrices) {
+    ''
+  }
+  else {
+@"
+## File Responsibility Matrix
+
+| Responsibility ID | Owner Path | Owner Symbol | Boundary Kind | Primary Responsibility | Owned Capability IDs | Trace IDs | Atomic Boundary ID | Public Symbols | External Effects | Target Exemplar | Exemplar Classification | Classification Authority | Classification Evidence | Architecture Authority | Co-location Policy | Co-location Evidence | Verification Owner References | Conformance | Deviation Reference |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| RESP-ADMIN-TARGET | $plannedFeaturePath | $plannedFeatureSymbol | presentation | render one target capability | CAP-ADMIN-TARGET | REQ-001; SC-001; WORK-ADMIN-TARGET | not-applicable | $plannedFeatureSymbol | none | lib/target_shell.dart#TargetShell | preferred | factual-discovery-evidence | inspection:lib/target_shell.dart:10-80; inspection:test/target_shell_test.dart:10-60 | target-exemplar | feature-local | same capability lifecycle verification and revert boundary | VERIFY-OWNER-ADMIN-TARGET | yes | not-applicable |
+| RESP-ADMIN-PANEL | $plannedPanelPath | $plannedPanelSymbol | presentation | render the target panel | CAP-ADMIN-PANEL | REQ-001; SC-001; WORK-ADMIN-TARGET | not-applicable | $plannedPanelSymbol | none | lib/target_shell.dart#TargetShell | preferred | factual-discovery-evidence | inspection:lib/target_shell.dart:10-80; inspection:test/target_shell_test.dart:10-60 | target-exemplar | feature-local | same capability lifecycle verification and revert boundary | VERIFY-OWNER-ADMIN-PANEL | yes | not-applicable |
+
+## Verification Ownership Matrix
+
+| Verification Owner ID | Production Responsibility ID | Capability ID | Evidence Path | Evidence Symbol or Scenario | Evidence Kind | Verification Disposition | Production Binding Evidence | Decision Reference | Verdict | Deviation Reference |
+|---|---|---|---|---|---|---|---|---|---|---|
+| VERIFY-OWNER-ADMIN-TARGET | RESP-ADMIN-TARGET | CAP-ADMIN-TARGET | test/target_feature_test.dart | target feature contract | contract | required | invokes $plannedFeaturePath#$plannedFeatureSymbol | not-applicable | PASS | not-applicable |
+| VERIFY-OWNER-ADMIN-PANEL | RESP-ADMIN-PANEL | CAP-ADMIN-PANEL | test/target_panel_test.dart | target panel contract | contract | required | invokes $plannedPanelPath#$plannedPanelSymbol | not-applicable | PASS | not-applicable |
+"@
+  }
+
   $boundaryRows = @(
     '| provider | lib/admin/target_feature.dart#TargetFeatureProvider | config input | normalized state | loading/error/data policy | 02-discovery.md#controller-provider-state |',
     '| router | lib/router.dart#targetRoute | route request | TargetFeaturePanel | route guard and disposal | 02-discovery.md#routing-lifecycle |',
@@ -472,6 +665,10 @@ step_id: 07-technical-design
 status: draft
 result: complete
 produced_at: 2026-08-19
+revision: DESIGN-ADMIN@2
+responsibility_contract:
+  version: 1
+  applicability: required
 ---
 
 # Technical Design
@@ -493,6 +690,8 @@ $($rows -join "`n")
 $deviationRow
 
 $plannedTree
+
+$responsibilityMatrices
 
 ## Provider/Router/Localization/Subscription Boundaries
 
@@ -739,15 +938,24 @@ function Invoke-ConformanceCase {
       'duplicate-decomposition', 'wrong-decomposition-parent', 'unexpected-decomposition'
     )]
     [string]$PlanFixture = 'approved',
-    [string]$PlanAcceptanceOverride = ''
+    [string]$PlanAcceptanceOverride = '',
+    [ValidateSet('incremental','greenfield')][string]$ApprovedMode = 'incremental',
+    [switch]$OmitModeAuthority,
+    [scriptblock]$ModeAuthorityMutation,
+    [string]$ContractOverride = $contractText
   )
 
-  $scenarioRoot = New-ScenarioRoot
+  $scenarioRoot = New-ScenarioRoot -ApprovedMode $ApprovedMode -OmitModeAuthority:$OmitModeAuthority
   try {
+    Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot 'contracts/target-structure-conformance.md') -Value $ContractOverride
     if (-not [string]::IsNullOrWhiteSpace($DiscoveryText)) {
       Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot '02-discovery.md') -Value $DiscoveryText
     }
     if (-not [string]::IsNullOrWhiteSpace($DesignText)) {
+      if ([string]::IsNullOrWhiteSpace($DiscoveryText)) {
+        $DiscoveryText = New-DiscoveryArtifact
+        Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot '02-discovery.md') -Value $DiscoveryText
+      }
       Set-Content -Encoding utf8 -LiteralPath (Join-Path $scenarioRoot '07-technical-design.md') -Value $DesignText
       if ($PlanFixture -cne 'missing') {
         $masterPlanText = if (-not [string]::IsNullOrWhiteSpace($PlanAcceptanceOverride)) {
@@ -800,8 +1008,10 @@ function Invoke-ConformanceCase {
       }
     }
 
+    if ($null -ne $ModeAuthorityMutation) { & $ModeAuthorityMutation $scenarioRoot }
+
     $script:errors = [Collections.Generic.List[string]]::new()
-    Test-TargetConformance $scenarioRoot $contractText
+    Test-TargetConformance $scenarioRoot $ContractOverride
 
     if ($ShouldPass -and $script:errors.Count -gt 0) {
       throw "$Name should pass but failed: $($script:errors -join '; ')"
@@ -823,6 +1033,19 @@ function Invoke-ConformanceCase {
     }
   }
 }
+
+Invoke-ConformanceCase `
+  -Name 'canonical 13-column discovery producer composes with target contract authority' `
+  -DiscoveryText (New-DiscoveryArtifact) `
+  -ShouldPass $true `
+  -ContractOverride (Get-CanonicalDiscoveryContract $contractText)
+
+Invoke-ConformanceCase `
+  -Name 'legacy seven-column contract cannot coexist with the canonical discovery producer' `
+  -DiscoveryText (New-DiscoveryArtifact) `
+  -ShouldPass $false `
+  -ExpectedError 'Comparable Target Exemplars table columns must be exactly' `
+  -ContractOverride (Get-LegacySevenColumnDiscoveryContract $contractText)
 
 Invoke-ConformanceCase `
   'discovery rejects generic controller-only evidence' `
@@ -988,12 +1211,371 @@ Invoke-ConformanceCase `
   (New-DiscoveryArtifact) `
   '' `
   $true
+Invoke-ConformanceCase `
+  'target conformance rejects discovery agent-opinion classification' `
+  ((New-DiscoveryArtifact).Replace('factual-discovery-evidence', 'agent-opinion')) `
+  '' `
+  $false `
+  'exemplar-classification-authority-missing'
+Invoke-ConformanceCase `
+  'target conformance rejects discovery missing responsibility version' `
+  (New-DiscoveryArtifact -OmitResponsibilityContractVersion) `
+  '' `
+  $false `
+  'responsibility-contract-version-invalid'
 
 Invoke-ConformanceCase `
   'design accepts canonical Acceptance references plus measurable outcome prose' `
   '' `
   (New-DesignArtifact) `
   $true
+Invoke-ConformanceCase `
+  'target conformance ignores unbounded mode text' `
+  '' `
+  ((New-DesignArtifact).Replace('# Technical Design', "# Technical Design`n`nmode: greenfield")) `
+  $true
+Invoke-ConformanceCase `
+  'target conformance rejects contradictory architecture modes' `
+  '' `
+  ((New-DesignArtifact).Replace('# Technical Design', "# Technical Design`n`n## Architecture`n`n| Mode / Policy | Target Conformance / New Architecture | Trace IDs | Decision |`n|---|---|---|---|`n| greenfield | new architecture | REQ-001 | approved |`n| incremental | preserve target | REQ-001 | approved |")) `
+  $false `
+  'Architecture mode policy must resolve exactly one canonical mode'
+$greenfieldDesign = (New-DesignArtifact).Replace('target-exemplar', 'approved-greenfield-design').Replace('# Technical Design', "# Technical Design`n`n## Architecture`n`n| Mode / Policy | Target Conformance / New Architecture | Trace IDs | Decision |`n|---|---|---|---|`n| greenfield/design-new | new architecture | REQ-001 | approved |")
+Invoke-ConformanceCase `
+  'target conformance accepts greenfield responsibility authority under approved design mode' `
+  '' `
+  $greenfieldDesign `
+  $true `
+  -ApprovedMode greenfield
+Invoke-ConformanceCase `
+  'target conformance rejects responsibility authority that mismatches approved greenfield mode' `
+  '' `
+  ((New-DesignArtifact).Replace('# Technical Design', "# Technical Design`n`n## Architecture`n`n| Mode / Policy | Target Conformance / New Architecture | Trace IDs | Decision |`n|---|---|---|---|`n| greenfield/design-new | new architecture | REQ-001 | approved |")) `
+  $false `
+  'greenfield-authority-invalid' `
+  -ApprovedMode greenfield
+Invoke-ConformanceCase `
+  'target conformance rejects design mode that mismatches external approved profile' `
+  '' `
+  ((New-DesignArtifact).Replace('# Technical Design', "# Technical Design`n`n## Architecture`n`n| Mode / Policy | Target Conformance / New Architecture | Trace IDs | Decision |`n|---|---|---|---|`n| incremental/preserve-existing | preserve target | REQ-001 | approved |")) `
+  $false `
+  'Technical design Architecture mode policy must match approved project mode' `
+  -ApprovedMode greenfield
+Invoke-ConformanceCase `
+  'target conformance fails closed without external approved mode authority' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Missing approved migration mode authority' `
+  -OmitModeAuthority
+Invoke-ConformanceCase `
+  'target conformance accepts exact current human-reviewed project profile authority' `
+  '' `
+  (New-DesignArtifact) `
+  $true
+Invoke-ConformanceCase `
+  'target conformance accepts the documented legacy profile with omitted automation and output defaults' `
+  '' `
+  (New-DesignArtifact) `
+  $true `
+  '' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    $text = $text.Replace("automation:`n  mode: interactive`noutput:`n  artifact_language: vi`n", '')
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects a legacy automation alias instead of treating it as a default' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    $text = $text.Replace("automation:`n  mode: interactive", 'automation_mode: interactive')
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects duplicate automation mode when the optional section is present' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    $text = $text.Replace('  mode: interactive', "  mode: interactive`n  mode: interactive")
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects stale profile content after project-pack review' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Stale approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('id: target-conformance-fixture', 'id: target-conformance-fixture-mutated')
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects cited source content changed after project-pack review' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Stale approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    Set-Content -Encoding utf8 -LiteralPath (Join-Path $root 'legacy/source.txt') -Value "changed legacy source`n"
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects mismatched cited evidence revision' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Stale approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project-pack-review.md'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value ([regex]::Replace($text, 'legacy:legacy@sha256:[0-9A-F]{64}', ('legacy:legacy@sha256:' + ('0' * 64)), 1))
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects non-approved project-pack review authority' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Missing approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project-pack-review.md'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('status: approved', 'status: draft')
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects duplicate top-level mode authority' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value ("mode: incremental`n" + $text)
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects noncanonical migration mode key' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  unit: feature', "  migration_mode: incremental`n  unit: feature")
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects unsupported nested source alias key' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  path: legacy', "  path: legacy`n  source_path: legacy")
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects a deeply nested alias hidden below a canonical source key' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  path: legacy', "  path: legacy`n    source_path: legacy")
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects duplicate nested target path key' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace("target:`n  path: target", "target:`n  path: target`n  path: target")
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects a noncanonical source path with traversal segments' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('  path: legacy', '  path: legacy/../target')
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects blank base_branch without borrowing test_cmd on PowerShell 5.1' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('base_branch: null', 'base_branch:')
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects another blank top-level scalar without borrowing its next line' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', 'review_focus:')
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects scalar YAML alias for review_focus' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', 'review_focus: *focus')
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance accepts documented non-empty review_focus block list' `
+  '' `
+  (New-DesignArtifact) `
+  $true `
+  '' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', "review_focus:`n  - `"Riverpod: do not retain ref after dispose`"")
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects nested YAML alias in review_focus block list' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', "review_focus:`n  - *focus")
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects unknown nested alias key in review_focus block list' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('review_focus: []', "review_focus:`n  - `"Riverpod lifecycle`"`n    focus_alias: *focus")
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+
+$profileScalarLines = [ordered]@{
+  schema_version = 'schema_version: 1'
+  base_branch = 'base_branch: null'
+  test_cmd = 'test_cmd: null'
+  lint_cmd = 'lint_cmd: null'
+  build_cmd = 'build_cmd: null'
+  coverage_cmd = 'coverage_cmd: null'
+}
+$nestedScalarShapes = [ordered]@{
+  scalar = '  unexpected_scalar: value'
+  list = '  - unexpected-list-value'
+  map = "  unexpected_map:`n    key: value"
+}
+foreach ($scalarKey in $profileScalarLines.Keys) {
+  foreach ($nestedShape in $nestedScalarShapes.Keys) {
+    $originalScalarLine = $profileScalarLines[$scalarKey]
+    $nestedContent = $nestedScalarShapes[$nestedShape]
+    Invoke-ConformanceCase `
+      "target conformance rejects a nested $nestedShape beneath scalar namespace $scalarKey" `
+      '' `
+      (New-DesignArtifact) `
+      $false `
+      'Invalid approved migration mode authority' `
+      -ModeAuthorityMutation {
+        param($root)
+        $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+        $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+        Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace($originalScalarLine, "$originalScalarLine`n$nestedContent")
+        Refresh-ApprovedModeAuthorityProfileRevision $root
+      }
+  }
+  Invoke-ConformanceCase `
+    "target conformance rejects duplicate scalar key $scalarKey" `
+    '' `
+    (New-DesignArtifact) `
+    $false `
+    'Invalid approved migration mode authority' `
+    -ModeAuthorityMutation {
+      param($root)
+      $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+      $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+      Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace($originalScalarLine, "$originalScalarLine`n$originalScalarLine")
+      Refresh-ApprovedModeAuthorityProfileRevision $root
+    }
+}
+Invoke-ConformanceCase `
+  'target conformance rejects an unknown top-level scalar alias' `
+  '' `
+  (New-DesignArtifact) `
+  $false `
+  'Invalid approved migration mode authority' `
+  -ModeAuthorityMutation {
+    param($root)
+    $path = Join-Path $root 'docs/aitoolkit/project.yaml'
+    $text = Get-Content -Raw -Encoding utf8 -LiteralPath $path
+    Set-Content -Encoding utf8 -LiteralPath $path -Value $text.Replace('base_branch: null', "base_branch: null`nbasebranch: null")
+    Refresh-ApprovedModeAuthorityProfileRevision $root
+  }
+Invoke-ConformanceCase `
+  'target conformance rejects a design without responsibility matrices' `
+  '' `
+  (New-DesignArtifact -OmitResponsibilityMatrices) `
+  $false `
+  'ARC-CONTRACT-MISSING-TABLE: File Responsibility Matrix'
 Invoke-ConformanceCase `
   'design accepts comma-separated canonical Acceptance references plus measurable outcome prose' `
   '' `

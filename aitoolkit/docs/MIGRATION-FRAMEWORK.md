@@ -12,6 +12,67 @@ AIToolkit keeps migration orchestration native to prompt skills: an orchestrator
 6. Migration ends at Knowledge Capture after the mode-specific verification path.
 7. Gerrit, CCC, and Release are separate delivery skills invoked only by explicit calls after migration.
 
+## Two-plane scope orchestration
+
+Scope plane là authority bền vững phía trên pipeline 15 bước. Nó resolve requested scope, tạo hoặc đọc approved `master-spec.md` và `master-plan.md`, kiểm revision chain, dependency graph, queue, scope change và terminal report. Scope plane không mutation target source. Execution plane chỉ nhận một approved work item tại một thời điểm, resolve optional delivery adapter, tạo immutable attempt và trả work-item evidence cho atomic master-plan transition.
+
+Luồng chuẩn:
+
+```text
+requested scope
+  -> approved master spec revision
+  -> approved master plan revision
+  -> deterministic next-eligible work item
+  -> optional delivery adapter
+  -> one immutable execution attempt
+  -> terminal evidence and atomic transition
+  -> next work item or calculated scope verdict
+```
+
+Master spec giữ intended outcome, scope boundary, requirements, measurable success criteria, unknowns và approval. Master plan giữ generic work items, dependencies, order, acceptance/trace, adapter, attempt history, transition log và scope calculation. Approved revisions bất biến; thay boundary, requirement, work-item set, dependency, acceptance, selector hoặc structural decision phải tạo revision kế tiếp, chỉ invalidate affected approval và giữ evidence hợp lệ của item không bị ảnh hưởng.
+
+### Generic work item và adapter examples
+
+Ví dụ có canonical migration unit:
+
+```yaml
+work_item_id: WORK-ADMIN-LOCKS
+delivery_adapter:
+  kind: migration-unit
+  external_id: UNIT-ADM-002
+  authority: 08-migration-plan.md
+  authority_revision: 3
+  approval_reference: approval:UNIT-ADM-002
+  parent_selector: not-applicable
+```
+
+Selector phải match đúng một approved canonical row về mode, acceptance, trace, dependency và design revision. External-only, duplicate, draft hoặc stale selector đều block.
+
+Ví dụ project không dùng unit:
+
+```yaml
+work_item_id: WORK-BILLING-EXPORT
+delivery_adapter:
+  kind: none
+  external_id: not-applicable
+  authority: not-applicable
+  authority_revision: not-applicable
+  approval_reference: not-applicable
+  parent_selector: not-applicable
+```
+
+Work item vẫn có acceptance, trace, dependency, approval và terminal evidence đầy đủ; orchestrator không phát minh `UNIT-*`.
+
+### Resume, assurance và completion
+
+Resume dùng explicit master references, chọn latest approved linear revisions, reconcile item/attempt `in-progress`, rồi chọn cùng next item theo dependency depth, `Plan Order`, ordinal `Work Item ID`. Missing/forked/cyclic/stale chain block; workflow không brainstorm lại approved scope nếu người dùng không yêu cầu scope change.
+
+Ba assurance state độc lập. `auto-waive` chỉ có thể chuyển eligible runtime evidence từ `NOT_RUN + BLOCKED` thành `NOT_RUN + WAIVED`; runtime `FAIL`, architecture `BLOCKED` hoặc selector/schema `BLOCKED` không được waiver. Structural blocker dừng queue trước edit.
+
+Attempt completion, work-item completion và requested-scope completion là ba quyết định riêng. Một item complete khi acceptance riêng có immutable terminal evidence. Khi còn required item, scope là `scope-in-progress`. Chỉ master plan được kết luận `scope-complete`, sau khi mọi required item terminal-success, graph valid, không blocker, completed-item architecture/selector-schema `PASS`, và `scope-terminal-report.md` enumerate exact toàn bộ required/optional rows cùng evidence và calculated verdict.
+
+Historical unit-only run vẫn đọc được nhưng không resume thẳng tới mutation. Compatibility conversion tạo master spec/plan revision 1 từ approved evidence, một work item cho mỗi canonical legacy unit, giữ exact selector và terminal evidence hợp lệ, rồi dừng ở fresh approval gate; nó không suy module/project completion từ một unit.
+
 ## Tự động hóa và ngôn ngữ artifact
 
 - Profile mới mặc định `automation.mode: interactive` và `output.artifact_language: vi`; profile cũ thiếu hai field dùng fallback tương ứng `interactive` và `vi`. Vì vậy artifact migration được sinh mặc định tiếng Việt UTF-8, còn key/enums/ID/path/command/log và cột bảng machine-readable giữ nguyên.
@@ -59,7 +120,7 @@ Replacement, platform-dependency change, or out-of-scope refactoring requires an
 
 Every migration artifact has independent workflow approval (`status: draft | approved`) and a business-outcome enum (`result: complete | partial | blocked`). The enum is route-limited: the canonical Activation Slice contract permits `partial` only for the approved step-01 input-qualification predecessor and the exact step-10 `approved/partial/auto-waive` baseline-waiver tuple; steps 02–09 and 11–14 use `complete | blocked`. A blocked artifact remains draft, keeps the current todo in progress, and stops before the normal approval gate and downstream execution.
 
-The migration orchestrator has exactly 15 steps. Greenfield passes `13-parity-report.md` to terminal Knowledge Capture; incremental passes `14-regression-report.md`. Knowledge Capture reads the complete `RUN_DIR`, writes `kb-entry.md`, and is the last migration step. To continue an interrupted run, invoke the same workflow and slug; the orchestrator validates approved artifacts directly without a manifest, state engine, private run store, or resume machinery.
+The migration orchestrator has exactly 15 steps. Greenfield passes `13-parity-report.md` to terminal Knowledge Capture; incremental passes `14-regression-report.md`. Knowledge Capture reads the complete `RUN_DIR`, writes `kb-entry.md`, and is the last execution-plane step. To continue an interrupted run, invoke the same workflow and slug; the scope plane validates explicit approved master revisions and immutable attempt evidence directly without a manifest, database-backed state engine, or private run store.
 
 Delivery does not run implicitly. Gerrit, CCC, and Release remain available as separate skills only when the user makes a new explicit call after migration has ended.
 
